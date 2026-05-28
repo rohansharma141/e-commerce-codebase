@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { Logger as PinoLogger } from 'nestjs-pino';
 import { APP_CONFIG, type AppConfig } from '@platform/shared/config';
@@ -7,6 +8,10 @@ import { AppModule } from './app.module';
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
   app.useLogger(app.get(PinoLogger));
+  app.useGlobalPipes(
+    new ValidationPipe({ whitelist: true, forbidNonWhitelisted: false, transform: true }),
+  );
+  app.enableShutdownHooks();
 
   const config = app.get<AppConfig>(APP_CONFIG);
   await app.listen(config.PORT);

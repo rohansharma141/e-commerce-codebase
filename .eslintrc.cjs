@@ -37,18 +37,29 @@ module.exports = {
             enforceBuildableLibDependency: true,
             allow: [],
             depConstraints: [
+              // apps/api is the composition root — it wires every module.
+              // The "never cross another module's src" rule is between modules,
+              // not between the app and a module.
               {
                 sourceTag: 'scope:app',
-                onlyDependOnLibsWithTags: ['scope:shared', 'type:contracts'],
+                onlyDependOnLibsWithTags: [
+                  'scope:shared',
+                  'scope:module',
+                  'type:contracts',
+                  'type:src',
+                ],
               },
               {
                 sourceTag: 'scope:shared',
                 onlyDependOnLibsWithTags: ['scope:shared'],
               },
+              // A module's src may consume shared libs and OTHER modules'
+              // contracts — never another module's src.
               {
                 sourceTag: 'type:src',
                 onlyDependOnLibsWithTags: ['scope:shared', 'type:contracts'],
               },
+              // Contracts are pure: shared types only (DTOs, event names).
               {
                 sourceTag: 'type:contracts',
                 onlyDependOnLibsWithTags: ['scope:shared'],

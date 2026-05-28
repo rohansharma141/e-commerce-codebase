@@ -1,9 +1,9 @@
 {
   "extends": "../../../tsconfig.base.json",
   "compilerOptions": {
-    "outDir": "../../../dist/packages/shared/db",
+    "outDir": "../../../dist/packages/shared/database",
     "declaration": true,
-    "types": ["node"]
+    "types": ["node", "jest"]
   },
   "include": ["src/**/*.ts"]
 }

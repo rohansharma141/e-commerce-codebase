@@ -1,0 +1,13 @@
+{
+  "name": "catalog-contracts",
+  "$schema": "../../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "packages/modules/catalog/contracts/src",
+  "projectType": "library",
+  "tags": ["scope:module", "type:contracts"],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "outputs": ["{options.outputFile}"]
+    }
+  }
+}

@@ -27,7 +27,9 @@
       "@platform/shared/config": ["packages/shared/config/src/index.ts"],
       "@platform/shared/event-bus": ["packages/shared/event-bus/src/index.ts"],
       "@platform/shared/tenant-context": ["packages/shared/tenant-context/src/index.ts"],
-      "@platform/shared/db": ["packages/shared/db/src/index.ts"]
+      "@platform/shared/database": ["packages/shared/database/src/index.ts"],
+      "@platform/modules/catalog/contracts": ["packages/modules/catalog/contracts/src/index.ts"],
+      "@platform/modules/catalog/src": ["packages/modules/catalog/src/catalog.module.ts"]
     }
   },
   "exclude": ["node_modules", "tmp", "dist"]
