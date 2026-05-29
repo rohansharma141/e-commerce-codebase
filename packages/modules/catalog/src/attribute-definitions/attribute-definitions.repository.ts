@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
-import { DRIZZLE, type DrizzleClient } from '@platform/shared/database';
+import { TENANT_DRIZZLE, type TenantDrizzleAccessor } from '@platform/shared/database';
 import type {
   AttributeDefinition,
   AttributeType,
@@ -17,7 +17,14 @@ export interface NewAttributeDefinition {
 
 @Injectable()
 export class AttributeDefinitionsRepository {
-  constructor(@Inject(DRIZZLE) private readonly db: DrizzleClient) {}
+  constructor(@Inject(TENANT_DRIZZLE) private readonly dbAccessor: TenantDrizzleAccessor) {}
+
+  // Repo grabs the request-scoped Drizzle client at query time. The connection
+  // it returns has app.tenant_id pinned, so RLS does the enforcement; the
+  // explicit WHERE clauses below are kept for defense-in-depth.
+  private get db() {
+    return this.dbAccessor.get();
+  }
 
   async insert(input: NewAttributeDefinition): Promise<AttributeDefinition> {
     const [row] = await this.db

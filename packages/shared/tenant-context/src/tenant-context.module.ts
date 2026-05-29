@@ -1,51 +1,23 @@
-import {
-  Global,
-  Inject,
-  Module,
-  type DynamicModule,
-  type MiddlewareConsumer,
-  type NestModule,
-} from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
 import { TenantMiddleware } from './tenant.middleware';
 
-export interface TenantContextModuleOptions {
-  /** Routes that should bypass tenant resolution (e.g. liveness probes). */
-  readonly excludeRoutes?: readonly string[];
-}
-
-export const TENANT_CONTEXT_OPTIONS = Symbol('TENANT_CONTEXT_OPTIONS');
-
+/**
+ * Provides TenantMiddleware. Composition of middleware order is the caller's
+ * job (in apps/api/src/app.module.ts): TenantMiddleware MUST run before any
+ * middleware that reads the tenant via currentTenantOrThrow() — notably
+ * TenantBindingMiddleware from @platform/shared/database.
+ *
+ * forRoot() is kept as a no-op constructor for backward-compatible call sites;
+ * options like excludeRoutes used to live here, but they belong with the
+ * middleware-registration in the host app where ordering is settled anyway.
+ */
 @Global()
 @Module({
-  providers: [
-    TenantMiddleware,
-    { provide: TENANT_CONTEXT_OPTIONS, useValue: {} as TenantContextModuleOptions },
-  ],
+  providers: [TenantMiddleware],
   exports: [TenantMiddleware],
 })
-export class TenantContextModule implements NestModule {
-  static forRoot(options: TenantContextModuleOptions = {}): DynamicModule {
-    return {
-      module: TenantContextModule,
-      providers: [
-        TenantMiddleware,
-        { provide: TENANT_CONTEXT_OPTIONS, useValue: options },
-      ],
-      exports: [TenantMiddleware],
-    };
-  }
-
-  constructor(
-    @Inject(TENANT_CONTEXT_OPTIONS) private readonly options: TenantContextModuleOptions,
-  ) {}
-
-  configure(consumer: MiddlewareConsumer): void {
-    const exclude = this.options.excludeRoutes ?? [];
-    const builder = consumer.apply(TenantMiddleware);
-    if (exclude.length > 0) {
-      builder.exclude(...exclude).forRoutes('*');
-    } else {
-      builder.forRoutes('*');
-    }
+export class TenantContextModule {
+  static forRoot(): typeof TenantContextModule {
+    return TenantContextModule;
   }
 }

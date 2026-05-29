@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, eq, gt } from 'drizzle-orm';
-import { DRIZZLE, type DrizzleClient } from '@platform/shared/database';
+import { TENANT_DRIZZLE, type TenantDrizzleAccessor } from '@platform/shared/database';
 import type { Product, ProductAttributes } from '@platform/modules/catalog/contracts';
 import { products, type ProductRow } from '../db/schema';
 
@@ -19,7 +19,13 @@ export interface ProductPatch {
 
 @Injectable()
 export class ProductsRepository {
-  constructor(@Inject(DRIZZLE) private readonly db: DrizzleClient) {}
+  constructor(@Inject(TENANT_DRIZZLE) private readonly dbAccessor: TenantDrizzleAccessor) {}
+
+  // See AttributeDefinitionsRepository for the rationale on TENANT_DRIZZLE +
+  // defense-in-depth WHEREs. Same pattern.
+  private get db() {
+    return this.dbAccessor.get();
+  }
 
   async insert(input: NewProduct): Promise<Product> {
     const [row] = await this.db

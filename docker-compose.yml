@@ -1,14 +1,17 @@
 services:
   postgres:
     image: postgres:16-alpine
+    # POSTGRES_USER stays as the default superuser `postgres`. The real app
+    # role `platform` is created (without SUPERUSER / BYPASSRLS) by the
+    # initdb script in docker/postgres/init/. This is what lets RLS bind for
+    # the api's connections; see docker/postgres/init/01-platform-role.sql.
     environment:
-      POSTGRES_USER: platform
-      POSTGRES_PASSWORD: platform
-      POSTGRES_DB: platform
+      POSTGRES_PASSWORD: postgres
     ports:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U platform -d platform"]
       interval: 5s
