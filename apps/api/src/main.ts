@@ -8,8 +8,12 @@ import { AppModule } from './app.module';
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
   app.useLogger(app.get(PinoLogger));
+  // whitelist:false is required so GraphQL @Args inputs (validated by the
+  // GraphQL schema, not class-validator decorators) aren't silently stripped
+  // to {}. Catalog REST DTOs don't depend on strict whitelisting today; when
+  // they do, the pipe should be applied per-controller instead of globally.
   app.useGlobalPipes(
-    new ValidationPipe({ whitelist: true, forbidNonWhitelisted: false, transform: true }),
+    new ValidationPipe({ whitelist: false, transform: true }),
   );
   app.enableShutdownHooks();
 
