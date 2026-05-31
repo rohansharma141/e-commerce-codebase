@@ -68,11 +68,12 @@ import { HealthController } from './health.controller';
 export class AppModule implements NestModule {
   // /health and /ready are both pre-tenant: the former is plain liveness,
   // the latter must be probable from outside (k8s, monitoring) without a
-  // tenant context.
+  // tenant context. /docs is the Swagger UI; it must load without a header
+  // (you set the header *inside* the UI via Authorize).
   configure(consumer: MiddlewareConsumer): void {
     consumer
       .apply(TenantMiddleware, TenantBindingMiddleware)
-      .exclude('health', 'ready')
+      .exclude('health', 'ready', 'docs', 'docs/(.*)', 'docs-json', 'docs-yaml')
       .forRoutes('*');
   }
 }

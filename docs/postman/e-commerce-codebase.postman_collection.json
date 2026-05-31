@@ -1,0 +1,566 @@
+{
+  "info": {
+    "name": "e-commerce-codebase",
+    "description": "Multi-tenant headless commerce platform — REST + GraphQL surface.\n\nAll tenant-scoped endpoints require the `x-tenant-id` header. The collection variable `tenantId` is wired into every request. Switch tenants by editing the variable (e.g. `t-fashion`, `t-electronics`, `t-books`).\n\nThe `Snapshot Integrity Flow` folder ordered top-to-bottom reproduces the README's verification 3: create cart → add item → checkout → mutate catalog price → re-fetch order. The cart and order IDs are captured automatically into collection variables by test scripts.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl",   "value": "http://localhost:3000", "type": "string" },
+    { "key": "tenantId",  "value": "t-fashion",            "type": "string" },
+    { "key": "productId", "value": "a33b4b6b-84a5-49b9-8463-d4796ea805ce", "type": "string", "description": "An example seeded product from t-fashion. Pick a fresh one from the search response if running against another tenant." },
+    { "key": "cartId",    "value": "",                     "type": "string", "description": "Captured by Snapshot Integrity Flow > 1. Create cart." },
+    { "key": "orderId",   "value": "",                     "type": "string", "description": "Captured by Snapshot Integrity Flow > 3. Checkout." },
+    { "key": "promotionId", "value": "",                   "type": "string", "description": "Captured by Pricing > Promotions > Create." }
+  ],
+  "item": [
+    {
+      "name": "Health & Readiness",
+      "item": [
+        {
+          "name": "GET /health (liveness)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] },
+            "description": "Pure liveness probe. Always 200 if the api is running. Not tenant-scoped — no header required."
+          }
+        },
+        {
+          "name": "GET /ready (deps probe)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/ready", "host": ["{{baseUrl}}"], "path": ["ready"] },
+            "description": "Probes Postgres, Redis, OpenSearch with a 1s budget each. 200 + ok:true if all up; 503 + ok:false if any dep down. Stop a backing container and re-run to see the flip."
+          }
+        }
+      ]
+    },
+    {
+      "name": "GraphQL — Hero Search",
+      "item": [
+        {
+          "name": "POST /graphql — search (basic)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "x-tenant-id",  "value": "{{tenantId}}" },
+              { "key": "content-type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"query($input: SearchInput!) { search(input: $input) { total latencyMs items { id sku name attributes } facets { attribute buckets { value count } } } }\",\n  \"variables\": {\n    \"input\": { \"query\": \"shirt\", \"facets\": [\"color\", \"size\"], \"limit\": 5 }\n  }\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/graphql", "host": ["{{baseUrl}}"], "path": ["graphql"] },
+            "description": "Hero faceted search. Watch `data.search.latencyMs` — cold first call ≈200ms, warm ≤15ms."
+          }
+        },
+        {
+          "name": "POST /graphql — search by custom attribute (brand=Acme)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "x-tenant-id",  "value": "{{tenantId}}" },
+              { "key": "content-type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"query($input: SearchInput!) { search(input: $input) { total latencyMs items { sku name attributes } facets { attribute buckets { value count } } } }\",\n  \"variables\": {\n    \"input\": {\n      \"filters\": [{ \"attribute\": \"brand\", \"eq\": \"Acme\" }],\n      \"facets\": [\"color\", \"size\"],\n      \"limit\": 5\n    }\n  }\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/graphql", "host": ["{{baseUrl}}"], "path": ["graphql"] },
+            "description": "Filters by a tenant-defined custom attribute. The faceted aggregation runs over the filtered set — what enterprises actually need from search."
+          }
+        },
+        {
+          "name": "POST /graphql — search by numeric range (price 100..200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "x-tenant-id",  "value": "{{tenantId}}" },
+              { "key": "content-type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"query($input: SearchInput!) { search(input: $input) { total latencyMs items { sku name attributes } } }\",\n  \"variables\": {\n    \"input\": {\n      \"filters\": [{ \"attribute\": \"price\", \"gte\": 100, \"lte\": 200 }],\n      \"limit\": 5\n    }\n  }\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/graphql", "host": ["{{baseUrl}}"], "path": ["graphql"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Catalog (admin)",
+      "item": [
+        {
+          "name": "POST /admin/products — create",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "x-tenant-id",  "value": "{{tenantId}}" },
+              { "key": "content-type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sku\": \"MANUAL-0001\",\n  \"name\": \"Manually-created product\",\n  \"attributes\": {\n    \"brand\": \"Manual\",\n    \"color\": \"red\",\n    \"size\": \"M\",\n    \"price\": 199.99,\n    \"in_stock\": true\n  }\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/admin/products", "host": ["{{baseUrl}}"], "path": ["admin", "products"] },
+            "description": "Creates a product in catalog.products AND indexes it into OpenSearch. The seed bypasses this path and goes straight to OpenSearch, so catalog.products is empty after pnpm seed."
+          }
+        },
+        {
+          "name": "GET /admin/products — list",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "x-tenant-id", "value": "{{tenantId}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/products?limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "products"],
+              "query": [{ "key": "limit", "value": "20" }]
+            }
+          }
+        },
+        {
+          "name": "GET /admin/products/:id",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "x-tenant-id", "value": "{{tenantId}}" }],
+            "url": { "raw": "{{baseUrl}}/admin/products/{{productId}}", "host": ["{{baseUrl}}"], "path": ["admin", "products", "{{productId}}"] }
+          }
+        },
+        {
+          "name": "PATCH /admin/products/:id",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "x-tenant-id",  "value": "{{tenantId}}" },
+              { "key": "content-type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Renamed product\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/admin/products/{{productId}}", "host": ["{{baseUrl}}"], "path": ["admin", "products", "{{productId}}"] }
+          }
+        },
+        {
+          "name": "DELETE /admin/products/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "x-tenant-id", "value": "{{tenantId}}" }],
+            "url": { "raw": "{{baseUrl}}/admin/products/{{productId}}", "host": ["{{baseUrl}}"], "path": ["admin", "products", "{{productId}}"] }
+          }
+        },
+        {
+          "name": "POST /admin/attribute-definitions — create",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "x-tenant-id",  "value": "{{tenantId}}" },
+              { "key": "content-type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"material\",\n  \"type\": \"string\",\n  \"multiValue\": false\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/admin/attribute-definitions", "host": ["{{baseUrl}}"], "path": ["admin", "attribute-definitions"] },
+            "description": "Tenant-defined typed attributes. Once defined, products in this tenant can carry the attribute and the search index will treat it as faceted/filterable."
+          }
+        },
+        {
+          "name": "GET /admin/attribute-definitions",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "x-tenant-id", "value": "{{tenantId}}" }],
+            "url": { "raw": "{{baseUrl}}/admin/attribute-definitions", "host": ["{{baseUrl}}"], "path": ["admin", "attribute-definitions"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Pricing (admin)",
+      "item": [
+        {
+          "name": "POST /admin/prices — upsert",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "x-tenant-id",  "value": "{{tenantId}}" },
+              { "key": "content-type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"unitPriceCents\": 19999\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/admin/prices", "host": ["{{baseUrl}}"], "path": ["admin", "prices"] }
+          }
+        },
+        {
+          "name": "GET /admin/prices — list",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "x-tenant-id", "value": "{{tenantId}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/prices?limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "prices"],
+              "query": [{ "key": "limit", "value": "10" }]
+            }
+          }
+        },
+        {
+          "name": "PUT /admin/tenant-config",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "x-tenant-id",  "value": "{{tenantId}}" },
+              { "key": "content-type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currency\": \"USD\",\n  \"taxRateBps\": 875\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/admin/tenant-config", "host": ["{{baseUrl}}"], "path": ["admin", "tenant-config"] },
+            "description": "Per-tenant currency + tax rate. taxRateBps is basis points (875 = 8.75%)."
+          }
+        },
+        {
+          "name": "GET /admin/tenant-config",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "x-tenant-id", "value": "{{tenantId}}" }],
+            "url": { "raw": "{{baseUrl}}/admin/tenant-config", "host": ["{{baseUrl}}"], "path": ["admin", "tenant-config"] }
+          }
+        },
+        {
+          "name": "POST /admin/promotions — create coupon code",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201 || pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  if (body && body.id) pm.collectionVariables.set('promotionId', body.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "x-tenant-id",  "value": "{{tenantId}}" },
+              { "key": "content-type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"kind\": \"coupon-code\",\n  \"code\": \"SUMMER10\",\n  \"condition\": { \"type\": \"always\", \"value\": {} },\n  \"action\": { \"type\": \"percent\", \"value\": 1000 },\n  \"maxUses\": 100,\n  \"active\": true\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/admin/promotions", "host": ["{{baseUrl}}"], "path": ["admin", "promotions"] },
+            "description": "kind=coupon-code requires a code; action.value for `percent` is bps (1000 = 10%). For `fixed` action.value is cents. Captures `id` into collection variable `promotionId`."
+          }
+        },
+        {
+          "name": "POST /admin/promotions — automatic, cart-total min",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "x-tenant-id",  "value": "{{tenantId}}" },
+              { "key": "content-type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"kind\": \"automatic\",\n  \"condition\": { \"type\": \"cart-total-min\", \"value\": { \"minCents\": 10000 } },\n  \"action\": { \"type\": \"fixed\", \"value\": 500 },\n  \"active\": true\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/admin/promotions", "host": ["{{baseUrl}}"], "path": ["admin", "promotions"] },
+            "description": "$5 off automatically when cart subtotal ≥ $100."
+          }
+        },
+        {
+          "name": "GET /admin/promotions",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "x-tenant-id", "value": "{{tenantId}}" }],
+            "url": { "raw": "{{baseUrl}}/admin/promotions", "host": ["{{baseUrl}}"], "path": ["admin", "promotions"] }
+          }
+        },
+        {
+          "name": "PATCH /admin/promotions/:id — deactivate",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "x-tenant-id",  "value": "{{tenantId}}" },
+              { "key": "content-type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"active\": false\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/admin/promotions/{{promotionId}}", "host": ["{{baseUrl}}"], "path": ["admin", "promotions", "{{promotionId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Storefront — Cart",
+      "item": [
+        {
+          "name": "POST /storefront/carts — create",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  if (body && body.cartId) pm.collectionVariables.set('cartId', body.cartId);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "x-tenant-id", "value": "{{tenantId}}" }],
+            "url": { "raw": "{{baseUrl}}/storefront/carts", "host": ["{{baseUrl}}"], "path": ["storefront", "carts"] },
+            "description": "Creates an empty cart, returns `{ cartId }`. The test script captures cartId into collection variables."
+          }
+        },
+        {
+          "name": "GET /storefront/carts/:id — fetch cart with totals",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "x-tenant-id", "value": "{{tenantId}}" }],
+            "url": { "raw": "{{baseUrl}}/storefront/carts/{{cartId}}", "host": ["{{baseUrl}}"], "path": ["storefront", "carts", "{{cartId}}"] },
+            "description": "Returns the cart plus live-computed totals (subtotal, discount, tax, grandTotal). Re-fetching after a catalog price change shows updated cart totals — but checkout snapshots them."
+          }
+        },
+        {
+          "name": "POST /storefront/carts/:id/items — add item",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "x-tenant-id",  "value": "{{tenantId}}" },
+              { "key": "content-type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"sku\": \"T-FASHION-0000433\",\n  \"name\": \"Awesome Shirt\",\n  \"qty\": 1\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/storefront/carts/{{cartId}}/items", "host": ["{{baseUrl}}"], "path": ["storefront", "carts", "{{cartId}}", "items"] }
+          }
+        },
+        {
+          "name": "PATCH /storefront/carts/:id/items/:productId — set qty (0 removes)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "x-tenant-id",  "value": "{{tenantId}}" },
+              { "key": "content-type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"qty\": 3\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/storefront/carts/{{cartId}}/items/{{productId}}", "host": ["{{baseUrl}}"], "path": ["storefront", "carts", "{{cartId}}", "items", "{{productId}}"] },
+            "description": "qty=0 removes the line entirely."
+          }
+        },
+        {
+          "name": "POST /storefront/carts/:id/coupon — apply",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "x-tenant-id",  "value": "{{tenantId}}" },
+              { "key": "content-type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"SUMMER10\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/storefront/carts/{{cartId}}/coupon", "host": ["{{baseUrl}}"], "path": ["storefront", "carts", "{{cartId}}", "coupon"] }
+          }
+        },
+        {
+          "name": "DELETE /storefront/carts/:id/coupon — remove",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "x-tenant-id", "value": "{{tenantId}}" }],
+            "url": { "raw": "{{baseUrl}}/storefront/carts/{{cartId}}/coupon", "host": ["{{baseUrl}}"], "path": ["storefront", "carts", "{{cartId}}", "coupon"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Checkout & Orders",
+      "item": [
+        {
+          "name": "POST /storefront/checkout",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201 || pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  if (body && body.id) pm.collectionVariables.set('orderId', body.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "x-tenant-id",     "value": "{{tenantId}}" },
+              { "key": "idempotency-key", "value": "{{$guid}}" },
+              { "key": "content-type",    "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cartId\": \"{{cartId}}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/storefront/checkout", "host": ["{{baseUrl}}"], "path": ["storefront", "checkout"] },
+            "description": "Idempotent — POST twice with the same `idempotency-key` returns the same order (200 on the replay, 201 on first). The test script captures the order id."
+          }
+        },
+        {
+          "name": "GET /admin/orders — list recent",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "x-tenant-id", "value": "{{tenantId}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/orders?limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "orders"],
+              "query": [{ "key": "limit", "value": "20" }]
+            }
+          }
+        },
+        {
+          "name": "GET /admin/orders/:id",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "x-tenant-id", "value": "{{tenantId}}" }],
+            "url": { "raw": "{{baseUrl}}/admin/orders/{{orderId}}", "host": ["{{baseUrl}}"], "path": ["admin", "orders", "{{orderId}}"] },
+            "description": "Re-fetch the order from step 3. `grandTotalCents` here is the immutable snapshot from checkout — confirm by changing /admin/prices and re-running this."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Snapshot Integrity Flow (run in order)",
+      "description": "Reproduces the README's verification 3 end-to-end. Run requests top-to-bottom — the test scripts thread cartId and orderId between them automatically.",
+      "item": [
+        {
+          "name": "1. Create cart",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('cart created', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('cartId', body.cartId);",
+                  "console.log('cartId =', body.cartId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "x-tenant-id", "value": "{{tenantId}}" }],
+            "url": { "raw": "{{baseUrl}}/storefront/carts", "host": ["{{baseUrl}}"], "path": ["storefront", "carts"] }
+          }
+        },
+        {
+          "name": "2. Add product to cart",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "x-tenant-id",  "value": "{{tenantId}}" },
+              { "key": "content-type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"sku\": \"T-FASHION-0000433\",\n  \"name\": \"Awesome Shirt\",\n  \"qty\": 1\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/storefront/carts/{{cartId}}/items", "host": ["{{baseUrl}}"], "path": ["storefront", "carts", "{{cartId}}", "items"] }
+          }
+        },
+        {
+          "name": "3. Checkout — captures grandTotalCents",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('orderId', body.id);",
+                  "pm.collectionVariables.set('snapshotTotal', body.grandTotalCents);",
+                  "console.log('orderId =', body.id, 'grandTotal at checkout =', body.grandTotalCents);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "x-tenant-id",     "value": "{{tenantId}}" },
+              { "key": "idempotency-key", "value": "{{$guid}}" },
+              { "key": "content-type",    "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cartId\": \"{{cartId}}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/storefront/checkout", "host": ["{{baseUrl}}"], "path": ["storefront", "checkout"] }
+          }
+        },
+        {
+          "name": "4. Mutate catalog price (100x increase)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "x-tenant-id",  "value": "{{tenantId}}" },
+              { "key": "content-type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"unitPriceCents\": 99999999\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/admin/prices", "host": ["{{baseUrl}}"], "path": ["admin", "prices"] }
+          }
+        },
+        {
+          "name": "5. Re-fetch order — grandTotalCents must match step 3",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const snap = Number(pm.collectionVariables.get('snapshotTotal'));",
+                  "pm.test('grandTotalCents unchanged after catalog price hike', () =>",
+                  "  pm.expect(body.grandTotalCents).to.eql(snap)",
+                  ");",
+                  "console.log('grandTotal after price change =', body.grandTotalCents, '(snapshot was', snap + ')');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "x-tenant-id", "value": "{{tenantId}}" }],
+            "url": { "raw": "{{baseUrl}}/admin/orders/{{orderId}}", "host": ["{{baseUrl}}"], "path": ["admin", "orders", "{{orderId}}"] }
+          }
+        }
+      ]
+    }
+  ]
+}

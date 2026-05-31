@@ -11,12 +11,14 @@ import {
   Query,
   Res,
 } from '@nestjs/common';
+import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { CurrentTenant, type TenantContext } from '@platform/shared/tenant-context';
 import type { CheckoutDto, Order } from '@platform/modules/orders/contracts';
 import { CheckoutService } from './checkout.service';
 import { OrdersRepository } from './orders.repository';
 
+@ApiTags('Orders')
 @Controller()
 export class OrdersController {
   constructor(
@@ -25,6 +27,14 @@ export class OrdersController {
   ) {}
 
   @Post('storefront/checkout')
+  @ApiOperation({
+    summary: 'Checkout a cart — snapshots prices+promos into an immutable order',
+  })
+  @ApiHeader({
+    name: 'idempotency-key',
+    required: false,
+    description: 'Optional UUID; replays return the same order with status 200',
+  })
   async checkoutEndpoint(
     @CurrentTenant() tenant: TenantContext,
     @Body() dto: CheckoutDto,
@@ -41,6 +51,7 @@ export class OrdersController {
   }
 
   @Get('admin/orders')
+  @ApiOperation({ summary: 'List recent orders' })
   async list(
     @CurrentTenant() tenant: TenantContext,
     @Query('limit') limit?: string,
@@ -52,6 +63,9 @@ export class OrdersController {
 
   @Get('admin/orders/:id')
   @HttpCode(200)
+  @ApiOperation({
+    summary: 'Get order by id — grandTotalCents is the immutable snapshot from checkout',
+  })
   async get(
     @CurrentTenant() tenant: TenantContext,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,

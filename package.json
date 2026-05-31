@@ -12,6 +12,7 @@
     "build": "nx run-many -t build",
     "lint": "nx run-many -t lint",
     "test": "nx run-many -t test",
+    "seed": "nx run seed:run",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
@@ -23,6 +24,7 @@
     "@nestjs/core": "^10.4.0",
     "@nestjs/graphql": "^12.2.0",
     "@nestjs/platform-express": "^10.4.0",
+    "@nestjs/swagger": "^7.4.2",
     "@nestjs/throttler": "^6.2.1",
     "@opensearch-project/opensearch": "^2.13.0",
     "class-transformer": "^0.5.1",

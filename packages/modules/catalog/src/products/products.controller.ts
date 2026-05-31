@@ -10,6 +10,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentTenant, type TenantContext } from '@platform/shared/tenant-context';
 import type {
   CreateProductDto,
@@ -19,12 +20,14 @@ import type {
 } from '@platform/modules/catalog/contracts';
 import { ProductsService } from './products.service';
 
+@ApiTags('Catalog (admin)')
 @Controller('admin/products')
 export class ProductsController {
   constructor(private readonly service: ProductsService) {}
 
   @Post()
   @HttpCode(201)
+  @ApiOperation({ summary: 'Create product (writes to catalog.products + indexes to OpenSearch)' })
   create(
     @CurrentTenant() tenant: TenantContext,
     @Body() dto: CreateProductDto,
@@ -33,6 +36,7 @@ export class ProductsController {
   }
 
   @Get()
+  @ApiOperation({ summary: 'List products (paginated)' })
   list(
     @CurrentTenant() tenant: TenantContext,
     @Query('limit') limit?: string,
@@ -46,6 +50,7 @@ export class ProductsController {
   }
 
   @Get(':id')
+  @ApiOperation({ summary: 'Get product by id' })
   get(
     @CurrentTenant() tenant: TenantContext,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
@@ -54,6 +59,7 @@ export class ProductsController {
   }
 
   @Patch(':id')
+  @ApiOperation({ summary: 'Update product fields (re-indexes into search)' })
   update(
     @CurrentTenant() tenant: TenantContext,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
@@ -64,6 +70,7 @@ export class ProductsController {
 
   @Delete(':id')
   @HttpCode(204)
+  @ApiOperation({ summary: 'Delete product' })
   delete(
     @CurrentTenant() tenant: TenantContext,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
