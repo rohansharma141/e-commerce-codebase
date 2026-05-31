@@ -32,7 +32,14 @@
       "@platform/modules/catalog/contracts": ["packages/modules/catalog/contracts/src/index.ts"],
       "@platform/modules/catalog/src": ["packages/modules/catalog/src/catalog.module.ts"],
       "@platform/modules/search/contracts": ["packages/modules/search/contracts/src/index.ts"],
-      "@platform/modules/search/src": ["packages/modules/search/src/index.ts"]
+      "@platform/modules/search/src": ["packages/modules/search/src/index.ts"],
+      "@platform/shared/redis": ["packages/shared/redis/src/index.ts"],
+      "@platform/modules/pricing/contracts": ["packages/modules/pricing/contracts/src/index.ts"],
+      "@platform/modules/pricing/src": ["packages/modules/pricing/src/index.ts"],
+      "@platform/modules/cart/contracts": ["packages/modules/cart/contracts/src/index.ts"],
+      "@platform/modules/cart/src": ["packages/modules/cart/src/index.ts"],
+      "@platform/modules/orders/contracts": ["packages/modules/orders/contracts/src/index.ts"],
+      "@platform/modules/orders/src": ["packages/modules/orders/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "tmp", "dist"]

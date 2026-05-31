@@ -7,8 +7,12 @@ import { AppConfigModule } from '@platform/shared/config';
 import { DatabaseModule, TenantBindingMiddleware } from '@platform/shared/database';
 import { EventBusModule } from '@platform/shared/event-bus';
 import { OpenSearchModule } from '@platform/shared/opensearch';
+import { RedisModule } from '@platform/shared/redis';
 import { TenantContextModule, TenantMiddleware } from '@platform/shared/tenant-context';
+import { CartModule } from '@platform/modules/cart/src';
 import { CatalogModule } from '@platform/modules/catalog/src';
+import { OrdersModule } from '@platform/modules/orders/src';
+import { PricingModule } from '@platform/modules/pricing/src';
 import { SearchModule } from '@platform/modules/search/src';
 import { HealthController } from './health.controller';
 
@@ -23,6 +27,7 @@ import { HealthController } from './health.controller';
     DatabaseModule,
     EventBusModule,
     OpenSearchModule,
+    RedisModule,
     TenantContextModule,
     GraphQLModule.forRoot<ApolloDriverConfig>({
       driver: ApolloDriver,
@@ -34,6 +39,9 @@ import { HealthController } from './health.controller';
     }),
     CatalogModule,
     SearchModule,
+    PricingModule,
+    CartModule,
+    OrdersModule,
   ],
   controllers: [HealthController],
 })

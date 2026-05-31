@@ -15,16 +15,19 @@ import {
 } from '@platform/modules/search/src';
 import { defaultFixtures, toAttributeDefinition, type TenantFixture } from './catalogs/fixtures';
 import { elapsedMs, percentiles } from './percentiles';
+import {
+  createSeedSqlClient,
+  seedPricingForTenant,
+  type GeneratedProduct,
+} from './pricing-seed';
 
 /**
- * Hero-feature seed. Bulk-indexes ~PRODUCTS_PER_TENANT products per tenant
- * across the 3 default fixtures directly into OpenSearch via the same
- * TenantSearchClient + document/mapping helpers the live indexer uses.
+ * Hero-feature seed. Bulk-indexes products per tenant via the live indexer's
+ * code paths, AND seeds the pricing schema (tenant_config, prices, promotions)
+ * for the transactional core. Step 5 + step 4 demo in one command.
  *
- * We deliberately do NOT round-trip through the catalog HTTP API here —
- * 100k REST inserts on a laptop is a multi-minute affair and adds zero
- * signal for the search demo. The mapping/document transforms are the same
- * code paths the event-driven indexer runs in production.
+ * Skips HTTP round-trips for speed; the transforms used are the same code
+ * paths the live api runs.
  */
 
 const PRODUCTS_PER_TENANT = Number.parseInt(
@@ -34,11 +37,17 @@ const PRODUCTS_PER_TENANT = Number.parseInt(
 const BULK_SIZE = Number.parseInt(process.env['SEED_BULK_SIZE'] ?? '500', 10);
 const SEARCH_SAMPLES = Number.parseInt(process.env['SEED_SEARCH_SAMPLES'] ?? '200', 10);
 const OS_URL = process.env['OPENSEARCH_URL'] ?? 'http://localhost:9200';
+const DATABASE_URL =
+  process.env['DATABASE_URL'] ?? 'postgres://platform:platform@localhost:5432/platform';
 
 async function seedTenant(
   fixture: TenantFixture,
   os: TenantSearchClient,
-): Promise<{ batchTimings: number[]; productCount: number }> {
+): Promise<{
+  batchTimings: number[];
+  productCount: number;
+  generated: GeneratedProduct[];
+}> {
   const defs: AttributeDefinition[] = fixture.attributes.map((spec) =>
     toAttributeDefinition(fixture.tenantId, spec, randomUUID()),
   );
@@ -50,6 +59,7 @@ async function seedTenant(
   const batchTimings: number[] = [];
   const total = fixture.productCount;
   let inserted = 0;
+  const generated: GeneratedProduct[] = [];
 
   for (let offset = 0; offset < total; offset += BULK_SIZE) {
     const batch: { id: string; source: Record<string, unknown> }[] = [];
@@ -57,6 +67,12 @@ async function seedTenant(
     for (let i = offset; i < upper; i++) {
       const product = generateProduct(fixture, i);
       batch.push({ id: product.id, source: productToDocument(product) });
+      generated.push({
+        id: product.id,
+        sku: product.sku,
+        name: product.name,
+        priceCents: priceCentsFor(product),
+      });
     }
     const startedAt = process.hrtime.bigint();
     const { errors } = await idx.bulkIndex(batch);
@@ -74,7 +90,24 @@ async function seedTenant(
   }
   process.stdout.write('\n');
   await idx.refresh();
-  return { batchTimings, productCount: inserted };
+  return { batchTimings, productCount: inserted, generated };
+}
+
+/**
+ * Maps the catalog's `price` attribute (if any) to a unit price in cents.
+ * Tenants without a `price` attr (e.g. books) get a deterministic
+ * SKU-derived price so checkout demos still work.
+ */
+function priceCentsFor(product: Product): number {
+  const raw = product.attributes['price'];
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    return Math.round(raw * 100);
+  }
+  // Hash the SKU to a price in [$5.00, $50.00].
+  let h = 0;
+  for (let i = 0; i < product.sku.length; i++) h = (h * 31 + product.sku.charCodeAt(i)) | 0;
+  const dollars = 5 + (Math.abs(h) % 4501) / 100; // 5.00 to 49.99
+  return Math.round(dollars * 100);
 }
 
 function generateProduct(fixture: TenantFixture, n: number): Product {
@@ -149,14 +182,16 @@ async function main(): Promise<void> {
 
   const startedAt = process.hrtime.bigint();
   const allBatchTimings: number[] = [];
+  const generatedByTenant = new Map<string, GeneratedProduct[]>();
   for (const fixture of fixtures) {
     const t0 = process.hrtime.bigint();
-    const { batchTimings } = await seedTenant(fixture, tenantClient);
+    const { batchTimings, generated } = await seedTenant(fixture, tenantClient);
     const elapsed = elapsedMs(t0);
     console.log(
       `  ${fixture.tenantId}: ${fixture.productCount.toLocaleString()} indexed in ${(elapsed / 1000).toFixed(1)}s (index: ${indexNameFor(fixture.tenantId)})`,
     );
     allBatchTimings.push(...batchTimings);
+    generatedByTenant.set(fixture.tenantId, generated);
   }
   const totalElapsed = elapsedMs(startedAt) / 1000;
   const bulk = percentiles(allBatchTimings);
@@ -166,6 +201,22 @@ async function main(): Promise<void> {
   console.log(
     `  bulk batch (size=${BULK_SIZE}): p50=${bulk.p50}ms p95=${bulk.p95}ms p99=${bulk.p99}ms max=${bulk.max}ms\n`,
   );
+
+  console.log('pricing: writing tenant_config, prices, promotions to Postgres');
+  const sqlClient = createSeedSqlClient(DATABASE_URL);
+  try {
+    for (const fixture of fixtures) {
+      const products = generatedByTenant.get(fixture.tenantId) ?? [];
+      const summary = await seedPricingForTenant(fixture, products, sqlClient);
+      console.log(
+        `  ${summary.tenantId.padEnd(15)} ${summary.currency} tax=${(summary.taxRateBps / 100).toFixed(2)}%  ` +
+          `prices=${summary.pricesUpserted.toLocaleString()}  promos=${summary.promotionsCreated}`,
+      );
+    }
+  } finally {
+    await sqlClient.end({ timeout: 5 });
+  }
+  console.log('');
 
   console.log(`post-seed search: ${SEARCH_SAMPLES} random queries per tenant`);
   for (const fixture of fixtures) {

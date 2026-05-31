@@ -59,10 +59,14 @@ module.exports = {
                 sourceTag: 'type:src',
                 onlyDependOnLibsWithTags: ['scope:shared', 'type:contracts'],
               },
-              // Contracts are pure: shared types only (DTOs, event names).
+              // Contracts may consume shared libs AND other modules'
+              // contracts. The latter is what lets orders/contracts reference
+              // pricing/contracts' AppliedPromotionSnapshot, etc. The
+              // discipline that matters ("never reach into another module's
+              // src") is still enforced for type:src above.
               {
                 sourceTag: 'type:contracts',
-                onlyDependOnLibsWithTags: ['scope:shared'],
+                onlyDependOnLibsWithTags: ['scope:shared', 'type:contracts'],
               },
             ],
           },
@@ -83,6 +87,11 @@ module.exports = {
       files: ['*.spec.ts', '*.test.ts'],
       rules: {
         '@typescript-eslint/no-explicit-any': 'off',
+        // Tests sometimes need to hand-construct repositories and services
+        // across module boundaries to set up integration fixtures. The
+        // boundary discipline is about production code; relaxing it for
+        // specs keeps tests honest without forcing a layer of test-only DI.
+        '@nx/enforce-module-boundaries': 'off',
       },
     },
   ],

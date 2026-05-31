@@ -20,8 +20,10 @@ RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
 
 COPY --from=builder /workspace/dist/apps/api ./
 # Module migrations are source-of-truth SQL files; copy them so the api can
-# apply them at boot. Path mirrors what catalog.module.ts looks for.
+# apply them at boot. Path mirrors what each module's onModuleInit looks for.
 COPY --from=builder /workspace/packages/modules/catalog/src/db/migrations ./migrations/catalog
+COPY --from=builder /workspace/packages/modules/pricing/src/db/migrations ./migrations/pricing
+COPY --from=builder /workspace/packages/modules/orders/src/db/migrations ./migrations/orders
 RUN if [ -f package.json ]; then pnpm install --prod --frozen-lockfile=false; fi
 
 EXPOSE 3000

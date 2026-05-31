@@ -29,6 +29,7 @@
     "drizzle-orm": "^0.36.0",
     "graphql": "^16.9.0",
     "graphql-scalars": "^1.23.0",
+    "ioredis": "^5.4.1",
     "nestjs-pino": "^4.1.0",
     "pino": "^9.4.0",
     "pino-http": "^10.3.0",
