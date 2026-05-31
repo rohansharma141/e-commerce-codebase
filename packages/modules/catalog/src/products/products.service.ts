@@ -6,6 +6,8 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { EventBus } from '@platform/shared/event-bus';
+import { HOOK_NAMES, HookRegistry } from '@platform/shared/hooks';
+import { currentTenantOrThrow } from '@platform/shared/tenant-context';
 import {
   CATALOG_EVENTS,
   type CreateProductDto,
@@ -25,6 +27,7 @@ export class ProductsService {
     private readonly repo: ProductsRepository,
     private readonly validator: AttributeValidator,
     private readonly events: EventBus,
+    private readonly hooks: HookRegistry,
   ) {}
 
   async create(tenantId: string, dto: CreateProductDto): Promise<Product> {
@@ -60,6 +63,14 @@ export class ProductsService {
       tenantId,
       payload: { product: created } as never,
     });
+
+    // Sibling extension point — events fan out to indexers etc.; hooks
+    // expose a stable customisation API the platform documents.
+    await this.hooks.dispatch(
+      HOOK_NAMES.ProductAfterCreate,
+      { id: created.id, sku: created.sku, name: created.name },
+      currentTenantOrThrow(),
+    );
 
     return created;
   }

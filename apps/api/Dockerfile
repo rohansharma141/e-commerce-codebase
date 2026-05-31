@@ -24,6 +24,7 @@ COPY --from=builder /workspace/dist/apps/api ./
 COPY --from=builder /workspace/packages/modules/catalog/src/db/migrations ./migrations/catalog
 COPY --from=builder /workspace/packages/modules/pricing/src/db/migrations ./migrations/pricing
 COPY --from=builder /workspace/packages/modules/orders/src/db/migrations ./migrations/orders
+COPY --from=builder /workspace/packages/shared/security/src/db/migrations ./migrations/audit
 RUN if [ -f package.json ]; then pnpm install --prod --frozen-lockfile=false; fi
 
 EXPOSE 3000

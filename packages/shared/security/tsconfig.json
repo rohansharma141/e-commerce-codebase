@@ -1,0 +1,10 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "../../../dist/packages/shared/security",
+    "declaration": true,
+    "types": ["node", "jest", "express"]
+  },
+  "include": ["./**/*.ts"],
+  "exclude": ["./**/*.spec.ts", "./jest.config.ts", "./src/db/migrations/**"]
+}

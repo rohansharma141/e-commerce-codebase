@@ -7,18 +7,33 @@ export const TENANT_HEADER = 'x-tenant-id';
 export const REQUEST_ID_HEADER = 'x-request-id';
 
 /**
- * Step-1 tenant resolution: read x-tenant-id off the request and bind it for the
- * lifetime of the request via AsyncLocalStorage. Fails closed — no header is a
- * 400, never a silent default. Real resolution (JWT claim, subdomain, etc.)
- * lands in step 3 (multi-tenancy hardening).
+ * Tenant id shape: alnum + dot/dash/underscore, 1-64 chars. Matches the
+ * tighter regex enforced by TenantRedisClient and OpenSearch's index-name
+ * slug rules so a header that would otherwise break log keys, redis
+ * namespaces, or OS index names is rejected at the door.
+ */
+const TENANT_ID_RE = /^[a-zA-Z0-9._-]{1,64}$/;
+
+/**
+ * Reads x-tenant-id, validates shape, binds it (plus a propagated or
+ * generated x-request-id) for the request via AsyncLocalStorage. Fails
+ * closed — missing or malformed header is a 400, never a silent default.
+ * Real auth (JWT/OIDC) replacing this lives upstream of the api in
+ * production deployments; see docs/adr/0007.
  */
 @Injectable()
 export class TenantMiddleware implements NestMiddleware {
-  use(req: Request, _res: Response, next: NextFunction): void {
+  use(req: Request, res: Response, next: NextFunction): void {
     const headerVal = req.headers[TENANT_HEADER];
-    const tenantId = Array.isArray(headerVal) ? headerVal[0] : headerVal;
-    if (!tenantId || typeof tenantId !== 'string' || tenantId.trim() === '') {
+    const tenantIdRaw = Array.isArray(headerVal) ? headerVal[0] : headerVal;
+    if (!tenantIdRaw || typeof tenantIdRaw !== 'string') {
       throw new BadRequestException(`Missing or empty ${TENANT_HEADER} header`);
+    }
+    const tenantId = tenantIdRaw.trim();
+    if (!TENANT_ID_RE.test(tenantId)) {
+      throw new BadRequestException(
+        `${TENANT_HEADER} must match ${TENANT_ID_RE.source}`,
+      );
     }
 
     const requestIdHeader = req.headers[REQUEST_ID_HEADER];
@@ -30,7 +45,10 @@ export class TenantMiddleware implements NestMiddleware {
         ? incomingRequestId
         : randomUUID();
 
-    const ctx: TenantContext = { tenantId: tenantId.trim(), requestId };
+    // Echo the id back so callers can correlate against their own logs.
+    res.setHeader(REQUEST_ID_HEADER, requestId);
+
+    const ctx: TenantContext = { tenantId, requestId };
     runWithTenant(ctx, () => next());
   }
 }

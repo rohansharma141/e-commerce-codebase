@@ -39,7 +39,10 @@
       "@platform/modules/cart/contracts": ["packages/modules/cart/contracts/src/index.ts"],
       "@platform/modules/cart/src": ["packages/modules/cart/src/index.ts"],
       "@platform/modules/orders/contracts": ["packages/modules/orders/contracts/src/index.ts"],
-      "@platform/modules/orders/src": ["packages/modules/orders/src/index.ts"]
+      "@platform/modules/orders/src": ["packages/modules/orders/src/index.ts"],
+      "@platform/shared/hooks": ["packages/shared/hooks/src/index.ts"],
+      "@platform/shared/security": ["packages/shared/security/src/index.ts"],
+      "@platform/shared/observability": ["packages/shared/observability/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "tmp", "dist"]

@@ -14,6 +14,8 @@ import {
   type TenantDrizzleAccessor,
 } from '@platform/shared/database';
 import { EventBus } from '@platform/shared/event-bus';
+import { HOOK_NAMES, HookRegistry } from '@platform/shared/hooks';
+import { currentTenantOrThrow } from '@platform/shared/tenant-context';
 import {
   CART_SERVICE,
   type ICartService,
@@ -47,6 +49,7 @@ export class CheckoutService {
     @Inject(PRICES_QUERY) private readonly prices: IPricesQuery,
     @Inject(PROMOTIONS_QUERY) private readonly promotions: IPromotionsQuery,
     private readonly events: EventBus,
+    private readonly hooks: HookRegistry,
   ) {}
 
   /**
@@ -129,6 +132,21 @@ export class CheckoutService {
       lines: pricedLines,
       appliedPromotion,
     });
+
+    // Extension point: observers receive the computed totals before the tx
+    // opens. A future mutating-hook design (docs/adr/0009) would let
+    // handlers return a transformed totals object; today they are pure
+    // observers (e.g. fraud alerting, gift-wrap pricing pre-checks).
+    await this.hooks.dispatch(
+      HOOK_NAMES.OrderBeforeCreate,
+      {
+        subtotalCents: totals.subtotalCents,
+        discountCents: totals.discountCents,
+        taxCents: totals.taxCents,
+        grandTotalCents: totals.grandTotalCents,
+      },
+      currentTenantOrThrow(),
+    );
 
     const orderId = randomUUID();
     const createdNew = true;

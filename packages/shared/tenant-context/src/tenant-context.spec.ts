@@ -38,7 +38,7 @@ describe('TenantMiddleware', () => {
 
   const makeReq = (headers: Record<string, string | undefined> = {}) =>
     ({ headers } as unknown as Parameters<TenantMiddleware['use']>[0]);
-  const res = {} as Parameters<TenantMiddleware['use']>[1];
+  const res = { setHeader: () => undefined } as unknown as Parameters<TenantMiddleware['use']>[1];
 
   it('rejects requests without a tenant header', () => {
     expect(() => mw.use(makeReq(), res, () => undefined)).toThrow(BadRequestException);
