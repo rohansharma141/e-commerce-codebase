@@ -1,5 +1,13 @@
-import { Field, InputType, Int, ObjectType } from '@nestjs/graphql';
+import { Field, InputType, Int, ObjectType, registerEnumType } from '@nestjs/graphql';
 import { GraphQLJSON } from 'graphql-scalars';
+
+export enum SortOptionEnum {
+  RELEVANCE = 'RELEVANCE',
+  PRICE_ASC = 'PRICE_ASC',
+  PRICE_DESC = 'PRICE_DESC',
+  NAME_ASC = 'NAME_ASC',
+}
+registerEnumType(SortOptionEnum, { name: 'SortOption' });
 
 @InputType()
 export class AttributeFilterInput {
@@ -35,6 +43,9 @@ export class SearchInput {
 
   @Field(() => String, { nullable: true })
   cursor?: string;
+
+  @Field(() => SortOptionEnum, { nullable: true, defaultValue: SortOptionEnum.RELEVANCE })
+  sort?: SortOptionEnum;
 }
 
 @ObjectType()

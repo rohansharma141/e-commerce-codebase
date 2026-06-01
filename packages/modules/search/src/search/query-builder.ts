@@ -52,7 +52,7 @@ export function buildSearchBody(input: SearchQuery): BuiltSearchBody {
         ...(filter.length ? { filter } : {}),
       },
     },
-    sort: [{ _score: 'desc' }, { 'name.keyword': 'asc' }],
+    sort: sortClause(input.sort),
   };
 
   if (input.facets && input.facets.length > 0) {
@@ -65,6 +65,30 @@ export function buildSearchBody(input: SearchQuery): BuiltSearchBody {
   }
 
   return body;
+}
+
+/**
+ * OpenSearch sort clauses per storefront sort option.
+ *
+ * - RELEVANCE (default): score-first, then alphabetic tiebreak.
+ * - PRICE_ASC/DESC: by denormalised `attr_price` (a double on every tenant's
+ *   index). Missing values sort last under ASC and first under DESC, which
+ *   matches what a shopper expects ("cheapest first" shouldn't put unpriced
+ *   items at the top).
+ * - NAME_ASC: pure alphabetical via the `.keyword` sub-field on `name`.
+ */
+function sortClause(sort: SearchQuery['sort']): unknown[] {
+  switch (sort) {
+    case 'PRICE_ASC':
+      return [{ attr_price: { order: 'asc', missing: '_last' } }, { 'name.keyword': 'asc' }];
+    case 'PRICE_DESC':
+      return [{ attr_price: { order: 'desc', missing: '_last' } }, { 'name.keyword': 'asc' }];
+    case 'NAME_ASC':
+      return [{ 'name.keyword': 'asc' }];
+    case 'RELEVANCE':
+    default:
+      return [{ _score: 'desc' }, { 'name.keyword': 'asc' }];
+  }
 }
 
 function filterClause(f: AttributeFilter): Record<string, unknown> {

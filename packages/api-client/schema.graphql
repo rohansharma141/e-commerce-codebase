@@ -44,6 +44,7 @@ input SearchInput {
   filters: [AttributeFilterInput!]
   limit: Int = 20
   query: String
+  sort: SortOption = RELEVANCE
 }
 
 type SearchResultType {
@@ -52,6 +53,13 @@ type SearchResultType {
   latencyMs: Int!
   nextCursor: String
   total: Int!
+}
+
+enum SortOption {
+  NAME_ASC
+  PRICE_ASC
+  PRICE_DESC
+  RELEVANCE
 }
 
 type StorefrontThemeType {

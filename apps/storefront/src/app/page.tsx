@@ -4,6 +4,7 @@ import { getTenantId } from '@/lib/tenant';
 import { FacetSidebar } from '@/components/facet-sidebar';
 import { ProductGrid } from '@/components/product-grid';
 import { SearchBar } from '@/components/search-bar';
+import { Toolbar } from '@/components/toolbar';
 import { parseSearchParams, type StorefrontSearchParams } from '@/lib/search-params';
 
 /**
@@ -16,7 +17,7 @@ import { parseSearchParams, type StorefrontSearchParams } from '@/lib/search-par
 
 export const metadata = {
   title: 'Browse',
-  description: 'Browse the catalog by color, size, and brand.',
+  description: 'Browse the catalog by color, size, brand, and price.',
 };
 
 interface PageProps {
@@ -25,12 +26,11 @@ interface PageProps {
 
 export default async function HomePage({ searchParams = {} }: PageProps) {
   const tenantId = getTenantId();
-  const { variables, selections } = parseSearchParams(searchParams);
+  const parsed = parseSearchParams(searchParams);
 
-  const data = await graphqlQuery(CatalogSearchDocument, variables, {
+  const data = await graphqlQuery(CatalogSearchDocument, parsed.variables, {
     tags: [`browse:${tenantId}`],
   });
-
   const search = data.search;
 
   return (
@@ -42,15 +42,24 @@ export default async function HomePage({ searchParams = {} }: PageProps) {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[260px_1fr]">
         <FacetSidebar
           facets={search?.facets ?? []}
-          selections={selections}
+          selections={parsed.selections}
           baseSearchParams={searchParams}
           basePath="/"
+          priceMin={parsed.priceMin}
+          priceMax={parsed.priceMax}
+          inStockOnly={parsed.inStockOnly}
         />
-        <ProductGrid
-          items={search?.items ?? []}
-          total={search?.total ?? 0}
-          latencyMs={search?.latencyMs}
-        />
+        <div>
+          <Toolbar
+            basePath="/"
+            searchParams={searchParams}
+            sort={parsed.sort}
+            view={parsed.view}
+            total={search?.total ?? 0}
+            latencyMs={search?.latencyMs}
+          />
+          <ProductGrid items={search?.items ?? []} view={parsed.view} />
+        </div>
       </div>
     </main>
   );

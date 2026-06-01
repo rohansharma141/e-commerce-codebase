@@ -1,6 +1,6 @@
 import { Args, ID, Query, Resolver } from '@nestjs/graphql';
 import { currentTenantOrThrow } from '@platform/shared/tenant-context';
-import type { AttributeFilter, SearchQuery } from '@platform/modules/search/contracts';
+import type { AttributeFilter, SearchQuery, SortOption } from '@platform/modules/search/contracts';
 import { SearchService } from './search.service';
 import { ProductHitType, SearchInput, SearchResultType } from './graphql-types';
 
@@ -18,6 +18,7 @@ export class SearchResolver {
       facets: input.facets,
       limit: input.limit,
       cursor: input.cursor,
+      sort: input.sort as SortOption | undefined,
       filters: (input.filters ?? []).map(
         (f): AttributeFilter => ({
           attribute: f.attribute,

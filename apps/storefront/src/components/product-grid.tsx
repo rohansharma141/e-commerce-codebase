@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import { ProductCard } from './product-card';
+import { ProductRow } from './product-row';
+import type { ViewMode } from '@/lib/search-params';
 
 interface ProductHit {
   id: string;
@@ -10,11 +12,19 @@ interface ProductHit {
 
 interface ProductGridProps {
   items: readonly ProductHit[];
-  total: number;
-  latencyMs?: number;
+  view: ViewMode;
 }
 
-export function ProductGrid({ items, total, latencyMs }: ProductGridProps) {
+const linkClass =
+  'block focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 rounded-lg';
+
+/**
+ * Branches on `view`. Grid is a responsive 2/3/4-column tile layout; list is
+ * a stacked one-per-row layout that fits more attributes per item. Both
+ * wrap each item in a <Link prefetch={false}> to the PDP — the same path
+ * regardless of how the item is rendered.
+ */
+export function ProductGrid({ items, view }: ProductGridProps) {
   if (items.length === 0) {
     return (
       <div className="flex min-h-[300px] flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 p-8 text-center">
@@ -24,32 +34,29 @@ export function ProductGrid({ items, total, latencyMs }: ProductGridProps) {
     );
   }
 
-  return (
-    <section aria-labelledby="results-heading">
-      <div className="mb-4 flex items-baseline justify-between">
-        <h2 id="results-heading" className="text-sm text-slate-600">
-          <span className="font-semibold text-slate-900">{total.toLocaleString()}</span> products
-        </h2>
-        {typeof latencyMs === 'number' ? (
-          <span className="text-xs text-slate-400">{latencyMs} ms</span>
-        ) : null}
-      </div>
-      <ul
-        className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4"
-        role="list"
-      >
+  if (view === 'list') {
+    return (
+      <ul className="flex flex-col gap-3" role="list">
         {items.map((p) => (
           <li key={p.id}>
-            <Link
-              href={`/p/${p.id}`}
-              prefetch={false}
-              className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 rounded-lg"
-            >
-              <ProductCard product={p} />
+            <Link href={`/p/${p.id}`} prefetch={false} className={linkClass}>
+              <ProductRow product={p} />
             </Link>
           </li>
         ))}
       </ul>
-    </section>
+    );
+  }
+
+  return (
+    <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4" role="list">
+      {items.map((p) => (
+        <li key={p.id}>
+          <Link href={`/p/${p.id}`} prefetch={false} className={linkClass}>
+            <ProductCard product={p} />
+          </Link>
+        </li>
+      ))}
+    </ul>
   );
 }

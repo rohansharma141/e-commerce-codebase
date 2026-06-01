@@ -4,18 +4,16 @@ import { getTenantId } from '@/lib/tenant';
 import { FacetSidebar } from '@/components/facet-sidebar';
 import { ProductGrid } from '@/components/product-grid';
 import { SearchBar } from '@/components/search-bar';
+import { Toolbar } from '@/components/toolbar';
 import { parseSearchParams, type StorefrontSearchParams } from '@/lib/search-params';
 
 /**
  * Category browse — same component as the home page with a pinned
  * `category` filter. The api treats `category` as just another custom
  * attribute on products (matching the platform's tenant-defined-attribute
- * story), so the routing is "/c/shirts" => filter eq:category=shirts.
- *
- * The seed today doesn't write a `category` attribute, so this page renders
- * an empty grid against the demo data — kept here as the routing shape for
- * step 7b's onward work and to prove the URL state plumbing handles
- * dynamic segments.
+ * story), so the routing is "/c/headphones" => filter eq:category=headphones.
+ * t-electronics has `category` populated by the seed; other tenants render
+ * empty until their fixtures add one.
  */
 interface CategoryPageProps {
   params: { category: string };
@@ -31,36 +29,46 @@ export async function generateMetadata({ params }: CategoryPageProps) {
 export default async function CategoryPage({ params, searchParams = {} }: CategoryPageProps) {
   const tenantId = getTenantId();
   const category = decodeURIComponent(params.category);
-  const { variables, selections } = parseSearchParams(searchParams, category);
+  const parsed = parseSearchParams(searchParams, category);
+  const basePath = `/c/${encodeURIComponent(category)}`;
 
-  const data = await graphqlQuery(CatalogSearchDocument, variables, {
+  const data = await graphqlQuery(CatalogSearchDocument, parsed.variables, {
     tags: [`browse:${tenantId}`],
   });
   const search = data.search;
 
   return (
     <main className="container mx-auto px-4 py-6">
-      <nav className="mb-2 text-xs text-slate-500">
-        <a href="/" className="hover:text-slate-900">Home</a>
+      <nav className="mb-2 text-xs opacity-70">
+        <a href="/" className="hover:opacity-100">Home</a>
         <span className="mx-1">/</span>
-        <span className="text-slate-700">{category}</span>
+        <span className="opacity-100">{category}</span>
       </nav>
       <h1 className="mb-4 text-2xl font-bold tracking-tight capitalize md:text-3xl">{category}</h1>
       <div className="mb-6">
-        <SearchBar basePath={`/c/${encodeURIComponent(category)}`} searchParams={searchParams} />
+        <SearchBar basePath={basePath} searchParams={searchParams} />
       </div>
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[260px_1fr]">
         <FacetSidebar
           facets={search?.facets ?? []}
-          selections={selections}
+          selections={parsed.selections}
           baseSearchParams={searchParams}
-          basePath={`/c/${encodeURIComponent(category)}`}
+          basePath={basePath}
+          priceMin={parsed.priceMin}
+          priceMax={parsed.priceMax}
+          inStockOnly={parsed.inStockOnly}
         />
-        <ProductGrid
-          items={search?.items ?? []}
-          total={search?.total ?? 0}
-          latencyMs={search?.latencyMs}
-        />
+        <div>
+          <Toolbar
+            basePath={basePath}
+            searchParams={searchParams}
+            sort={parsed.sort}
+            view={parsed.view}
+            total={search?.total ?? 0}
+            latencyMs={search?.latencyMs}
+          />
+          <ProductGrid items={search?.items ?? []} view={parsed.view} />
+        </div>
       </div>
     </main>
   );

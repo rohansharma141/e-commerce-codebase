@@ -109,6 +109,12 @@ export function defaultFixtures(productsPerTenant: number): readonly TenantFixtu
           generate: () => faker.number.int({ min: 0, max: 5 }),
         },
         {
+          code: 'price',
+          type: 'number',
+          config: { min: 20, max: 3000 },
+          generate: () => Math.round(faker.number.float({ min: 20, max: 3000 }) * 100) / 100,
+        },
+        {
           code: 'in_stock',
           type: 'boolean',
           generate: () => faker.datatype.boolean({ probability: 0.75 }),
@@ -136,6 +142,12 @@ export function defaultFixtures(productsPerTenant: number): readonly TenantFixtu
           type: 'number',
           config: { min: 50, max: 1200 },
           generate: () => faker.number.int({ min: 50, max: 1200 }),
+        },
+        {
+          code: 'price',
+          type: 'number',
+          config: { min: 5, max: 60 },
+          generate: () => Math.round(faker.number.float({ min: 5, max: 60 }) * 100) / 100,
         },
         {
           code: 'published_on',

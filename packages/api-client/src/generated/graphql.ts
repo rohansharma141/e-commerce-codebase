@@ -69,6 +69,7 @@ export type SearchInput = {
   filters?: InputMaybe<Array<AttributeFilterInput>>;
   limit?: InputMaybe<Scalars['Int']['input']>;
   query?: InputMaybe<Scalars['String']['input']>;
+  sort?: InputMaybe<SortOption>;
 };
 
 export type SearchResultType = {
@@ -79,6 +80,13 @@ export type SearchResultType = {
   nextCursor?: Maybe<Scalars['String']['output']>;
   total: Scalars['Int']['output'];
 };
+
+export enum SortOption {
+  NameAsc = 'NAME_ASC',
+  PriceAsc = 'PRICE_ASC',
+  PriceDesc = 'PRICE_DESC',
+  Relevance = 'RELEVANCE'
+}
 
 export type StorefrontThemeType = {
   __typename?: 'StorefrontThemeType';
