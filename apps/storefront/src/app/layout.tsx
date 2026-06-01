@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
+import { Suspense } from 'react';
 import { getTenantId } from '@/lib/tenant';
+import { CartIcon } from '@/components/cart-icon';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -27,10 +29,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 {tenantId}
               </span>
             </a>
-            <nav className="text-sm">
-              <a href="/" className="text-slate-600 hover:text-slate-900">
+            <nav className="flex items-center gap-1 text-sm">
+              <a href="/" className="rounded-md px-2 py-1.5 text-slate-600 hover:bg-slate-100 hover:text-slate-900">
                 Browse
               </a>
+              <Suspense fallback={<span className="px-2 py-1.5 text-sm text-slate-400">Cart</span>}>
+                <CartIcon />
+              </Suspense>
             </nav>
           </div>
         </header>

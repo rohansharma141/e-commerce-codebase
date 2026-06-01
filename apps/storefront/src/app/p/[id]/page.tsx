@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ProductDetailDocument } from '@platform/api-client';
 import { getClient } from '@/lib/urql';
+import { AddToCartButton } from './add-to-cart-button';
 
 /**
  * Product detail page.
@@ -87,7 +88,12 @@ export default async function ProductPage({ params }: PageProps) {
             </span>
           </div>
 
-          <AddToCartPlaceholder disabled={!inStock} />
+          <AddToCartButton
+            productId={product.id}
+            sku={product.sku}
+            name={product.name}
+            disabled={!inStock}
+          />
 
           {rest.length > 0 ? (
             <dl className="mt-8 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-slate-200 pt-6 text-sm">
@@ -113,17 +119,3 @@ function renderAttr(v: unknown): string {
   return String(v);
 }
 
-function AddToCartPlaceholder({ disabled }: { disabled: boolean }) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      // Static for step 7c — the real cart integration lands in 7d (needs
-      // CORS on the api and a client component for state).
-      className="mt-6 w-full rounded-md bg-brand py-3 text-base font-semibold text-brand-fg shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-      title="Cart UI lands in step 7d"
-    >
-      Add to cart
-    </button>
-  );
-}
