@@ -5,12 +5,17 @@
   "description": "Next.js multi-tenant storefront. Talks to the api ONLY via @platform/api-client.",
   "dependencies": {
     "@platform/api-client": "workspace:*",
+    "@radix-ui/react-slot": "^1.1.1",
     "@urql/core": "^5.0.6",
     "@urql/next": "^1.1.4",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "graphql": "^16.9.0",
+    "lucide-react": "^0.460.0",
     "next": "14.2.13",
     "react": "18.3.1",
     "react-dom": "18.3.1",
+    "tailwind-merge": "^2.5.4",
     "urql": "^4.1.0"
   },
   "devDependencies": {

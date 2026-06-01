@@ -22,4 +22,10 @@ export interface SearchQuery {
   readonly limit?: number;
   readonly cursor?: string;
   readonly sort?: SortOption;
+  /**
+   * Optimised for type-ahead suggestions: the `query` term matches as a
+   * phrase-prefix on the product name rather than the default and-of-terms
+   * `match`. Off by default — full browse/search uses the stricter match.
+   */
+  readonly autocomplete?: boolean;
 }

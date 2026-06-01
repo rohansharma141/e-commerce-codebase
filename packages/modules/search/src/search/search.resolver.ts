@@ -19,6 +19,7 @@ export class SearchResolver {
       limit: input.limit,
       cursor: input.cursor,
       sort: input.sort as SortOption | undefined,
+      autocomplete: input.autocomplete ?? undefined,
       filters: (input.filters ?? []).map(
         (f): AttributeFilter => ({
           attribute: f.attribute,

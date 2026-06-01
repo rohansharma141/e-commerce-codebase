@@ -1,8 +1,10 @@
 import { notFound } from 'next/navigation';
-import Link from 'next/link';
 import { ProductDetailDocument } from '@platform/api-client';
 import { graphqlQuery } from '@/lib/api-graphql';
 import { getTenantId } from '@/lib/tenant';
+import { Breadcrumbs, type Crumb } from '@/components/breadcrumbs';
+import { RelatedProducts } from '@/components/related-products';
+import { Badge } from '@/components/ui/badge';
 import { AddToCartButton } from './add-to-cart-button';
 
 /**
@@ -12,14 +14,9 @@ import { AddToCartButton } from './add-to-cart-button';
  *   - `product:<tenantId>:<productId>` (narrow)
  *   - `browse:<tenantId>` (broad)
  *
- * The api's webhook dispatcher revalidates the narrow tag on
- * catalog.product.updated and the broad tag on created / deleted — so a
- * back-office edit reflects on the storefront within a webhook RTT, not
- * within the 1-hour fetch-cache fallback.
- *
- * Falling through to the framework 404 on a null product is important:
- * a deleted product's URL returns 404 to crawlers immediately after the
- * delete event revalidates this page.
+ * Webhook dispatcher revalidates the narrow tag on catalog.product.updated
+ * and the broad tag on created / deleted — back-office edits reflect on
+ * the storefront within a webhook RTT, not within the 1-hour fallback.
  */
 
 interface PageProps {
@@ -37,9 +34,6 @@ async function fetchProductDetail(tenantId: string, id: string) {
 }
 
 export async function generateMetadata({ params }: PageProps) {
-  // Server-side dedupe: the same fetch + tags + variables returns the
-  // cached payload, so generateMetadata is free after the page render
-  // populates the cache (and vice versa on cache-miss).
   const tenantId = getTenantId();
   const data = await fetchProductDetail(tenantId, params.id);
   const name = data.product?.name;
@@ -66,20 +60,28 @@ export default async function ProductPage({ params }: PageProps) {
   const attrs = asRecord(product.attributes);
   const price = formatCurrency(attrs['price']);
   const brand = typeof attrs['brand'] === 'string' ? attrs['brand'] : null;
+  const category = typeof attrs['category'] === 'string' ? attrs['category'] : null;
   const inStock = attrs['in_stock'] !== false;
 
-  // Render every custom attribute the seed put on the product, except the
-  // ones we surfaced explicitly (price, brand, in_stock).
-  const featured = ['price', 'brand', 'in_stock'];
+  // Surface every custom attribute except the ones promoted to the main column.
+  const featured = ['price', 'brand', 'in_stock', 'category'];
   const rest = Object.entries(attrs).filter(([k]) => !featured.includes(k));
+
+  // Breadcrumb trail. Category page exists at /c/[category] — link to it if present.
+  const crumbs: Crumb[] = [{ label: 'Home', href: '/' }];
+  if (category) crumbs.push({ label: category, href: `/c/${encodeURIComponent(category)}` });
+  crumbs.push({ label: product.name });
+
+  // Related-products pin: prefer category, fall back to brand. If neither, no rail.
+  const relatedFilter = category
+    ? { attribute: 'category', eq: category }
+    : brand
+      ? { attribute: 'brand', eq: brand }
+      : undefined;
 
   return (
     <main className="container mx-auto px-4 py-6">
-      <nav className="mb-4 text-xs text-slate-500">
-        <Link href="/" className="hover:text-slate-900">Home</Link>
-        <span className="mx-1">/</span>
-        <span className="text-slate-700">{product.name}</span>
-      </nav>
+      <Breadcrumbs crumbs={crumbs} />
 
       <div className="grid grid-cols-1 gap-8 md:grid-cols-[1fr_360px]">
         <div className="aspect-square rounded-lg bg-gradient-to-br from-slate-100 to-slate-200" aria-hidden="true">
@@ -91,15 +93,13 @@ export default async function ProductPage({ params }: PageProps) {
         <aside>
           <p className="text-sm text-slate-500">{product.sku}</p>
           <h1 className="mt-1 text-2xl font-bold tracking-tight md:text-3xl">{product.name}</h1>
-          {brand ? (
-            <p className="mt-2 text-sm text-slate-600">by {brand}</p>
-          ) : null}
+          {brand ? <p className="mt-2 text-sm text-slate-600">by {brand}</p> : null}
 
           <div className="mt-6 flex items-baseline gap-3">
             <span className="text-3xl font-semibold text-slate-900">{price}</span>
-            <span className={inStock ? 'text-sm text-emerald-600' : 'text-sm text-rose-600'}>
+            <Badge variant={inStock ? 'success' : 'danger'}>
               {inStock ? 'In stock' : 'Out of stock'}
-            </span>
+            </Badge>
           </div>
 
           <AddToCartButton
@@ -121,6 +121,8 @@ export default async function ProductPage({ params }: PageProps) {
           ) : null}
         </aside>
       </div>
+
+      <RelatedProducts excludeProductId={product.id} filter={relatedFilter} />
     </main>
   );
 }
@@ -132,4 +134,3 @@ function renderAttr(v: unknown): string {
   if (Array.isArray(v)) return v.map((x) => String(x)).join(', ');
   return String(v);
 }
-

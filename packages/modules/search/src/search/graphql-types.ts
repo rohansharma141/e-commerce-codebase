@@ -46,6 +46,9 @@ export class SearchInput {
 
   @Field(() => SortOptionEnum, { nullable: true, defaultValue: SortOptionEnum.RELEVANCE })
   sort?: SortOptionEnum;
+
+  @Field(() => Boolean, { nullable: true, defaultValue: false })
+  autocomplete?: boolean;
 }
 
 @ObjectType()

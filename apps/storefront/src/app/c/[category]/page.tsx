@@ -2,6 +2,7 @@ import { CatalogSearchDocument } from '@platform/api-client';
 import { graphqlQuery } from '@/lib/api-graphql';
 import { getTenantId } from '@/lib/tenant';
 import { FacetSidebar } from '@/components/facet-sidebar';
+import { Pagination } from '@/components/pagination';
 import { ProductGrid } from '@/components/product-grid';
 import { SearchBar } from '@/components/search-bar';
 import { Toolbar } from '@/components/toolbar';
@@ -68,6 +69,12 @@ export default async function CategoryPage({ params, searchParams = {} }: Catego
             latencyMs={search?.latencyMs}
           />
           <ProductGrid items={search?.items ?? []} view={parsed.view} />
+          <Pagination
+            basePath={basePath}
+            searchParams={searchParams}
+            page={parsed.page}
+            total={search?.total ?? 0}
+          />
         </div>
       </div>
     </main>

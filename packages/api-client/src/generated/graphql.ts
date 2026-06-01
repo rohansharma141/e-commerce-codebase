@@ -64,6 +64,7 @@ export type QuerySearchArgs = {
 };
 
 export type SearchInput = {
+  autocomplete?: InputMaybe<Scalars['Boolean']['input']>;
   cursor?: InputMaybe<Scalars['String']['input']>;
   facets?: InputMaybe<Array<Scalars['String']['input']>>;
   filters?: InputMaybe<Array<AttributeFilterInput>>;

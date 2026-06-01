@@ -1,9 +1,6 @@
+import { Badge } from './ui/badge';
+import { Card } from './ui/card';
 import { formatPriceFromAttr } from './price';
-
-/**
- * List-view row. Same data as ProductCard, laid out for readers who want
- * to compare more attributes per inch of screen.
- */
 
 interface ProductHit {
   id: string;
@@ -22,16 +19,13 @@ export function ProductRow({ product }: { product: ProductHit }) {
   const price = formatPriceFromAttr(attrs['price']);
   const inStock = attrs['in_stock'] !== false;
 
-  // Surface every string/number attribute except the ones promoted to the
-  // primary row (brand, price, in_stock). Keeps the layout dense for shoppers
-  // comparing across many products.
   const promoted = new Set(['brand', 'price', 'in_stock']);
   const secondary = Object.entries(attrs).filter(
     ([k, v]) => !promoted.has(k) && (typeof v === 'string' || typeof v === 'number'),
   );
 
   return (
-    <article className="group flex gap-4 rounded-lg border border-slate-200 bg-white p-3 transition-shadow hover:shadow-md focus-within:shadow-md sm:p-4">
+    <Card className="group flex gap-4 p-3 hover:shadow-md focus-within:shadow-md sm:p-4">
       <div className="hidden h-24 w-24 shrink-0 items-center justify-center rounded bg-gradient-to-br from-slate-100 to-slate-200 text-xs uppercase tracking-wider text-slate-400 sm:flex">
         {brand ?? 'no image'}
       </div>
@@ -54,10 +48,10 @@ export function ProductRow({ product }: { product: ProductHit }) {
       </div>
       <div className="flex flex-col items-end justify-between gap-1 text-right">
         <span className="text-xl font-bold tracking-tight text-slate-900">{price}</span>
-        <span className={inStock ? 'text-xs text-emerald-600' : 'text-xs text-rose-600'}>
+        <Badge variant={inStock ? 'success' : 'danger'}>
           {inStock ? 'In stock' : 'Out of stock'}
-        </span>
+        </Badge>
       </div>
-    </article>
+    </Card>
   );
 }

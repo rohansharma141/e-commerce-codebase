@@ -111,6 +111,9 @@ export function parseSearchParams(
         facets: [...FACET_ATTRIBUTES],
         filters,
         limit: PAGE_SIZE,
+        // The api's cursor is opaque to the storefront; for the simple
+        // offset-based scheme it's a string offset. Page 1 → no cursor.
+        cursor: page > 1 ? String((page - 1) * PAGE_SIZE) : undefined,
         sort: SORT_TO_GRAPHQL[sort] as never,
       },
     },

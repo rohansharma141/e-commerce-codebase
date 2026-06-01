@@ -39,6 +39,7 @@ type Query {
 }
 
 input SearchInput {
+  autocomplete: Boolean = false
   cursor: String
   facets: [String!]
   filters: [AttributeFilterInput!]

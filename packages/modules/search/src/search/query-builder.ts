@@ -34,7 +34,15 @@ export function buildSearchBody(input: SearchQuery): BuiltSearchBody {
 
   const must: unknown[] = [];
   if (input.query && input.query.trim().length > 0) {
-    must.push({ match: { name: { query: input.query, operator: 'and' } } });
+    // Autocomplete mode swaps the strict and-of-terms match for a phrase
+    // prefix: typing "cam" matches "camera bag", "Camera Z6", etc. Slower
+    // for large indices but appropriate for ≤ 8-hit type-ahead UX where
+    // the user gets a result on every keystroke.
+    must.push(
+      input.autocomplete
+        ? { match_phrase_prefix: { name: input.query } }
+        : { match: { name: { query: input.query, operator: 'and' } } },
+    );
   }
 
   const filter: unknown[] = [];
