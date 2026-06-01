@@ -66,6 +66,24 @@ export class SearchService {
 
     return { items, facets, total, nextCursor, latencyMs };
   }
+
+  /**
+   * Single-product lookup by id, scoped to the tenant's index. Returns
+   * null on miss (no doc, or no index for this tenant yet). Used by the
+   * storefront's product detail page; same data shape as a `search` hit
+   * so the api-client's generated type covers both call sites.
+   */
+  async getById(tenantId: string, productId: string): Promise<ProductHit | null> {
+    const idx = this.searchClient.forTenant(tenantId);
+    try {
+      const source = await idx.getById<OsHit['_source']>(productId);
+      if (!source) return null;
+      return toHit({ _id: productId, _source: source });
+    } catch (err) {
+      if (isIndexMissing(err)) return null;
+      throw err;
+    }
+  }
 }
 
 function toHit(h: OsHit): ProductHit {

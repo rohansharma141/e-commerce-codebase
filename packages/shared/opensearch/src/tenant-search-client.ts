@@ -113,6 +113,22 @@ export class TenantIndex {
     return res.body as never;
   }
 
+  /**
+   * Single-document lookup by id. Returns the `_source` payload or `null`
+   * when the doc (or the whole tenant index) is missing. The `null` shape
+   * is intentional — callers should treat "no such product" as a normal
+   * 404 path, not an exception.
+   */
+  async getById<T = unknown>(id: string): Promise<T | null> {
+    try {
+      const res = await this.os.get({ index: this.indexName, id });
+      return (res.body as { _source: T })._source;
+    } catch (err) {
+      if (isNotFound(err)) return null;
+      throw err;
+    }
+  }
+
   async deleteIndex(): Promise<void> {
     try {
       await this.os.indices.delete({ index: this.indexName });

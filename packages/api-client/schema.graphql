@@ -33,6 +33,7 @@ type ProductHitType {
 }
 
 type Query {
+  product(id: ID!): ProductHitType
   search(input: SearchInput!): SearchResultType!
 }
 

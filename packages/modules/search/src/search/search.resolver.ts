@@ -1,8 +1,8 @@
-import { Args, Query, Resolver } from '@nestjs/graphql';
+import { Args, ID, Query, Resolver } from '@nestjs/graphql';
 import { currentTenantOrThrow } from '@platform/shared/tenant-context';
 import type { AttributeFilter, SearchQuery } from '@platform/modules/search/contracts';
 import { SearchService } from './search.service';
-import { SearchInput, SearchResultType } from './graphql-types';
+import { ProductHitType, SearchInput, SearchResultType } from './graphql-types';
 
 @Resolver()
 export class SearchResolver {
@@ -30,5 +30,19 @@ export class SearchResolver {
     };
     const result = await this.searchService.search(tenant.tenantId, query);
     return result as SearchResultType;
+  }
+
+  /**
+   * Storefront product detail page entry point. Returns the same hit shape
+   * `search` does — the JSON `attributes` blob carries the custom-attribute
+   * payload. Nullable: `null` is a normal "not found" response, not an error.
+   */
+  @Query(() => ProductHitType, { name: 'product', nullable: true })
+  async product(
+    @Args('id', { type: () => ID }) id: string,
+  ): Promise<ProductHitType | null> {
+    const tenant = currentTenantOrThrow();
+    const hit = await this.searchService.getById(tenant.tenantId, id);
+    return hit as ProductHitType | null;
   }
 }

@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { ProductCard } from './product-card';
 
 interface ProductHit {
@@ -39,7 +40,13 @@ export function ProductGrid({ items, total, latencyMs }: ProductGridProps) {
       >
         {items.map((p) => (
           <li key={p.id}>
-            <ProductCard product={p} />
+            <Link
+              href={`/p/${p.id}`}
+              prefetch={false}
+              className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 rounded-lg"
+            >
+              <ProductCard product={p} />
+            </Link>
           </li>
         ))}
       </ul>
