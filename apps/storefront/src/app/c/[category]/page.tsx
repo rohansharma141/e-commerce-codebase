@@ -1,5 +1,6 @@
 import { CatalogSearchDocument } from '@platform/api-client';
-import { getClient } from '@/lib/urql';
+import { graphqlQuery } from '@/lib/api-graphql';
+import { getTenantId } from '@/lib/tenant';
 import { FacetSidebar } from '@/components/facet-sidebar';
 import { ProductGrid } from '@/components/product-grid';
 import { parseSearchParams, type StorefrontSearchParams } from '@/lib/search-params';
@@ -15,8 +16,6 @@ import { parseSearchParams, type StorefrontSearchParams } from '@/lib/search-par
  * step 7b's onward work and to prove the URL state plumbing handles
  * dynamic segments.
  */
-export const dynamic = 'force-dynamic';
-
 interface CategoryPageProps {
   params: { category: string };
   searchParams?: StorefrontSearchParams;
@@ -29,14 +28,14 @@ export async function generateMetadata({ params }: CategoryPageProps) {
 }
 
 export default async function CategoryPage({ params, searchParams = {} }: CategoryPageProps) {
+  const tenantId = getTenantId();
   const category = decodeURIComponent(params.category);
   const { variables, selections } = parseSearchParams(searchParams, category);
 
-  const result = await getClient().query(CatalogSearchDocument, variables);
-  if (result.error) {
-    throw new Error(`api error: ${result.error.message}`);
-  }
-  const search = result.data?.search;
+  const data = await graphqlQuery(CatalogSearchDocument, variables, {
+    tags: [`browse:${tenantId}`],
+  });
+  const search = data.search;
 
   return (
     <main className="container mx-auto px-4 py-6">

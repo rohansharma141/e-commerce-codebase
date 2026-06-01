@@ -1,16 +1,17 @@
 import { CatalogSearchDocument } from '@platform/api-client';
-import { getClient } from '@/lib/urql';
+import { graphqlQuery } from '@/lib/api-graphql';
+import { getTenantId } from '@/lib/tenant';
 import { FacetSidebar } from '@/components/facet-sidebar';
 import { ProductGrid } from '@/components/product-grid';
 import { parseSearchParams, type StorefrontSearchParams } from '@/lib/search-params';
 
 /**
- * Browse-everything page. Server-rendered on every request (SearchParams
- * drive the GraphQL variables, so caching here would just be a stale URL
- * problem). For categories, see /c/[category]/page.tsx — same component,
- * narrower input filter.
+ * Browse-everything page. Tagged `browse:<tenantId>` so catalog mutations
+ * revalidate every browse render for that tenant. Search params still drive
+ * the variables — Next's cache keys include the entire fetch payload, so
+ * different filter combinations each get their own cache entry, all sharing
+ * the same tag for bulk invalidation.
  */
-export const dynamic = 'force-dynamic';
 
 export const metadata = {
   title: 'Browse',
@@ -22,17 +23,14 @@ interface PageProps {
 }
 
 export default async function HomePage({ searchParams = {} }: PageProps) {
+  const tenantId = getTenantId();
   const { variables, selections } = parseSearchParams(searchParams);
 
-  const result = await getClient().query(CatalogSearchDocument, variables);
+  const data = await graphqlQuery(CatalogSearchDocument, variables, {
+    tags: [`browse:${tenantId}`],
+  });
 
-  if (result.error) {
-    // Surface api errors in dev — production should render a friendlier
-    // fallback. For step 7a we want the failure mode obvious.
-    throw new Error(`api error: ${result.error.message}`);
-  }
-
-  const search = result.data?.search;
+  const search = data.search;
 
   return (
     <main className="container mx-auto px-4 py-6">

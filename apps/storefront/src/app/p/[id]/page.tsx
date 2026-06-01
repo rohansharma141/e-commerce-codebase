@@ -1,32 +1,48 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ProductDetailDocument } from '@platform/api-client';
-import { getClient } from '@/lib/urql';
+import { graphqlQuery } from '@/lib/api-graphql';
+import { getTenantId } from '@/lib/tenant';
 import { AddToCartButton } from './add-to-cart-button';
 
 /**
  * Product detail page.
  *
- * Server-rendered: `id` from the URL drives a single GraphQL Query.product
- * call. A null result means the api couldn't find the product (or the
- * tenant's index doesn't have it) — we render the framework 404 so the
- * URL itself returns 404 to crawlers, not a 200 with empty content.
+ * Cached per (tenantId, productId) via Next.js data cache with two tags:
+ *   - `product:<tenantId>:<productId>` (narrow)
+ *   - `browse:<tenantId>` (broad)
  *
- * Add-to-cart is a placeholder for now — the wiring lands in step 7d
- * along with CORS on the api and the client-rendered cart UI.
+ * The api's webhook dispatcher revalidates the narrow tag on
+ * catalog.product.updated and the broad tag on created / deleted — so a
+ * back-office edit reflects on the storefront within a webhook RTT, not
+ * within the 1-hour fetch-cache fallback.
+ *
+ * Falling through to the framework 404 on a null product is important:
+ * a deleted product's URL returns 404 to crawlers immediately after the
+ * delete event revalidates this page.
  */
-export const dynamic = 'force-dynamic';
 
 interface PageProps {
   params: { id: string };
 }
 
+async function fetchProductDetail(tenantId: string, id: string) {
+  return graphqlQuery(
+    ProductDetailDocument,
+    { id },
+    {
+      tags: [`product:${tenantId}:${id}`, `browse:${tenantId}`],
+    },
+  );
+}
+
 export async function generateMetadata({ params }: PageProps) {
-  // Server fetches happen inside the request scope already, so re-fetching
-  // here for metadata isn't free — but it's the cleanest path to a tight
-  // <title>. The api dedupes via http caching; perf cost is small.
-  const result = await getClient().query(ProductDetailDocument, { id: params.id });
-  const name = result.data?.product?.name;
+  // Server-side dedupe: the same fetch + tags + variables returns the
+  // cached payload, so generateMetadata is free after the page render
+  // populates the cache (and vice versa on cache-miss).
+  const tenantId = getTenantId();
+  const data = await fetchProductDetail(tenantId, params.id);
+  const name = data.product?.name;
   return name ? { title: name } : { title: 'Product' };
 }
 
@@ -40,11 +56,9 @@ function formatCurrency(n: unknown): string {
 }
 
 export default async function ProductPage({ params }: PageProps) {
-  const result = await getClient().query(ProductDetailDocument, { id: params.id });
-  if (result.error) {
-    throw new Error(`api error: ${result.error.message}`);
-  }
-  const product = result.data?.product;
+  const tenantId = getTenantId();
+  const data = await fetchProductDetail(tenantId, params.id);
+  const product = data.product;
   if (!product) {
     notFound();
   }

@@ -20,6 +20,7 @@ import { PricingModule } from '@platform/modules/pricing/src';
 import { SearchModule } from '@platform/modules/search/src';
 import { DemoHooksModule } from './demo-hooks.module';
 import { HealthController } from './health.controller';
+import { StorefrontWebhookModule } from './storefront-webhook.module';
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { HealthController } from './health.controller';
     CartModule,
     OrdersModule,
     DemoHooksModule,
+    StorefrontWebhookModule,
   ],
   controllers: [HealthController],
 })

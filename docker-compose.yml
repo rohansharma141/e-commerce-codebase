@@ -72,6 +72,15 @@ services:
       DATABASE_URL: postgres://platform:platform@postgres:5432/platform
       REDIS_URL: redis://redis:6379
       OPENSEARCH_URL: http://opensearch:9200
+      # Storefront revalidation webhooks. host.docker.internal is the
+      # Docker-Desktop bridge from container → host process (the storefront
+      # runs on the host via `pnpm nx serve storefront`). When unset, the
+      # webhook dispatcher logs and skips — api-only deployments don't need
+      # this wired.
+      STOREFRONT_REVALIDATE_URL: http://host.docker.internal:3001/api/revalidate
+      STOREFRONT_REVALIDATE_SECRET: dev-revalidate-secret-change-me
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "3000:3000"
 
