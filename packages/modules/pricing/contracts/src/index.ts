@@ -1,6 +1,7 @@
 export * from './money';
 export * from './price.dto';
 export * from './tax.dto';
+export * from './theme.dto';
 export * from './promotion.dto';
 export * from './totals.dto';
 export * from './money-ops';

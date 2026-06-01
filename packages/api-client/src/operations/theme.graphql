@@ -1,0 +1,11 @@
+query TenantTheme {
+  theme {
+    brandName
+    tagline
+    logoMark
+    brandHsl
+    brandFgHsl
+    pageBgHsl
+    fontSans
+  }
+}

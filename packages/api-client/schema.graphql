@@ -35,6 +35,7 @@ type ProductHitType {
 type Query {
   product(id: ID!): ProductHitType
   search(input: SearchInput!): SearchResultType!
+  theme: StorefrontThemeType!
 }
 
 input SearchInput {
@@ -51,4 +52,14 @@ type SearchResultType {
   latencyMs: Int!
   nextCursor: String
   total: Int!
+}
+
+type StorefrontThemeType {
+  brandFgHsl: String!
+  brandHsl: String!
+  brandName: String!
+  fontSans: String!
+  logoMark: String!
+  pageBgHsl: String!
+  tagline: String!
 }

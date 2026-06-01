@@ -72,6 +72,12 @@ Every item has a **status**: *by design* (intentional, see linked ADR), *scoped 
 
 ## Pricing
 
+### Theme/branding lives on pricing.tenant_config
+- **Status:** open; deliberate shortcut.
+- **What:** the storefront theme (brand name, colors, fonts) is stored as a `theme jsonb` column on [pricing.tenant_config](../packages/modules/pricing/src/db/migrations/0003_branding.sql) — one row already keyed per tenant. Exposed via a `Query.theme` resolver in the pricing module ([branding.resolver.ts](../packages/modules/pricing/src/branding/branding.resolver.ts)).
+- **Impact:** pricing now imports a concern (branding) that isn't pricing. The storefront-facing graph IS still separated (`Query.theme` is a different resolver from the admin tenant-config endpoints, so no tax/currency leakage), but the module ownership is muddled.
+- **Fix:** extract a `modules/branding/` module that owns the theme column (or its own table), with its own contracts package and resolver. Storage migrates with a `CREATE TABLE branding.theme AS SELECT tenant_id, theme FROM pricing.tenant_config WHERE theme IS NOT NULL` and a drop of the column. The resolver shape stays the same — storefront doesn't notice.
+
 ### No domain events emitted from the pricing module
 - **Status:** open.
 - **What:** [packages/modules/pricing/src](../packages/modules/pricing/src) mutations (upsert price, set tenant config, create/update promotion) don't publish events to the bus. Only the catalog module does.

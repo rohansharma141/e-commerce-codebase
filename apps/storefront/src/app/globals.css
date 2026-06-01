@@ -3,8 +3,11 @@
 @tailwind utilities;
 
 :root {
+  /* Defaults — overridden per-request by the layout's inline style block
+     once the theme is fetched. These are the api-down fallback. */
   --brand: 220 90% 56%;
   --brand-fg: 0 0% 100%;
+  --page-bg: 0 0% 100%;
   --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 

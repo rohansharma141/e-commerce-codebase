@@ -9,6 +9,7 @@ const config: Config = {
           DEFAULT: 'hsl(var(--brand))',
           fg: 'hsl(var(--brand-fg))',
         },
+        page: 'hsl(var(--page-bg))',
       },
       fontFamily: {
         sans: ['var(--font-sans)', 'system-ui', 'sans-serif'],

@@ -22,6 +22,46 @@ const TAX_RATES_BY_TENANT: Record<string, number> = {
   't-books': 0,
 };
 
+/**
+ * Storefront themes per tenant. Three visibly distinct skins make the
+ * multi-tenant story tangible — same Next.js code, same routes, three
+ * different brand experiences. Shape mirrors StorefrontTheme in
+ * @platform/modules/pricing/contracts/theme.dto.ts; the seed writes raw
+ * JSONB so we don't need to import the contract here.
+ *
+ * HSL tuples use the "h s% l%" form ready for direct `hsl(var(--brand))`
+ * substitution in the storefront's CSS.
+ */
+const THEMES_BY_TENANT: Record<string, Record<string, string>> = {
+  't-fashion': {
+    brandName: 'Vesper & Co.',
+    tagline: 'Quietly considered apparel.',
+    logoMark: '✦',
+    brandHsl: '340 65% 48%', // muted rose
+    brandFgHsl: '0 0% 100%',
+    pageBgHsl: '40 30% 98%', // warm off-white
+    fontSans: "'Cormorant Garamond', 'Georgia', serif",
+  },
+  't-electronics': {
+    brandName: 'Voltrix',
+    tagline: 'Engineered for builders.',
+    logoMark: '⚡',
+    brandHsl: '195 95% 45%', // electric cyan
+    brandFgHsl: '210 50% 8%', // near-black with blue
+    pageBgHsl: '210 30% 6%', // dark mode page
+    fontSans: "'JetBrains Mono', 'Consolas', monospace",
+  },
+  't-books': {
+    brandName: 'Margin Notes',
+    tagline: 'Stories worth keeping.',
+    logoMark: '❦',
+    brandHsl: '25 70% 38%', // burnt sienna
+    brandFgHsl: '40 60% 96%',
+    pageBgHsl: '40 50% 95%', // creamy paper
+    fontSans: "'Lora', 'Iowan Old Style', Georgia, serif",
+  },
+};
+
 const PROMOS_BY_TENANT: Record<
   string,
   ReadonlyArray<{
@@ -100,9 +140,10 @@ export async function seedPricingForTenant(
   await sql`DELETE FROM pricing.prices`;
   await sql`DELETE FROM pricing.tenant_config`;
 
+  const theme = THEMES_BY_TENANT[fixture.tenantId] ?? null;
   await sql`
-    INSERT INTO pricing.tenant_config (tenant_id, currency, tax_rate_bps, updated_at)
-    VALUES (${fixture.tenantId}, 'USD', ${taxRateBps}, now())
+    INSERT INTO pricing.tenant_config (tenant_id, currency, tax_rate_bps, theme, updated_at)
+    VALUES (${fixture.tenantId}, 'USD', ${taxRateBps}, ${theme ? sql.json(theme as never) : null}, now())
   `;
 
   // Bulk INSERT prices. postgres-js batches efficiently with the helper form.

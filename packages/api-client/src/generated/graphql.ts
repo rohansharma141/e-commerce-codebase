@@ -50,6 +50,7 @@ export type Query = {
   __typename?: 'Query';
   product?: Maybe<ProductHitType>;
   search: SearchResultType;
+  theme: StorefrontThemeType;
 };
 
 
@@ -79,6 +80,17 @@ export type SearchResultType = {
   total: Scalars['Int']['output'];
 };
 
+export type StorefrontThemeType = {
+  __typename?: 'StorefrontThemeType';
+  brandFgHsl: Scalars['String']['output'];
+  brandHsl: Scalars['String']['output'];
+  brandName: Scalars['String']['output'];
+  fontSans: Scalars['String']['output'];
+  logoMark: Scalars['String']['output'];
+  pageBgHsl: Scalars['String']['output'];
+  tagline: Scalars['String']['output'];
+};
+
 export type CatalogSearchQueryVariables = Exact<{
   input: SearchInput;
 }>;
@@ -93,6 +105,12 @@ export type ProductDetailQueryVariables = Exact<{
 
 export type ProductDetailQuery = { __typename?: 'Query', product?: { __typename?: 'ProductHitType', id: string, sku: string, name: string, attributes: any } | null };
 
+export type TenantThemeQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type TenantThemeQuery = { __typename?: 'Query', theme: { __typename?: 'StorefrontThemeType', brandName: string, tagline: string, logoMark: string, brandHsl: string, brandFgHsl: string, pageBgHsl: string, fontSans: string } };
+
 
 export const CatalogSearchDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"CatalogSearch"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"SearchInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"search"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"total"}},{"kind":"Field","name":{"kind":"Name","value":"latencyMs"}},{"kind":"Field","name":{"kind":"Name","value":"nextCursor"}},{"kind":"Field","name":{"kind":"Name","value":"items"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"sku"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"attributes"}}]}},{"kind":"Field","name":{"kind":"Name","value":"facets"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"attribute"}},{"kind":"Field","name":{"kind":"Name","value":"buckets"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"count"}}]}}]}}]}}]}}]} as unknown as DocumentNode<CatalogSearchQuery, CatalogSearchQueryVariables>;
 export const ProductDetailDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"ProductDetail"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"product"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"sku"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"attributes"}}]}}]}}]} as unknown as DocumentNode<ProductDetailQuery, ProductDetailQueryVariables>;
+export const TenantThemeDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"TenantTheme"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"theme"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"brandName"}},{"kind":"Field","name":{"kind":"Name","value":"tagline"}},{"kind":"Field","name":{"kind":"Name","value":"logoMark"}},{"kind":"Field","name":{"kind":"Name","value":"brandHsl"}},{"kind":"Field","name":{"kind":"Name","value":"brandFgHsl"}},{"kind":"Field","name":{"kind":"Name","value":"pageBgHsl"}},{"kind":"Field","name":{"kind":"Name","value":"fontSans"}}]}}]}}]} as unknown as DocumentNode<TenantThemeQuery, TenantThemeQueryVariables>;

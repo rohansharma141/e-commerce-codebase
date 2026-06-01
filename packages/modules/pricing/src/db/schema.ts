@@ -19,6 +19,10 @@ export const tenantConfig = pricingSchema.table('tenant_config', {
   tenantId: text('tenant_id').primaryKey(),
   currency: char('currency', { length: 3 }).notNull(),
   taxRateBps: integer('tax_rate_bps').notNull().default(0),
+  // Storefront branding (colors, brand name, etc). Nullable — falls back to
+  // a hard-coded default theme in the read path so api-only customers
+  // never have to populate this. See pricing/contracts/theme.dto.ts.
+  theme: jsonb('theme').$type<Record<string, unknown> | null>(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -18,6 +18,7 @@ import { TenantConfigController } from './tenant-config/tenant-config.controller
 import { TenantConfigRepository } from './tenant-config/tenant-config.repository';
 import { TenantConfigService } from './tenant-config/tenant-config.service';
 import { TotalsService } from './totals/totals.service';
+import { BrandingResolver } from './branding/branding.resolver';
 
 export const PRICING_SCHEMA_NAME = 'pricing';
 
@@ -51,6 +52,7 @@ function migrationsDir(): string {
     PromotionsRepository,
     PromotionsService,
     TotalsService,
+    BrandingResolver,
     { provide: TOTALS_SERVICE, useExisting: TotalsService },
     { provide: PRICES_QUERY, useExisting: PricesRepository },
     { provide: PROMOTIONS_QUERY, useExisting: PromotionsRepository },
