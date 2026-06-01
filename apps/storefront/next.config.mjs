@@ -19,11 +19,18 @@
 const isDev = process.env.NODE_ENV !== 'production';
 const apiOrigin = process.env.NEXT_PUBLIC_API_ORIGIN ?? 'http://localhost:3000';
 
+// CSP — strict by default. `'unsafe-inline'` on `script-src` in dev is
+// non-negotiable: Next.js 14 streams the RSC payload via inline <script>
+// blocks and React hydration depends on them. The production-grade fix is
+// nonce-based CSP (set a per-request nonce in middleware and reference it
+// from a custom <Script nonce={nonce}>). That's a deferred follow-up; for
+// now production CSP keeps strict script-src 'self' which will block
+// hydration and is documented as the next storefront task to land.
 const cspDirectives = [
   "default-src 'self'",
   "img-src 'self' data: https:",
   "style-src 'self' 'unsafe-inline'",
-  "script-src 'self'" + (isDev ? " 'unsafe-eval'" : ''),
+  "script-src 'self'" + (isDev ? " 'unsafe-eval' 'unsafe-inline'" : ''),
   "font-src 'self' data:",
   `connect-src 'self' ${apiOrigin}${isDev ? ' ws://localhost:* http://localhost:*' : ''}`,
   "frame-ancestors 'none'",
