@@ -25,10 +25,23 @@ When the seed finishes, the api is live at `http://localhost:3000`:
 | `/health` | Liveness (always 200 if process is up) |
 | `/ready` | Readiness — probes Postgres, Redis, OpenSearch (503 if any are down) |
 | `/graphql` | Storefront GraphQL — `Query.search` is the hero |
+| `/docs` | Swagger UI for the REST surface |
 | `/admin/*` | Admin REST: products, attribute-definitions, prices, promotions, orders |
 | `/storefront/carts`, `/storefront/checkout` | Storefront REST: cart + checkout |
 
 > **Tip**: every tenant-scoped endpoint requires an `x-tenant-id: <id>` header. The seed creates three tenants: `t-fashion`, `t-electronics`, `t-books`.
+
+### Storefront
+
+A Next.js storefront ships alongside the api as a separately-deployable artifact. To run it:
+
+```bash
+pnpm nx serve storefront
+```
+
+Then open `http://t-fashion.localhost:3001/` (or `t-electronics`, `t-books`). Modern browsers resolve `*.localhost` natively — no `/etc/hosts` edits.
+
+The storefront imports ONLY from `@platform/api-client` and talks to the api exclusively over the public GraphQL + REST schema. The sellable-separately rule is enforced by ESLint. See [docs/STOREFRONT.md](docs/STOREFRONT.md).
 
 ---
 

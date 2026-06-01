@@ -13,5 +13,8 @@ Load-bearing decisions, each documented to be interrogable on its own. A reviewe
 | [0007](0007-tenant-id-as-trust-gateway-responsibility.md) | Tenant id as trust = gateway responsibility | Accepted (with caveats) |
 | [0008](0008-opentelemetry-designed-not-shipped.md) | OpenTelemetry designed, not shipped | Accepted |
 | [0009](0009-hooks-as-typed-in-process-registry.md) | Hooks as a typed in-process registry | Accepted |
+| [0010](0010-storefront-sellable-separately.md) | Storefront sells separately from the API | Accepted |
+| [0011](0011-server-actions-not-cors.md) | Cart and checkout mutate via Next.js server actions, not browser→api CORS | Accepted |
+| [0012](0012-subdomain-tenant-resolution.md) | Storefront resolves tenant from subdomain | Accepted |
 
 ADR format follows [Michael Nygard's template](https://github.com/joelparkerhenderson/architecture-decision-record/blob/main/locales/en/templates/decision-record-template-by-michael-nygard/index.md). Each is 100–250 lines, lives forever (decisions never get deleted — only superseded with a new ADR), and links to concrete code paths and tests.
