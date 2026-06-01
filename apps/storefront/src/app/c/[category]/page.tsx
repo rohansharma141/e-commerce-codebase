@@ -3,6 +3,7 @@ import { graphqlQuery } from '@/lib/api-graphql';
 import { getTenantId } from '@/lib/tenant';
 import { FacetSidebar } from '@/components/facet-sidebar';
 import { ProductGrid } from '@/components/product-grid';
+import { SearchBar } from '@/components/search-bar';
 import { parseSearchParams, type StorefrontSearchParams } from '@/lib/search-params';
 
 /**
@@ -44,7 +45,10 @@ export default async function CategoryPage({ params, searchParams = {} }: Catego
         <span className="mx-1">/</span>
         <span className="text-slate-700">{category}</span>
       </nav>
-      <h1 className="mb-6 text-2xl font-bold tracking-tight capitalize md:text-3xl">{category}</h1>
+      <h1 className="mb-4 text-2xl font-bold tracking-tight capitalize md:text-3xl">{category}</h1>
+      <div className="mb-6">
+        <SearchBar basePath={`/c/${encodeURIComponent(category)}`} searchParams={searchParams} />
+      </div>
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[260px_1fr]">
         <FacetSidebar
           facets={search?.facets ?? []}

@@ -11,6 +11,15 @@ interface OsBoolQuery {
 export interface BuiltSearchBody {
   size: number;
   from: number;
+  /**
+   * `track_total_hits: true` overrides OpenSearch's default cap of 10,000
+   * for `hits.total.value`. With 33k+ products per tenant the cap was
+   * surfacing as "10,000 products" in the storefront, which read as a
+   * misleading product-count claim. The cost is small on indices of this
+   * size and is the right default for a catalog facade — pagination and
+   * facets need an accurate total to behave correctly.
+   */
+  track_total_hits: true;
   query: OsBoolQuery;
   aggs?: Record<string, unknown>;
   sort?: unknown[];
@@ -36,6 +45,7 @@ export function buildSearchBody(input: SearchQuery): BuiltSearchBody {
   const body: BuiltSearchBody = {
     size,
     from,
+    track_total_hits: true,
     query: {
       bool: {
         ...(must.length ? { must } : {}),

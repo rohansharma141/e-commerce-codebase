@@ -54,6 +54,10 @@ export function middleware(req: NextRequest): NextResponse {
 }
 
 export const config = {
-  // Run on every request except Next internals and static asset paths.
-  matcher: ['/((?!_next/|favicon.ico|.*\\..*).*)'],
+  // Run on every request except Next internals, static asset paths, and
+  // /api/* routes. /api/* is internal-facing infrastructure (e.g. the
+  // revalidation webhook) and isn't tenant-scoped at the host level — the
+  // tenant id lives in the request body. Without this exclusion the
+  // bare-localhost default-tenant redirect would 302 webhook POSTs.
+  matcher: ['/((?!_next/|api/|favicon.ico|.*\\..*).*)'],
 };

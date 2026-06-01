@@ -3,6 +3,7 @@ import { graphqlQuery } from '@/lib/api-graphql';
 import { getTenantId } from '@/lib/tenant';
 import { FacetSidebar } from '@/components/facet-sidebar';
 import { ProductGrid } from '@/components/product-grid';
+import { SearchBar } from '@/components/search-bar';
 import { parseSearchParams, type StorefrontSearchParams } from '@/lib/search-params';
 
 /**
@@ -34,7 +35,10 @@ export default async function HomePage({ searchParams = {} }: PageProps) {
 
   return (
     <main className="container mx-auto px-4 py-6">
-      <h1 className="mb-6 text-2xl font-bold tracking-tight md:text-3xl">Browse the catalog</h1>
+      <h1 className="mb-4 text-2xl font-bold tracking-tight md:text-3xl">Browse the catalog</h1>
+      <div className="mb-6">
+        <SearchBar basePath="/" searchParams={searchParams} />
+      </div>
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[260px_1fr]">
         <FacetSidebar
           facets={search?.facets ?? []}
