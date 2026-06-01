@@ -1,0 +1,12 @@
+{
+  "name": "@platform/api-client",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Generated GraphQL/REST client types for the storefront. The ONLY package the storefront may import from.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "dependencies": {
+    "@graphql-typed-document-node/core": "^3.2.0",
+    "graphql": "^16.9.0"
+  }
+}

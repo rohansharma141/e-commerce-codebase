@@ -42,7 +42,9 @@
       "@platform/modules/orders/src": ["packages/modules/orders/src/index.ts"],
       "@platform/shared/hooks": ["packages/shared/hooks/src/index.ts"],
       "@platform/shared/security": ["packages/shared/security/src/index.ts"],
-      "@platform/shared/observability": ["packages/shared/observability/src/index.ts"]
+      "@platform/shared/observability": ["packages/shared/observability/src/index.ts"],
+      "@platform/api-client": ["packages/api-client/src/index.ts"],
+      "@platform/api-client/*": ["packages/api-client/src/*"]
     }
   },
   "exclude": ["node_modules", "tmp", "dist"]

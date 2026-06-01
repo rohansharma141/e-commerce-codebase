@@ -1,0 +1,27 @@
+{
+  "name": "api-client",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "packages/api-client/src",
+  "projectType": "library",
+  "tags": ["scope:api-client"],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "outputs": ["{options.outputFile}"]
+    },
+    "codegen": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "graphql-codegen --config packages/api-client/codegen.ts",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "fetch-schema": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "powershell -NoProfile -Command \"docker compose exec api cat //app/schema.gql | Set-Content -Encoding utf8 packages/api-client/schema.graphql\"",
+        "cwd": "{workspaceRoot}"
+      }
+    }
+  }
+}

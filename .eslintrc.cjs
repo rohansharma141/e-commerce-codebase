@@ -68,6 +68,25 @@ module.exports = {
                 sourceTag: 'type:contracts',
                 onlyDependOnLibsWithTags: ['scope:shared', 'type:contracts'],
               },
+              // SELLABLE-SEPARATELY RULE.
+              // The storefront is a separate deployable that talks to the
+              // api ONLY over its public GraphQL/REST schema. In code, that
+              // means it may only import the generated `api-client` package
+              // — never a module's contracts, never a module's src, never
+              // a backend shared lib. If you find this rule blocking you,
+              // the fix is to expose the missing capability via the api,
+              // not to relax the boundary. See CLAUDE.md.
+              {
+                sourceTag: 'scope:storefront',
+                onlyDependOnLibsWithTags: ['scope:api-client'],
+              },
+              // The api-client is generated from the api's public schema
+              // and is intentionally a leaf — it depends on nothing in this
+              // workspace.
+              {
+                sourceTag: 'scope:api-client',
+                onlyDependOnLibsWithTags: [],
+              },
             ],
           },
         ],

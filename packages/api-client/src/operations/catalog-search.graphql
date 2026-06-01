@@ -1,0 +1,20 @@
+query CatalogSearch($input: SearchInput!) {
+  search(input: $input) {
+    total
+    latencyMs
+    nextCursor
+    items {
+      id
+      sku
+      name
+      attributes
+    }
+    facets {
+      attribute
+      buckets {
+        value
+        count
+      }
+    }
+  }
+}
