@@ -27,5 +27,7 @@
     "src/**/*.tsx",
     ".next/types/**/*.ts"
   ],
-  "exclude": ["node_modules", ".next"]
+  // Specs are type-checked by tsconfig.spec.json, which supplies the jest
+  // globals. Leaving them in here would fail `next build` on `describe`.
+  "exclude": ["node_modules", ".next", "src/**/*.spec.ts", "src/**/*.spec.tsx"]
 }

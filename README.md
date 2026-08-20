@@ -158,10 +158,20 @@ pnpm seed                       # seed 99k products + prices + promotions
 
 pnpm nx run-many -t lint        # lint (including boundary enforcement)
 pnpm nx run-many -t test        # all unit tests (integration tests skip without TEST_*_URL)
+
+# Full integration tests against the docker stack.
+# ⚠️ These DROP and rebuild the catalog, pricing and orders schemas to get a
+#    clean slate — your seeded data does not survive. Re-run `pnpm seed`
+#    afterwards before demoing anything.
 TEST_DATABASE_URL=postgres://platform:platform@localhost:5432/platform \
 TEST_REDIS_URL=redis://localhost:6379 \
 TEST_OPENSEARCH_URL=http://localhost:9200 \
-  pnpm nx run-many -t test      # full integration tests against the docker stack
+  pnpm nx run-many -t test
+
+# Storefront ↔ API contract conformance. Wants a SEEDED api, so run it after
+# re-seeding — not in the same invocation as the suites above.
+pnpm seed
+TEST_API_URL=http://localhost:3000 pnpm nx test storefront
 ```
 
 ---
@@ -184,4 +194,4 @@ If you want to discuss any of these, the ADRs explain the reasoning.
 
 ## License
 
-MIT (pending — see `LICENSE` file).
+MIT — see [LICENSE](LICENSE).

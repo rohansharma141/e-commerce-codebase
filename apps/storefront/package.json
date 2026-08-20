@@ -5,6 +5,7 @@
   "description": "Next.js multi-tenant storefront. Talks to the api ONLY via @platform/api-client.",
   "dependencies": {
     "@platform/api-client": "workspace:*",
+    "@graphql-typed-document-node/core": "^3.2.0",
     "@radix-ui/react-slot": "^1.1.1",
     "@urql/core": "^5.0.6",
     "@urql/next": "^1.1.4",

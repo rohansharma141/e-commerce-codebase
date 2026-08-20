@@ -89,7 +89,7 @@ All seven steps of the planned build priority are complete, committed, and pushe
 | **Orders** | Transactional checkout — `Idempotency-Key` support, conditional promotion consumption under concurrency, full price/promo/tax snapshot written into the order so historical records never drift when live config changes |
 | **Cross-cutting** | Helmet, per-tenant rate limiting, an audit log of every successful mutation under `/admin/*` and `/storefront/checkout`, request-id propagation end to end, `/health` + `/ready` (probes all three stores), Swagger UI at `/docs`, a Postman collection, a typed hook registry for extension points |
 
-**Seeded demo data:** three tenants — `t-fashion`, `t-electronics`, `t-books` — roughly 33,000 products each. Measured search latency from the seed CLI's own benchmark: p50 ≈ 5ms, p95 ≈ 12ms, p99 ≈ 26ms over 200 random queries per tenant.
+**Seeded demo data:** three tenants — `t-fashion`, `t-electronics`, `t-books` — roughly 33,000 products each, written to both Postgres (canonical) and the tenant's OpenSearch index (queryable projection), along with six attribute definitions, 33,000 prices, and sample promotions per tenant. Measured search latency from the seed CLI's own benchmark: p50 ≈ 5ms, p95 ≈ 12ms, p99 ≈ 26ms over 200 random queries per tenant.
 
 ### Step 7 — the storefront (complete, plus extras)
 
@@ -103,7 +103,8 @@ A Next.js 14 App Router app on port 3001, deployable separately from the API.
 - **Cart and checkout** — cart cookie per tenant, quantity edits, coupon apply/remove, live totals, checkout, order confirmation page.
 - **Event-driven ISR revalidation** — catalog mutations emit domain events; the API dispatches a webhook to the storefront's `/api/revalidate`; the storefront maps the event onto Next.js cache tags (`browse:<tenant>`, `product:<tenant>:<id>`, `theme:<tenant>`) and rebuilds the affected pages within seconds. The payload is deliberately *event-shaped*, not tag-shaped — the API never learns the storefront's cache topology.
 - **Per-tenant theming** — brand name, colors, and typography load from the API per request via a `Query.theme` resolver and apply as CSS variables. One codebase, no per-tenant forks.
-- **Security headers** — strict CSP, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `nosniff`, restrictive Permissions-Policy.
+- **Security headers** — `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `nosniff` and a restrictive Permissions-Policy from the Next config, plus a per-request CSP issued by middleware. The CSP carries a fresh nonce per request, which Next stamps onto the inline scripts it emits for the RSC payload and hydration; a build-time header can't express that, which is why the two are deliberately split across the two files.
+- **Tests** — a URL-contract unit suite, and a conformance suite that issues every operation the storefront uses against a live API and checks the responses against the shapes it relies on, including exact key sets for the hand-mirrored REST types. The lint boundary proves nothing was imported across the line; this proves the public surface actually delivers what the storefront reads.
 - **Documentation** — a storefront architecture doc, three additional ADRs, and a recording script for a 2–3 minute walkthrough.
 
 ---
@@ -141,22 +142,34 @@ Documented as "designed, not built" where relevant — each has a written ration
 
 Honest list. Nothing here is hidden in the repo — most is already tracked in `docs/CAVEATS.md`.
 
-**Correctness / completeness**
-- **No storefront tests.** There are no specs under `apps/storefront` and no test target configured for it. The project's own conventions require storefront-to-API contract-conformance tests. This is the one stated convention currently unmet.
-- **No storefront Dockerfile.** Compose runs Postgres, Redis, OpenSearch, and the API; the storefront runs on the host in dev. The "two separate deployables with separate images" claim needs this to land.
-- **Documentation drift.** The storefront architecture doc and the caveats file were written before the last four commits and still describe features as unbuilt that have since shipped (ISR revalidation, theming, shadcn primitives). The caveats file also references an integration test that does not exist.
+Work is organised as step 8, "make every claim the repo makes hold". Sub-step 8a is complete.
 
-**Platform limitations with known fix paths**
-- **Production CSP breaks hydration.** `script-src 'self'` blocks the inline scripts Next.js uses to stream RSC payloads. Needs a per-request nonce before any production deploy. Dev is unaffected.
-- **Revalidation webhooks are fire-and-forget.** A failed POST is logged, not retried; the affected page stays stale until the one-hour fallback. The fix is a persistent outbox with a retry worker — which is also what unlocks moving to a real broker later.
-- **Pricing emits no domain events.** Price and promotion changes don't reach the revalidation pipeline, and the product page reads its price from the denormalized search document, so a price edit isn't visible on the storefront until a reindex. Mirroring the catalog module's event pattern fixes both.
-- **No customer auth.** Order confirmation reads through the admin endpoint, so anyone holding an order UUID can fetch it within that tenant. Fine for a demo, not for production; the fix is customer JWTs plus a storefront-scoped order endpoint.
-- **The seed writes only to OpenSearch**, not to `catalog.products`, so that Postgres table is empty as shipped and attribute definitions aren't seeded either. This makes one of the README's own verification steps return zero rows.
-- **Theme storage is on the pricing module's tenant config table** — a deliberate shortcut that muddles module ownership. Extracting a small branding module is the clean fix and wouldn't change the public resolver shape.
+**Closed in 8a**
+- The seed now writes `catalog.products` and `catalog.attribute_definitions` alongside the search index, so the README's RLS proof compares 0 unbound against 33,000 bound instead of an empty table against itself.
+- The storefront has a Dockerfile and a compose service, making the two-deployables claim real. `docker compose up api` still runs the platform without it.
+- Production CSP issues a per-request nonce from middleware, so a production build hydrates. This was pulled forward from 8b because shipping a container that renders but never hydrates would have replaced one false claim with another.
+- The storefront has tests: a URL-contract unit suite and a conformance suite that drives every operation the storefront issues against a live API, asserting exact key sets for the hand-mirrored REST types.
+- Docs reconciled with what actually shipped; `LICENSE` added.
+
+**What the pass uncovered — none of it visible before the work started**
+- **The storefront build was broken.** `@graphql-typed-document-node/core` wasn't declared in the storefront's `package.json`, so under pnpm's isolated node_modules the type failed to resolve, `TypedDocumentNode` degraded, and *every* `graphqlQuery` call site silently inferred `unknown`. The "fully typed generated client" was not typed at all, and `next build` had been failing since the autocomplete commit. Declaring the dependency fixed the build and restored inference everywhere.
+- **Two load-bearing integration suites had been dead for several commits.** `catalog.integration.spec.ts` and `checkout.integration.spec.ts` stopped compiling when their services gained a `HookRegistry` constructor argument, then needed the ALS tenant context the services had begun requiring. The tests proving RLS isolation, snapshot integrity, promotion races and idempotency were not running.
+- **CI never runs the integration tests at all** — the workflow declares no service containers, so those suites skip and green CI means "compiles and unit tests pass". That is why the two failures above went unnoticed, and it is now the top open item.
+- **The module suites destroy seeded data**, dropping the catalog, pricing and orders schemas. Running the full suite against the demo database silently empties it.
+- The ESLint module boundary doesn't catch deep relative imports (`../../cart/src/...`), so the "never import another module's `src/`" rule holds for the shape people usually write rather than universally.
+
+**Open — architectural, with known fix paths**
+- **CI runs no integration tests.** The workflow has no Postgres/Redis/OpenSearch services, so every integration suite skips and the platform's load-bearing guarantees go unverified on every push. Adding the service containers is the single highest-value fix outstanding. (8b)
+- **Revalidation webhooks are fire-and-forget.** A failed POST is logged, not retried; the affected page stays stale until the one-hour fallback. The fix is a persistent outbox with a retry worker — which is also what unlocks moving to a real broker later. (8b)
+- **Pricing emits no domain events.** Price and promotion changes don't reach the revalidation pipeline, and the product page reads its price from the denormalized search document, so a price edit isn't visible on the storefront until a reindex. Mirroring the catalog module's event pattern fixes both. (8b)
+- **The API cannot describe itself.** There is no endpoint advertising supported locales, currency, tax display behaviour, or per-tenant enabled features. Our own storefront hardcodes what it needs, which only works because one author wrote both sides; any consumer we didn't write has to be configured out of band. For a headless product sold standalone this undercuts the "complete on its own" claim more than any missing feature. (8c)
+- **Theme storage is on the pricing module's tenant config table** — a deliberate shortcut that muddles module ownership. Extracting a small branding module is the clean fix and wouldn't change the public resolver shape. (8c)
+- **No customer auth.** Order confirmation reads through the admin endpoint, so anyone holding an order UUID can fetch it within that tenant. Fine for a demo, not for production; the fix is customer JWTs plus a storefront-scoped order endpoint. Scoped out, needs its own decision record.
 - **Rate limiting keys on tenant id, not IP**, so during the trust-by-header window a caller impersonating a tenant can throttle that tenant's real traffic. Per-IP limits belong at the gateway.
+- **The seed bypasses the HTTP write path.** It writes to Postgres and OpenSearch directly, so a broken `POST /admin/products` would still leave a fully-populated demo, and attribute validation never runs against seeded data. Deliberate: 99,000 HTTP round-trips would turn a 15-second seed into a multi-minute one.
 
-**Presentation polish**
-- No `LICENSE` file (the README references one), no release tag, no CI badge, no screenshots. A walkthrough script is written but nothing has been recorded. The README's cold-clone quickstart has never been run from scratch.
+**Presentation polish (8d)**
+- No release tag, no CI badge, no screenshots. A walkthrough script is written but nothing has been recorded. The README's cold-clone quickstart has never been run from scratch. GitHub repo description and topics are empty.
 
 ---
 

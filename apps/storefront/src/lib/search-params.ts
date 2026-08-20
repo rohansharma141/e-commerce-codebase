@@ -153,7 +153,10 @@ export function urlWithOverrides(
   overrides: Record<string, string | string[] | null>,
 ): string {
   const params = new URLSearchParams();
-  const merged: Record<string, string | string[] | null> = { ...current };
+  // `undefined` is in the incoming param type (an absent key), `null` is how
+  // a caller asks to drop one. Both are skipped below, so the merged map has
+  // to admit each.
+  const merged: Record<string, string | string[] | null | undefined> = { ...current };
   for (const [k, v] of Object.entries(overrides)) {
     merged[k] = v;
   }

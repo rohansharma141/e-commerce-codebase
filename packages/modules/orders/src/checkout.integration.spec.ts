@@ -17,6 +17,8 @@ import { join } from 'node:path';
 import postgres, { type Sql } from 'postgres';
 import IORedis from 'ioredis';
 import { EventBus } from '@platform/shared/event-bus';
+import { HookRegistry } from '@platform/shared/hooks';
+import { runWithTenant } from '@platform/shared/tenant-context';
 import {
   MigrationRunner,
   tenantDrizzleAccessor,
@@ -55,8 +57,17 @@ describeIf('orders checkout integration', () => {
   const t1 = `t1-${randomUUID().slice(0, 8)}`;
   const t2 = `t2-${randomUUID().slice(0, 8)}`;
 
+  /**
+   * Binds both halves of a tenant-scoped request: the ALS context the
+   * services read (`currentTenantOrThrow`, and what events are stamped with)
+   * and the reserved Postgres connection RLS predicates evaluate against. The
+   * api's middleware chain does exactly this pairing — binding only one here
+   * would test a state the running system never reaches.
+   */
   const asT = <T>(tenantId: string, fn: () => Promise<T>): Promise<T> =>
-    withTenantConnection(sql, tenantId, fn);
+    runWithTenant({ tenantId, requestId: randomUUID() }, () =>
+      withTenantConnection(sql, tenantId, fn),
+    );
 
   beforeAll(async () => {
     sql = postgres(PG_URL as string, { max: 6 });
@@ -88,6 +99,7 @@ describeIf('orders checkout integration', () => {
       pricesRepo,
       promotionsRepo,
       bus,
+      new HookRegistry(),
     );
 
     // Bootstrap each tenant's pricing config + prices.

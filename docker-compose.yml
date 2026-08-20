@@ -72,17 +72,37 @@ services:
       DATABASE_URL: postgres://platform:platform@postgres:5432/platform
       REDIS_URL: redis://redis:6379
       OPENSEARCH_URL: http://opensearch:9200
-      # Storefront revalidation webhooks. host.docker.internal is the
-      # Docker-Desktop bridge from container → host process (the storefront
-      # runs on the host via `pnpm nx serve storefront`). When unset, the
-      # webhook dispatcher logs and skips — api-only deployments don't need
-      # this wired.
-      STOREFRONT_REVALIDATE_URL: http://host.docker.internal:3001/api/revalidate
+      # Storefront revalidation webhooks, pointed at the storefront service
+      # on the compose network. When unset, the dispatcher logs and skips —
+      # api-only deployments don't wire this at all, which is the point:
+      # the api never requires a storefront to exist.
+      #
+      # Running the storefront on the host instead (`pnpm nx serve
+      # storefront`)? Override with the Docker-Desktop bridge:
+      #   STOREFRONT_REVALIDATE_URL=http://host.docker.internal:3001/api/revalidate
+      STOREFRONT_REVALIDATE_URL: http://storefront:3001/api/revalidate
       STOREFRONT_REVALIDATE_SECRET: dev-revalidate-secret-change-me
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
       - "3000:3000"
+
+  storefront:
+    build:
+      context: .
+      dockerfile: apps/storefront/Dockerfile
+    depends_on:
+      - api
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      # Server-side calls to the api travel over the compose network.
+      API_ORIGIN: http://api:3000
+      # Must match the api's STOREFRONT_REVALIDATE_SECRET; the storefront
+      # rejects revalidation POSTs that don't carry it.
+      REVALIDATE_SECRET: dev-revalidate-secret-change-me
+    ports:
+      - "3001:3001"
 
 volumes:
   postgres-data:

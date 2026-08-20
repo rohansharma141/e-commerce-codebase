@@ -20,6 +20,7 @@ import {
   seedPricingForTenant,
   type GeneratedProduct,
 } from './pricing-seed';
+import { seedCatalogForTenant } from './catalog-seed';
 
 /**
  * Hero-feature seed. Bulk-indexes products per tenant via the live indexer's
@@ -47,6 +48,7 @@ async function seedTenant(
   batchTimings: number[];
   productCount: number;
   generated: GeneratedProduct[];
+  definitions: AttributeDefinition[];
 }> {
   const defs: AttributeDefinition[] = fixture.attributes.map((spec) =>
     toAttributeDefinition(fixture.tenantId, spec, randomUUID()),
@@ -72,6 +74,7 @@ async function seedTenant(
         sku: product.sku,
         name: product.name,
         priceCents: priceCentsFor(product),
+        attributes: product.attributes,
       });
     }
     const startedAt = process.hrtime.bigint();
@@ -90,7 +93,7 @@ async function seedTenant(
   }
   process.stdout.write('\n');
   await idx.refresh();
-  return { batchTimings, productCount: inserted, generated };
+  return { batchTimings, productCount: inserted, generated, definitions: defs };
 }
 
 /**
@@ -183,15 +186,17 @@ async function main(): Promise<void> {
   const startedAt = process.hrtime.bigint();
   const allBatchTimings: number[] = [];
   const generatedByTenant = new Map<string, GeneratedProduct[]>();
+  const definitionsByTenant = new Map<string, AttributeDefinition[]>();
   for (const fixture of fixtures) {
     const t0 = process.hrtime.bigint();
-    const { batchTimings, generated } = await seedTenant(fixture, tenantClient);
+    const { batchTimings, generated, definitions } = await seedTenant(fixture, tenantClient);
     const elapsed = elapsedMs(t0);
     console.log(
       `  ${fixture.tenantId}: ${fixture.productCount.toLocaleString()} indexed in ${(elapsed / 1000).toFixed(1)}s (index: ${indexNameFor(fixture.tenantId)})`,
     );
     allBatchTimings.push(...batchTimings);
     generatedByTenant.set(fixture.tenantId, generated);
+    definitionsByTenant.set(fixture.tenantId, definitions);
   }
   const totalElapsed = elapsedMs(startedAt) / 1000;
   const bulk = percentiles(allBatchTimings);
@@ -202,9 +207,29 @@ async function main(): Promise<void> {
     `  bulk batch (size=${BULK_SIZE}): p50=${bulk.p50}ms p95=${bulk.p95}ms p99=${bulk.p99}ms max=${bulk.max}ms\n`,
   );
 
-  console.log('pricing: writing tenant_config, prices, promotions to Postgres');
   const sqlClient = createSeedSqlClient(DATABASE_URL);
   try {
+    // Catalog first: Postgres is the canonical product store, and attribute
+    // definitions must exist before products that reference them (the live
+    // API's validator enforces the same ordering).
+    console.log('catalog: writing attribute_definitions, products to Postgres');
+    for (const fixture of fixtures) {
+      const products = generatedByTenant.get(fixture.tenantId) ?? [];
+      const definitions = definitionsByTenant.get(fixture.tenantId) ?? [];
+      const summary = await seedCatalogForTenant(
+        fixture.tenantId,
+        definitions,
+        products,
+        sqlClient,
+      );
+      console.log(
+        `  ${summary.tenantId.padEnd(15)} attrs=${summary.attributeDefinitions}  ` +
+          `products=${summary.productsInserted.toLocaleString()}`,
+      );
+    }
+    console.log('');
+
+    console.log('pricing: writing tenant_config, prices, promotions to Postgres');
     for (const fixture of fixtures) {
       const products = generatedByTenant.get(fixture.tenantId) ?? [];
       const summary = await seedPricingForTenant(fixture, products, sqlClient);

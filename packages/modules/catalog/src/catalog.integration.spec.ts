@@ -1,8 +1,15 @@
 /**
  * Integration tests for the catalog repositories + services against a real
  * Postgres. Set TEST_DATABASE_URL to opt in; otherwise skipped (so the unit
- * suite is still runnable without Docker). CI runs Postgres as a service
- * container and exports TEST_DATABASE_URL so this suite runs there.
+ * suite is still runnable without Docker).
+ *
+ * CI does NOT run these today — .github/workflows/ci.yml declares no service
+ * containers, so TEST_DATABASE_URL is unset there and this suite skips. That
+ * is a real gap, tracked in docs/CAVEATS.md; it is also why this file rotted
+ * undetected when ProductsService gained a constructor argument.
+ *
+ * Destructive: drops and re-applies the catalog schema on every run. Re-seed
+ * before demoing anything against the same database.
  *
  * After step 3, RLS is enabled on the catalog tables. Every service call must
  * run inside withTenantConnection() — that's what binds app.tenant_id to the
@@ -12,6 +19,8 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import postgres, { type Sql } from 'postgres';
 import { EventBus } from '@platform/shared/event-bus';
+import { HookRegistry } from '@platform/shared/hooks';
+import { runWithTenant } from '@platform/shared/tenant-context';
 import {
   MigrationRunner,
   tenantDrizzleAccessor,
@@ -33,8 +42,17 @@ describeIfDb('catalog integration', () => {
   let productsService: ProductsService;
   let bus: EventBus;
 
+  /**
+   * Binds both halves of a tenant-scoped request: the ALS context the
+   * services read (`currentTenantOrThrow`, and what events are stamped with)
+   * and the reserved Postgres connection RLS predicates evaluate against. The
+   * api's middleware chain does exactly this pairing — binding only one here
+   * would test a state the running system never reaches.
+   */
   const asT = <T>(tenantId: string, fn: () => Promise<T>): Promise<T> =>
-    withTenantConnection(sql, tenantId, fn);
+    runWithTenant({ tenantId, requestId: randomUUID() }, () =>
+      withTenantConnection(sql, tenantId, fn),
+    );
 
   beforeAll(async () => {
     sql = postgres(TEST_URL as string, { max: 4 });
@@ -48,7 +66,7 @@ describeIfDb('catalog integration', () => {
     defsService = new AttributeDefinitionsService(defsRepo, bus);
     const productsRepo = new ProductsRepository(tenantDrizzleAccessor);
     const validator = new AttributeValidator(defsRepo);
-    productsService = new ProductsService(productsRepo, validator, bus);
+    productsService = new ProductsService(productsRepo, validator, bus, new HookRegistry());
   });
 
   afterAll(async () => {

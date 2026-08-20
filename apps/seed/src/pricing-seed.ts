@@ -6,6 +6,9 @@ export interface GeneratedProduct {
   readonly sku: string;
   readonly name: string;
   readonly priceCents: number;
+  /** Custom attribute values, carried so the catalog seed can write the
+   *  canonical Postgres row. Pricing itself only needs id + priceCents. */
+  readonly attributes: Record<string, unknown>;
 }
 
 export interface PricingSeedSummary {

@@ -57,7 +57,7 @@ The API MVP (steps 1–6) is **complete**. Active work begins at step 7.
 4. ✅ Search hero feature — faceted, custom-attribute-aware, seeded at volume, latency metrics
 5. ✅ Pricing + throwaway cart, then orders (transactional core)
 6. ✅ Cross-cutting: security, customizability hooks, observability, docs
-7. **🚧 Storefront (the C-grade independent deliverable):**
+7. ✅ **Storefront (the independent second deliverable):**
    - 7a. Storefront app skeleton: Next.js + Tailwind + shadcn, GraphQL Codegen wired to the API schema, tenant resolution from hostname, theme loader, ESLint boundary forbidding non-`api-client` imports
    - 7b. Catalog browse: category and product-list pages with ISR; faceted search UI driven by the hero search feature
    - 7c. Product detail page: variants, custom attributes, price, add-to-cart
@@ -65,6 +65,13 @@ The API MVP (steps 1–6) is **complete**. Active work begins at step 7.
    - 7e. ISR event integration: back-office change → revalidation webhook → page rebuild; demo this end-to-end
    - 7f. Theming polish: at least two distinct tenant themes to demonstrate per-tenant skinning
    - 7g. Documentation: storefront architecture doc, deployment guide, and a 2–3 minute Loom walkthrough as the non-technical-audience pitch artifact
+8. **🚧 Consolidation — make every claim the repo makes hold:**
+   - 8a. ✅ Credibility pass: seed writes `catalog.products` + attribute definitions (the README's RLS proof counted an empty table before), storefront Dockerfile + compose service, production CSP via per-request nonce, storefront↔API contract-conformance tests, doc reconciliation, LICENSE
+   - 8b. CI that actually verifies + close the event loop: service containers so the integration suites stop skipping (they rotted undetected for several commits behind green CI); pricing domain events → revalidation → PDP price freshness; webhook outbox with retry instead of fire-and-forget
+   - 8c. API-as-product: capability-advertisement endpoint (the api can't currently describe its own locales/currency/features to a consumer it didn't ship with); extract `modules/branding/` out of `pricing.tenant_config`
+   - 8d. Ship the story: `v0.1.0` tag, CI badge, screenshots, record the Loom, repo description + topics, cold clone-and-run of the README
+
+**The rule for step 8:** a claim in a doc, README, or ADR is part of the product. Fixing the claim to match reality counts as much as fixing the code — but where they disagree, the code is the contract and the doc is the bug.
 
 ## Out of scope — do not build (document as "designed, not built" if relevant)
 Back-office admin UI, CMS, MDM, job scheduler portal, omni-channel breadth, actual microservices deployment, Kubernetes cluster (write manifests, don't deploy).
@@ -84,6 +91,8 @@ Back-office admin UI, CMS, MDM, job scheduler portal, omni-channel breadth, actu
 - `pnpm nx serve storefront` — run the storefront locally (against local api)
 - `pnpm nx codegen` — regenerate `packages/api-client/` from the live API schema
 - `docker compose up` — full local stack (Postgres, Redis, OpenSearch, api, storefront)
+- `docker compose up api` — the api without the storefront; proves the api ships alone
+- `TEST_API_URL=http://localhost:3000 pnpm nx test storefront` — storefront↔API contract conformance
 - `pnpm nx test <module>` — test one module
 - `pnpm nx lint` — lint incl. boundary enforcement
 - `pnpm nx run-many -t build` — build all

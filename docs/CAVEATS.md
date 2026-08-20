@@ -8,12 +8,6 @@ Every item has a **status**: *by design* (intentional, see linked ADR), *scoped 
 
 ## Storefront
 
-### CSP in production breaks hydration
-- **Status:** open.
-- **What:** [next.config.mjs](../apps/storefront/next.config.mjs) sets `script-src 'self'` in production. Next.js 14 streams the RSC payload and React hydration data via inline `<script>` blocks; a strict prod CSP blocks them.
-- **Impact:** a production build today renders static HTML but never hydrates. No interactivity. We added `'unsafe-inline'` in dev only.
-- **Fix:** per-request nonce in `middleware.ts` (`crypto.randomUUID()`), attach via Next's `<Script nonce={nonce}>` for the framework's own inline scripts, reference as `'nonce-<value>'` in CSP. Required before any production deploy.
-
 ### Webhook revalidation is fire-and-forget
 - **Status:** open with a fallback.
 - **What:** [storefront-webhook.module.ts](../apps/api/src/storefront-webhook.module.ts) POSTs to the storefront with a 5s timeout. A failed POST is logged but not retried.
@@ -29,7 +23,7 @@ Every item has a **status**: *by design* (intentional, see linked ADR), *scoped 
 ### Hand-mirrored REST types in api-client
 - **Status:** open; fix designed.
 - **What:** [packages/api-client/src/rest.ts](../packages/api-client/src/rest.ts) duplicates Cart, Order, ComputedTotals, etc. from each module's internal contracts package. The duplication is intentional ([ADR-0010](adr/0010-storefront-sellable-separately.md) explains why api-client is the public boundary), but the mirror is hand-written today.
-- **Impact:** if a module's contract evolves, the api-client type can drift silently. The full purchase-flow integration test catches structural mismatch but not e.g. a field that became optional.
+- **Impact:** if a module's contract evolves, the api-client type can drift. [contract.integration.spec.ts](../apps/storefront/src/contract.integration.spec.ts) closes most of the hole — it drives a real cart through checkout and asserts the *exact* key set of `Cart` and `Order`, so a field added or removed on either side fails the run. What it still can't see is a field that became optional, or one whose meaning changed while its name and type stayed put.
 - **Fix:** promote every DTO to a Nest class decorated with `@ApiProperty` so `@nestjs/swagger` emits real body schemas, then auto-generate the api-client REST types with `openapi-typescript`. The mirror retires; CI runs the generator and fails on drift.
 
 ### No customer auth — order reads go through admin endpoint
@@ -37,12 +31,6 @@ Every item has a **status**: *by design* (intentional, see linked ADR), *scoped 
 - **What:** [/orders/[id]](../apps/storefront/src/app/orders/[id]/page.tsx) reads via `GET /admin/orders/:id`. There's no `/storefront/orders/:id` and no per-customer scoping.
 - **Impact:** any browser knowing an order id (which is a uuid v4) can fetch any other customer's order in that tenant. Not a real-world threat for a demo; not acceptable for production.
 - **Fix:** customer JWT auth at the gateway (per ADR-0007), a `customers` table tying orders to a customer id, a `/storefront/orders/:id` endpoint that verifies `order.customer_id === current_customer.id` before returning. The api would also drop `/admin/orders/:id` from storefront use.
-
-### shadcn/ui not integrated
-- **Status:** open.
-- **What:** the storefront uses plain Tailwind utilities. shadcn/ui (and Radix primitives under it) is the modern norm and listed in the stack but not wired.
-- **Impact:** components reinvent the wheel for accessibility (focus rings, ARIA), and theming variability is limited.
-- **Fix:** `pnpm dlx shadcn-ui@latest init`, replace `Button`, `Card`, `Input`, `Sheet` (for mobile cart drawer) in tranches. No architectural change.
 
 ### Storefront dev secret is checked in
 - **Status:** open; only a dev concern.
@@ -54,19 +42,12 @@ Every item has a **status**: *by design* (intentional, see linked ADR), *scoped 
 
 ## Catalog
 
-### Seed only populates OpenSearch, not catalog.products
-- **Status:** open.
-- **What:** [apps/seed](../apps/seed) writes 99k products straight to the per-tenant OS indices; `catalog.products` in Postgres stays empty until you `POST /admin/products`.
-- **Impact:**
-  - README verification #2 (RLS killshot against `catalog.products`) returns 0 rows for both bound and unbound queries. We worked around it by using `pricing.prices` instead.
-  - The seed flow doesn't demonstrate the catalog write-path end-to-end.
-- **Fix:** extend `apps/seed` to also write to `catalog.products` via the api's `/admin/products` endpoint (slow but realistic) or bulk-insert via the repository (fast). Plus seed attribute definitions first so the products carry real custom attributes through Postgres validation.
-
-### Attribute definitions are not seeded
-- **Status:** open, follows from the above.
-- **What:** `catalog.attribute_definitions` is empty per tenant. POSTing `/admin/products` with attributes fails validation (`"unknown attribute 'color' for this tenant"`).
-- **Impact:** creating a product via the API requires you to first `POST /admin/attribute-definitions` for each attribute. The seed should do this.
-- **Fix:** seed step that defines `brand`, `color`, `size`, `price`, `in_stock`, `released_on` (and tenant-specific extras: `voltage` for electronics, `pages` for books) before product creation.
+### The seed bypasses the API's write path
+- **Status:** open; deliberate trade-off.
+- **What:** [apps/seed](../apps/seed) writes attribute definitions and products straight to Postgres via `postgres-js` and straight to OpenSearch via the indexer's own transforms. It does not `POST /admin/products`.
+- **Impact:** the seed exercises the storage layers but not the HTTP write path, so it wouldn't catch a controller-level regression — a broken `POST /admin/products` would still leave a fully-populated demo. Attribute *validation* in particular is never run against seeded data.
+- **Fix:** an opt-in `SEED_VIA_API=1` mode that routes a small slice (say 500 products per tenant) through the real endpoints while the bulk path stays direct. Full HTTP seeding of 99k products would take minutes instead of seconds, which is why it isn't the default.
+- **Note:** the seed *does* bind `app.tenant_id` per connection, so it gets no RLS exemption — a policy that blocks the api blocks the seed too.
 
 ---
 
@@ -128,6 +109,24 @@ Every item has a **status**: *by design* (intentional, see linked ADR), *scoped 
 
 ## Architecture
 
+### CI never runs the integration tests
+- **Status:** open. This is the highest-value item on the list.
+- **What:** [ci.yml](../.github/workflows/ci.yml) runs `lint test build` with no service containers, so `TEST_DATABASE_URL` / `TEST_REDIS_URL` / `TEST_OPENSEARCH_URL` are unset and every integration suite skips. Green CI therefore means "the unit tests pass and it compiles", not "the platform works".
+- **Impact:** proven, not theoretical. `catalog.integration.spec.ts` and `checkout.integration.spec.ts` stopped compiling when `ProductsService` and `CheckoutService` gained a `HookRegistry` constructor argument, and both then stopped binding the ALS tenant context the services had started requiring. Nothing noticed for several commits. The suites that prove RLS isolation, snapshot integrity, promotion races and idempotency — the load-bearing claims of the whole project — were dead the entire time while CI stayed green.
+- **Fix:** add `services:` for Postgres, Redis and OpenSearch to the workflow and export the three env vars. Postgres needs the `platform` role created by [docker/postgres/init](../docker/postgres/init/01-platform-role.sql), so the service container needs that init script mounted or applied as a step. The storefront conformance suite needs a *seeded* api and so belongs in a separate job that runs `pnpm seed` first, since the module suites drop the schemas.
+
+### Integration suites are destructive to seeded data
+- **Status:** by design, but sharp-edged.
+- **What:** the module integration suites `DROP SCHEMA ... CASCADE` for `catalog`, `pricing` and `orders` to get a clean slate.
+- **Impact:** running the full test suite against the same database you demo from silently empties it. The storefront then renders products with no prices, and checkout fails.
+- **Mitigation today:** documented in the README's command block, and the storefront conformance suite fails fast with an explicit "run `pnpm seed`" message rather than a confusing assertion. A dedicated test database would remove the foot-gun entirely.
+
+### The module boundary has a hole for relative imports
+- **Status:** open.
+- **What:** the ESLint boundary rule keys on Nx project tags, which catches `@platform/modules/x/src` imports. It does not catch a deep relative path — [checkout.integration.spec.ts](../packages/modules/orders/src/checkout.integration.spec.ts) reaches into `../../cart/src/cart.repository` and `../../pricing/src/...` and lints clean.
+- **Impact:** the "never import another module's `src/`" rule is enforced for the shape people usually write, not for every shape. In this instance it is a test wiring several modules together the way the composition root does, which is defensible — but the rule isn't actually holding the line, and nothing would stop production code doing the same.
+- **Fix:** add an `no-restricted-imports` pattern banning `../../*/src/*` across `packages/modules/**`, then either move the cross-module test wiring into a composition-root-level test project or have it import through each module's public contracts.
+
 ### In-process event bus, not a real broker
 - **Status:** by design.
 - **What:** [@platform/shared/event-bus](../packages/shared/event-bus/src/event-bus.ts) dispatches via `queueMicrotask` in the same process. No durability, no retry, no fan-out across processes.
@@ -152,12 +151,11 @@ Every item has a **status**: *by design* (intentional, see linked ADR), *scoped 
 
 Items tracked in the pre-demo checklist (in user memory). They don't affect platform capability:
 
-- No `LICENSE` file (README references one).
 - GitHub repo description + topics empty.
-- README's RLS killshot points at `catalog.products` (empty by default) — should use `pricing.prices`.
 - No `v0.1.0` git tag.
 - No CI status badge.
-- No screencast or screenshots.
+- No screencast or screenshots; [LOOM-SCRIPT.md](LOOM-SCRIPT.md) is written but nothing is recorded.
+- The README's 60-second tour has never been run from a cold clone.
 
 ---
 

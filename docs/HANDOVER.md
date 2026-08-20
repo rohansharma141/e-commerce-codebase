@@ -13,9 +13,12 @@ A modular-monolith commerce platform with five processes orchestrated by Docker 
 | Service     | Port | Role                                                       |
 |-------------|------|------------------------------------------------------------|
 | api         | 3000 | NestJS app — REST + GraphQL surface                        |
+| storefront  | 3001 | Next.js storefront — a separate deployable, own image      |
 | postgres    | 5432 | Orders, tenancy, money, pricing; row-level security on     |
 | redis       | 6379 | Carts, sessions, rate-limit counters                       |
 | opensearch  | 9200 | Faceted product search (per-tenant indices)                |
+
+The storefront is optional: `docker compose up api` runs the platform without it, which is the packaging claim made real — the api is a complete product on its own.
 
 Every tenant-scoped HTTP call must send an `x-tenant-id` header. The seed creates three tenants: **t-fashion**, **t-electronics**, **t-books**.
 
@@ -53,11 +56,23 @@ pnpm seed
 When the seed finishes you should see something like:
 
 ```
-seed: indexed 99,000 products in ~10s
+seed: indexed 99,000 products in 12.5s
+  bulk batch (size=500): p50=32ms p95=141ms p99=368ms max=483ms
+
+catalog: writing attribute_definitions, products to Postgres
+  t-fashion       attrs=6  products=33,000
+  t-electronics   attrs=6  products=33,000
+  t-books         attrs=6  products=33,000
+
+pricing: writing tenant_config, prices, promotions to Postgres
+  t-fashion       USD tax=8.75%  prices=33,000  promos=2
+  t-electronics   USD tax=7.25%  prices=33,000  promos=2
+  t-books         USD tax=0.00%  prices=33,000  promos=1
+
 post-seed search: 200 random queries per tenant
-  t-fashion       p50=5ms  p95=12ms  p99=26ms
-  t-electronics   p50=5ms  p95=8ms   p99=16ms
-  t-books         p50=2ms  p95=4ms   p99=8ms
+  t-fashion       p50=6ms  p95=15ms  p99=26ms  avg=8.4ms
+  t-electronics   p50=5ms  p95=7ms   p99=14ms  avg=5.0ms
+  t-books         p50=4ms  p95=5ms   p99=6ms   avg=3.5ms
 seed: done.
 ```
 
@@ -255,7 +270,7 @@ To switch tenants, change `tenantId` to `t-electronics` or `t-books`. Click **Sa
   }
   ```
 
-- Expected: `200 OK`, body shows the cart with one line.
+- Expected: `201 Created`, body shows the cart with one line. (The route has no `@HttpCode` override, so Nest's POST default applies.)
 
 **Step C — GET /storefront/carts/:id — fetch with totals**
 
@@ -333,12 +348,11 @@ Valid tenant id shape: `[a-zA-Z0-9._-]{1,64}`.
 
 ### 8.3 Catalog vs search
 
-The seed indexes products **directly into OpenSearch**. It does **not** populate `catalog.products` in Postgres. So:
+The seed writes to both stores: 33,000 rows into `catalog.products` plus the tenant's six `catalog.attribute_definitions` in Postgres, and the same 33,000 documents into the tenant's OpenSearch index. Postgres is the canonical store; OpenSearch is the queryable projection of it.
 
-- Search queries (GraphQL `search`) return ~33,000 products per tenant.
-- `GET /admin/products` returns 0 results until you `POST /admin/products` yourself.
+It writes to each store directly rather than going through `POST /admin/products` — 99,000 HTTP round-trips would turn a 15-second seed into a multi-minute one. The transforms used are the same code paths the live api runs, and the Postgres writes bind `app.tenant_id` exactly as a real request does, so RLS applies to the seed as well.
 
-If you create a product through `POST /admin/products` it goes into both Postgres and OpenSearch.
+If you create a product through `POST /admin/products`, it goes into Postgres and is then indexed into OpenSearch by the event-driven indexer.
 
 ### 8.4 Money is stored in integer cents
 
