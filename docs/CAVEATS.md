@@ -94,6 +94,16 @@ Every item has a **status**: *by design* (intentional, see linked ADR), *scoped 
 
 ---
 
+## API surface
+
+### The API cannot describe itself to a consumer it didn't ship with
+- **Status:** open.
+- **What:** the public surface exposes catalog, search, pricing, cart and orders, but nothing that advertises the platform's *own* configuration — supported locales, currency, tax display behaviour, which optional capabilities a given tenant has enabled. A consumer has to be told all of it out of band.
+- **Impact:** our storefront papers over this by hardcoding what it needs, which only works because one author wrote both sides. Any consumer we didn't write — a customer's own frontend, a mobile client, a partner integration — has no way to discover what a tenant supports, and has to be hand-configured per deployment. For a headless API sold as a standalone product, self-description is table stakes, and its absence undercuts the "complete product on its own" claim more than any missing feature does.
+- **Fix:** a `Query.capabilities` resolver (or `GET /storefront/config`) returning per-tenant locales, currency, tax display mode, and a feature map, sourced from the tenant config that already exists. Small, additive, no new storage. Worth doing regardless of who the second consumer turns out to be.
+
+---
+
 ## Operations / Security
 
 ### Tenant id IS the trust on the api
