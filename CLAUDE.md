@@ -67,7 +67,7 @@ The API MVP (steps 1–6) is **complete**. Active work begins at step 7.
    - 7g. Documentation: storefront architecture doc, deployment guide, and a 2–3 minute Loom walkthrough as the non-technical-audience pitch artifact
 8. **🚧 Consolidation — make every claim the repo makes hold:**
    - 8a. ✅ Credibility pass: seed writes `catalog.products` + attribute definitions (the README's RLS proof counted an empty table before), storefront Dockerfile + compose service, production CSP via per-request nonce, storefront↔API contract-conformance tests, doc reconciliation, LICENSE
-   - 8b. CI that actually verifies + close the event loop: service containers so the integration suites stop skipping (they rotted undetected for several commits behind green CI); pricing domain events → revalidation → PDP price freshness; webhook outbox with retry instead of fire-and-forget
+   - 8b. ✅ CI that actually verifies + close the event loop: backing services in CI so the integration suites stop skipping (they rotted undetected for several commits behind green CI); pricing domain events; `search.product.indexed` so cache invalidation follows the read model rather than racing it; webhook outbox with exponential-backoff retry instead of fire-and-forget. *(CI itself is unproven until its first run on GitHub.)*
    - 8c. API-as-product: capability-advertisement endpoint (the api can't currently describe its own locales/currency/features to a consumer it didn't ship with); extract `modules/branding/` out of `pricing.tenant_config`
    - 8d. Ship the story: `v0.1.0` tag, CI badge, screenshots, record the Loom, repo description + topics, cold clone-and-run of the README
 

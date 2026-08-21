@@ -1,8 +1,11 @@
+import { randomUUID } from 'node:crypto';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import type {
-  CreatePromotionDto,
-  Promotion,
-  UpdatePromotionDto,
+import { EventBus } from '@platform/shared/event-bus';
+import {
+  PRICING_EVENTS,
+  type CreatePromotionDto,
+  type Promotion,
+  type UpdatePromotionDto,
 } from '@platform/modules/pricing/contracts';
 import { PromotionsRepository } from './promotions.repository';
 
@@ -10,7 +13,10 @@ const CODE_PATTERN = /^[A-Z0-9_-]{3,32}$/;
 
 @Injectable()
 export class PromotionsService {
-  constructor(private readonly repo: PromotionsRepository) {}
+  constructor(
+    private readonly repo: PromotionsRepository,
+    private readonly events: EventBus,
+  ) {}
 
   async create(tenantId: string, dto: CreatePromotionDto): Promise<Promotion> {
     if (dto.kind !== 'coupon-code' && dto.kind !== 'automatic') {
@@ -26,7 +32,7 @@ export class PromotionsService {
     validateCondition(dto);
     validateAction(dto);
 
-    return this.repo.insert({
+    const promotion = await this.repo.insert({
       tenantId,
       kind: dto.kind,
       code: dto.kind === 'coupon-code' ? dto.code ?? null : null,
@@ -36,6 +42,16 @@ export class PromotionsService {
       maxUses: dto.maxUses ?? null,
       active: dto.active ?? true,
     });
+
+    await this.events.publish({
+      name: PRICING_EVENTS.PromotionCreated,
+      eventId: randomUUID(),
+      occurredAt: new Date().toISOString(),
+      tenantId,
+      payload: { promotion } as never,
+    });
+
+    return promotion;
   }
 
   async list(tenantId: string): Promise<readonly Promotion[]> {
@@ -50,6 +66,15 @@ export class PromotionsService {
       action: dto.action,
     });
     if (!updated) throw new NotFoundException();
+
+    await this.events.publish({
+      name: PRICING_EVENTS.PromotionUpdated,
+      eventId: randomUUID(),
+      occurredAt: new Date().toISOString(),
+      tenantId,
+      payload: { promotion: updated } as never,
+    });
+
     return updated;
   }
 }

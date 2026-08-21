@@ -86,7 +86,7 @@ describeIf('orders checkout integration', () => {
 
     bus = new EventBus();
     const tenantConfigRepo = new TenantConfigRepository(tenantDrizzleAccessor);
-    tenantConfigService = new TenantConfigService(tenantConfigRepo);
+    tenantConfigService = new TenantConfigService(tenantConfigRepo, bus);
     pricesRepo = new PricesRepository(tenantDrizzleAccessor);
     promotionsRepo = new PromotionsRepository(tenantDrizzleAccessor);
     const totalsService = new TotalsService(tenantConfigService, pricesRepo, promotionsRepo);

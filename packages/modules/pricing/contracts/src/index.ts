@@ -1,4 +1,5 @@
 export * from './money';
+export * from './events';
 export * from './price.dto';
 export * from './tax.dto';
 export * from './theme.dto';

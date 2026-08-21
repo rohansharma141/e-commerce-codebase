@@ -5,6 +5,7 @@ import { APP_INTERCEPTOR } from '@nestjs/core';
 import { DatabaseModule, MIGRATION_RUNNER, type MigrationRunner } from '@platform/shared/database';
 import { AuditLogInterceptor } from './audit-log.interceptor';
 import { AuditLogRepository } from './audit-log.repository';
+import { WebhookOutboxRepository } from './webhook-outbox.repository';
 import { PlatformThrottlerModule } from './throttler.module';
 
 export const AUDIT_SCHEMA_NAME = 'audit';
@@ -26,10 +27,11 @@ function migrationsDir(): string {
   imports: [DatabaseModule, PlatformThrottlerModule],
   providers: [
     AuditLogRepository,
+    WebhookOutboxRepository,
     AuditLogInterceptor,
     { provide: APP_INTERCEPTOR, useExisting: AuditLogInterceptor },
   ],
-  exports: [AuditLogRepository],
+  exports: [AuditLogRepository, WebhookOutboxRepository],
 })
 export class SecurityModule implements OnModuleInit {
   private readonly logger = new Logger(SecurityModule.name);

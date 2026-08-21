@@ -8,11 +8,11 @@ Every item has a **status**: *by design* (intentional, see linked ADR), *scoped 
 
 ## Storefront
 
-### Webhook revalidation is fire-and-forget
-- **Status:** open with a fallback.
-- **What:** [storefront-webhook.module.ts](../apps/api/src/storefront-webhook.module.ts) POSTs to the storefront with a 5s timeout. A failed POST is logged but not retried.
-- **Impact:** if the storefront's `/api/revalidate` is briefly unreachable when a catalog event fires, the affected page stays stale until the 1-hour `revalidate` fallback (set in `api-graphql.ts`).
-- **Fix path:** persistent outbox table on the api side (`audit.webhook_outbox`), a periodic worker that retries with exponential backoff, idempotency on the storefront side keyed by `eventId`. The outbox pattern is also what unlocks moving to a real broker later (ADR-0001).
+### Webhook delivery gives up after six attempts
+- **Status:** by design, but know where the edge is.
+- **What:** deliveries go through the `audit.webhook_outbox` table and a polling worker that retries with exponential backoff — 2s doubling to a 5-minute cap, six attempts, roughly two minutes of total patience. After that the row is marked delivered with the failure preserved in `last_error`.
+- **Impact:** a storefront down for longer than that keeps whatever it had cached until the one-hour time-based fallback expires. The change is not lost silently — there is a queryable row saying which webhook never landed and why — but nothing re-drives it automatically.
+- **Fix:** a dead-letter sweep that re-queues exhausted rows, or a startup reconciliation on the storefront side that drops its cache wholesale after downtime. Neither is worth building before there is an operator to act on it.
 
 ### Cache tags are coarse for browse pages
 - **Status:** open.
@@ -59,19 +59,12 @@ Every item has a **status**: *by design* (intentional, see linked ADR), *scoped 
 - **Impact:** pricing now imports a concern (branding) that isn't pricing. The storefront-facing graph IS still separated (`Query.theme` is a different resolver from the admin tenant-config endpoints, so no tax/currency leakage), but the module ownership is muddled.
 - **Fix:** extract a `modules/branding/` module that owns the theme column (or its own table), with its own contracts package and resolver. Storage migrates with a `CREATE TABLE branding.theme AS SELECT tenant_id, theme FROM pricing.tenant_config WHERE theme IS NOT NULL` and a drop of the column. The resolver shape stays the same — storefront doesn't notice.
 
-### No domain events emitted from the pricing module
-- **Status:** open.
-- **What:** [packages/modules/pricing/src](../packages/modules/pricing/src) mutations (upsert price, set tenant config, create/update promotion) don't publish events to the bus. Only the catalog module does.
-- **Impact:**
-  - The storefront's revalidation pipeline doesn't fire on a price or promotion change. The PDP today reads price from the OpenSearch index, so a price change won't update the displayed price until a catalog reindex happens.
-  - Auditability is partial — the audit log captures the HTTP mutation but other modules can't react to pricing changes.
-- **Fix:** add `PRICING_EVENTS = { PriceUpserted, PromotionCreated, PromotionUpdated, TenantConfigUpdated }` to pricing/contracts, publish from the services, wire the storefront-webhook dispatcher to invalidate `product:<tenant>:<id>` on `pricing.price.upserted`. Mirrors the catalog pattern exactly.
-
-### PDP price comes from OpenSearch, not Postgres
-- **Status:** open; consequence of the above.
-- **What:** the PDP displays `attributes.price` which is a denormalised copy in the search index, not the canonical `pricing.prices` row.
-- **Impact:** a price change via `POST /admin/prices` updates Postgres immediately, but the storefront sees the old price until the search index is reindexed (which today happens on `catalog.product.updated`, not on pricing events).
-- **Fix:** the GraphQL `Query.product` resolver joins pricing in (currently it just returns the OS hit). Or the search indexer subscribes to pricing events and updates the index. Either is a real lift.
+### Price is denormalised into the search index
+- **Status:** by design; kept honest by events.
+- **What:** the canonical price is the `pricing.prices` row. The PDP and browse cards read `attributes.price` from the OpenSearch document, which is a copy. `pricing.price.upserted` drives the search indexer to patch that copy, and the storefront's cache is invalidated only once the patched document is readable, so the copy converges within a second or so of the write.
+- **Impact:** the copy is eventually consistent, not transactionally consistent. A read taken in the gap sees the old price. This is fine for display, and deliberately not what checkout uses — totals are computed from `pricing.prices` inside the checkout transaction, so the price a customer is charged never comes from the index.
+- **Sharp edge:** the unit conversion is a trap. Pricing stores integer cents; the indexed attribute is in major units, because that is what the seed writes and what the price-range filter compares against. Anything else writing that field has to convert, and getting it wrong multiplies every displayed price by 100 while quietly breaking range filters.
+- **Fix if the gap ever matters:** have `Query.product` read price from pricing rather than the index. That costs a per-request cross-module read on the hottest storefront path, which is why it isn't the default.
 
 ---
 
@@ -109,11 +102,11 @@ Every item has a **status**: *by design* (intentional, see linked ADR), *scoped 
 
 ## Architecture
 
-### CI never runs the integration tests
-- **Status:** open. This is the highest-value item on the list.
-- **What:** [ci.yml](../.github/workflows/ci.yml) runs `lint test build` with no service containers, so `TEST_DATABASE_URL` / `TEST_REDIS_URL` / `TEST_OPENSEARCH_URL` are unset and every integration suite skips. Green CI therefore means "the unit tests pass and it compiles", not "the platform works".
-- **Impact:** proven, not theoretical. `catalog.integration.spec.ts` and `checkout.integration.spec.ts` stopped compiling when `ProductsService` and `CheckoutService` gained a `HookRegistry` constructor argument, and both then stopped binding the ALS tenant context the services had started requiring. Nothing noticed for several commits. The suites that prove RLS isolation, snapshot integrity, promotion races and idempotency — the load-bearing claims of the whole project — were dead the entire time while CI stayed green.
-- **Fix:** add `services:` for Postgres, Redis and OpenSearch to the workflow and export the three env vars. Postgres needs the `platform` role created by [docker/postgres/init](../docker/postgres/init/01-platform-role.sql), so the service container needs that init script mounted or applied as a step. The storefront conformance suite needs a *seeded* api and so belongs in a separate job that runs `pnpm seed` first, since the module suites drop the schemas.
+### CI runs the integration tests, but has never been observed doing it
+- **Status:** open until the first green run on GitHub.
+- **What:** [ci.yml](../.github/workflows/ci.yml) now stands the backing services up from this repo's own `docker-compose.yml` and exports `TEST_DATABASE_URL` / `TEST_REDIS_URL` / `TEST_OPENSEARCH_URL`, with a second job that seeds an api and runs the storefront conformance suite. Compose is used rather than GitHub service containers on purpose: the compose file mounts the init script that creates the non-superuser `platform` role, and RLS only bites for a role without BYPASSRLS — a plain `postgres:` service would run the isolation tests as a superuser and pass them vacuously.
+- **Why it matters:** for several commits this workflow had no services at all, so every integration suite skipped. `catalog.integration.spec.ts` and `checkout.integration.spec.ts` stopped compiling when their services gained a `HookRegistry` argument, then stopped binding the ALS tenant context — the suites proving RLS isolation, snapshot integrity, promotion races and idempotency were dead the whole time while CI stayed green.
+- **Remaining risk:** everything above is verified locally. The workflow itself has not run on a GitHub runner yet, so timing, memory limits for OpenSearch, and the compose-on-CI assumption are unproven. Treat the first push as the test.
 
 ### Integration suites are destructive to seeded data
 - **Status:** by design, but sharp-edged.

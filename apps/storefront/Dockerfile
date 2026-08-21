@@ -36,8 +36,17 @@ WORKDIR /app
 # Next traced as reachable. With outputFileTracingRoot set to the monorepo
 # root, the bundle keeps its workspace-relative layout, hence the nested path
 # in the CMD below.
-COPY --from=builder /workspace/apps/storefront/.next/standalone ./
-COPY --from=builder /workspace/apps/storefront/.next/static ./apps/storefront/.next/static
+COPY --from=builder --chown=node:node /workspace/apps/storefront/.next/standalone ./
+COPY --from=builder --chown=node:node /workspace/apps/storefront/.next/static ./apps/storefront/.next/static
+
+# The ISR cache is written at runtime, so it has to be writable by the user the
+# server runs as. Without this the container starts and serves pages, but every
+# prerender-cache write fails with EACCES and each request re-renders from
+# scratch — the cache the revalidation webhooks exist to invalidate never
+# exists. It fails silently in logs rather than crashing, which is what makes
+# it worth being explicit about.
+RUN mkdir -p /app/apps/storefront/.next/cache \
+    && chown -R node:node /app/apps/storefront/.next
 
 # Run as the image's unprivileged user rather than root.
 USER node

@@ -1,5 +1,10 @@
+import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { EventBus, IdempotencyTracker, type DomainEvent } from '@platform/shared/event-bus';
+import {
+  SEARCH_EVENTS,
+  type ProductIndexedPayload,
+} from '@platform/modules/search/contracts';
 import {
   CATALOG_EVENTS,
   type AttributeDefinitionCreatedPayload,
@@ -7,6 +12,10 @@ import {
   type ProductDeletedPayload,
   type ProductUpdatedPayload,
 } from '@platform/modules/catalog/contracts';
+import {
+  PRICING_EVENTS,
+  type PriceUpsertedPayload,
+} from '@platform/modules/pricing/contracts';
 import {
   TENANT_SEARCH_CLIENT,
   type TenantIndex,
@@ -65,7 +74,21 @@ export class ProductIndexerService implements OnModuleInit {
       CATALOG_EVENTS.ProductDeleted,
       (e) => this.handle(e, this.onProductDeleted),
     );
-    this.logger.log('indexer subscribed to catalog.*');
+    // Pricing owns the canonical price; the index carries a denormalised copy
+    // that browse, sort-by-price and the PDP all read. Without this
+    // subscription that copy only refreshed when the *catalog* next touched
+    // the product, so a price change through the admin API was invisible on
+    // the storefront until an unrelated edit happened to fix it.
+    //
+    // Subscribing here rather than having pricing write to OpenSearch keeps
+    // the direction of knowledge right: pricing announces that a price
+    // changed, and the module that owns the index decides what that means for
+    // a document. Pricing never learns the document's shape.
+    this.bus.subscribe<DomainEvent<string, PriceUpsertedPayload>>(
+      PRICING_EVENTS.PriceUpserted,
+      (e) => this.handle(e, this.onPriceUpserted),
+    );
+    this.logger.log('indexer subscribed to catalog.*, pricing.price.upserted');
   }
 
   /** Idempotency wrapper around every handler — see CLAUDE.md "events are network-strict". */
@@ -123,7 +146,8 @@ export class ProductIndexerService implements OnModuleInit {
   ): Promise<void> {
     const product = event.payload.product;
     const idx = await this.ensureIndex(product.tenantId);
-    await idx.indexDoc(product.id, productToDocument(product));
+    await idx.indexDoc(product.id, productToDocument(product), { refresh: 'wait_for' });
+    await this.announceIndexed(product.tenantId, product.id, 'created');
   }
 
   private async onProductUpdated(
@@ -131,7 +155,8 @@ export class ProductIndexerService implements OnModuleInit {
   ): Promise<void> {
     const product = event.payload.product;
     const idx = await this.ensureIndex(product.tenantId);
-    await idx.indexDoc(product.id, productToDocument(product));
+    await idx.indexDoc(product.id, productToDocument(product), { refresh: 'wait_for' });
+    await this.announceIndexed(product.tenantId, product.id, 'updated');
   }
 
   private async onProductDeleted(
@@ -139,6 +164,70 @@ export class ProductIndexerService implements OnModuleInit {
   ): Promise<void> {
     const product = event.payload.product;
     const idx = this.searchClient.forTenant(product.tenantId);
-    await idx.deleteDoc(product.id);
+    await idx.deleteDoc(product.id, { refresh: 'wait_for' });
+    await this.bus.publish({
+      name: SEARCH_EVENTS.ProductRemoved,
+      eventId: randomUUID(),
+      occurredAt: new Date().toISOString(),
+      tenantId: product.tenantId,
+      payload: {
+        tenantId: product.tenantId,
+        productId: product.id,
+      } as never,
+    });
+  }
+
+  /**
+   * Announce that the index now serves this product. Published only after the
+   * write is searchable, so anything that reacts by re-reading gets the new
+   * state rather than racing the write that caused it.
+   */
+  private async announceIndexed(
+    tenantId: string,
+    productId: string,
+    reason: ProductIndexedPayload['reason'],
+  ): Promise<void> {
+    await this.bus.publish({
+      name: SEARCH_EVENTS.ProductIndexed,
+      eventId: randomUUID(),
+      occurredAt: new Date().toISOString(),
+      tenantId,
+      payload: { tenantId, productId, reason } as never,
+    });
+  }
+
+  /**
+   * Patch the denormalised price on an already-indexed product.
+   *
+   * Unit conversion is the load-bearing detail. Pricing stores integer cents,
+   * because that is the only safe representation for money. The `price`
+   * attribute on a product document is a tenant-defined catalog attribute in
+   * major units — that is what the seed writes, what the range filter compares
+   * against, and what the storefront formats. Writing cents into that field
+   * would silently multiply every displayed price by 100 and quietly break
+   * every price-range filter.
+   */
+  private async onPriceUpserted(
+    event: DomainEvent<string, PriceUpsertedPayload>,
+  ): Promise<void> {
+    const price = event.payload.price;
+    const idx = this.searchClient.forTenant(price.tenantId);
+    const patched = await idx.updateDoc(
+      price.productId,
+      { [attributeFieldName('price')]: price.unitPriceCents / 100 },
+      { refresh: 'wait_for' },
+    );
+    if (!patched) {
+      // Priced before indexed — normal, and self-correcting: whenever the
+      // product is indexed it carries whatever price it has then.
+      this.logger.debug(
+        `price update skipped, no document yet: ${idx.indexName}/${price.productId}`,
+      );
+      return;
+    }
+    this.logger.log(
+      `price: ${idx.indexName}/${price.productId} → ${price.unitPriceCents} cents`,
+    );
+    await this.announceIndexed(price.tenantId, price.productId, 'price-changed');
   }
 }

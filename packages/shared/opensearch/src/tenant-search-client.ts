@@ -18,6 +18,17 @@ export interface BulkDoc {
   readonly source: Record<string, unknown>;
 }
 
+export interface WriteOptions {
+  /**
+   * `false` (default) returns as soon as the write is durable — it may not be
+   * searchable for up to a refresh interval. `'wait_for'` holds until it is.
+   * `true` forces an immediate refresh and is deliberately not used here: it
+   * is expensive under write load and 'wait_for' gives the same guarantee by
+   * riding the next scheduled refresh.
+   */
+  readonly refresh?: false | 'wait_for';
+}
+
 /**
  * Handle to a single tenant's OpenSearch index. Constructed via
  * TenantSearchClient.forTenant(); every method runs against this.indexName.
@@ -62,13 +73,61 @@ export class TenantIndex {
     });
   }
 
-  async indexDoc(id: string, doc: Record<string, unknown>): Promise<void> {
+  /**
+   * `refresh` controls when the write becomes visible to search. OpenSearch
+   * refreshes on its own about once a second, so `false` (the default) means
+   * "the write is durable but may not be searchable yet" — right for bulk
+   * loads, wrong for anything that announces itself afterwards.
+   *
+   * `'wait_for'` holds the call until the next refresh cycle. Single-document
+   * writes use it so that "indexed" genuinely means "readable", which is what
+   * lets downstream consumers re-read without racing.
+   */
+  async indexDoc(
+    id: string,
+    doc: Record<string, unknown>,
+    opts: WriteOptions = {},
+  ): Promise<void> {
     await this.os.index({
       index: this.indexName,
       id,
       body: doc,
-      refresh: false,
+      refresh: opts.refresh ?? false,
     });
+  }
+
+  /**
+   * Partial update of an existing document. Returns false when the document
+   * isn't there rather than throwing.
+   *
+   * Needed because some fields on a product document are owned by a module
+   * other than catalog — price being the first — and those owners must be able
+   * to correct their own field without holding the rest of the document. A
+   * full re-index from a price event would mean the pricing module having to
+   * know how to build a catalog document, which is precisely the coupling the
+   * event boundary exists to prevent.
+   *
+   * A missing document is a normal race, not an error: a price can be set for
+   * a product that hasn't been indexed yet. The subsequent catalog index will
+   * carry the current price anyway, so dropping the update is correct.
+   */
+  async updateDoc(
+    id: string,
+    partial: Record<string, unknown>,
+    opts: WriteOptions = {},
+  ): Promise<boolean> {
+    try {
+      await this.os.update({
+        index: this.indexName,
+        id,
+        body: { doc: partial },
+        refresh: opts.refresh ?? false,
+      });
+      return true;
+    } catch (err) {
+      if (isNotFound(err)) return false;
+      throw err;
+    }
   }
 
   async bulkIndex(docs: readonly BulkDoc[]): Promise<{ errors: boolean; took: number }> {
@@ -86,9 +145,13 @@ export class TenantIndex {
     };
   }
 
-  async deleteDoc(id: string): Promise<void> {
+  async deleteDoc(id: string, opts: WriteOptions = {}): Promise<void> {
     try {
-      await this.os.delete({ index: this.indexName, id, refresh: false });
+      await this.os.delete({
+        index: this.indexName,
+        id,
+        refresh: opts.refresh ?? false,
+      });
     } catch (err) {
       // 404 on delete is fine — the doc may have been deleted by a redelivery
       // or never indexed (eventually-consistent).

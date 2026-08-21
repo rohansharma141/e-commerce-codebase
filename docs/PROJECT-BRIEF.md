@@ -158,10 +158,13 @@ Work is organised as step 8, "make every claim the repo makes hold". Sub-step 8a
 - **The module suites destroy seeded data**, dropping the catalog, pricing and orders schemas. Running the full suite against the demo database silently empties it.
 - The ESLint module boundary doesn't catch deep relative imports (`../../cart/src/...`), so the "never import another module's `src/`" rule holds for the shape people usually write rather than universally.
 
+**Closed in 8b**
+- CI now stands up Postgres, Redis and OpenSearch from the repo's own compose file and runs the integration suites, with a second job that seeds an api and runs the storefront conformance suite. Unproven until its first run on a GitHub runner.
+- Pricing emits domain events; the search indexer patches the denormalised price and the storefront rebuilds the affected pages within about a second of an admin price change.
+- Cache invalidation now keys off `search.product.indexed` — published once the index write is readable — rather than the domain event, which was racing the indexer and could re-cache a stale render for an hour. That bug predated the pricing work and affected catalog edits too.
+- Webhook delivery goes through a transactional outbox with exponential-backoff retry. Verified by stopping the storefront, changing a price, and watching the delivery retry and land on recovery.
+
 **Open — architectural, with known fix paths**
-- **CI runs no integration tests.** The workflow has no Postgres/Redis/OpenSearch services, so every integration suite skips and the platform's load-bearing guarantees go unverified on every push. Adding the service containers is the single highest-value fix outstanding. (8b)
-- **Revalidation webhooks are fire-and-forget.** A failed POST is logged, not retried; the affected page stays stale until the one-hour fallback. The fix is a persistent outbox with a retry worker — which is also what unlocks moving to a real broker later. (8b)
-- **Pricing emits no domain events.** Price and promotion changes don't reach the revalidation pipeline, and the product page reads its price from the denormalized search document, so a price edit isn't visible on the storefront until a reindex. Mirroring the catalog module's event pattern fixes both. (8b)
 - **The API cannot describe itself.** There is no endpoint advertising supported locales, currency, tax display behaviour, or per-tenant enabled features. Our own storefront hardcodes what it needs, which only works because one author wrote both sides; any consumer we didn't write has to be configured out of band. For a headless product sold standalone this undercuts the "complete on its own" claim more than any missing feature. (8c)
 - **Theme storage is on the pricing module's tenant config table** — a deliberate shortcut that muddles module ownership. Extracting a small branding module is the clean fix and wouldn't change the public resolver shape. (8c)
 - **No customer auth.** Order confirmation reads through the admin endpoint, so anyone holding an order UUID can fetch it within that tenant. Fine for a demo, not for production; the fix is customer JWTs plus a storefront-scoped order endpoint. Scoped out, needs its own decision record.
