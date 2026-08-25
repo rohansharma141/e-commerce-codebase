@@ -13,6 +13,7 @@ import { OpenSearchModule } from '@platform/shared/opensearch';
 import { RedisModule } from '@platform/shared/redis';
 import { SecurityModule } from '@platform/shared/security';
 import { TenantContextModule, TenantMiddleware } from '@platform/shared/tenant-context';
+import { BrandingModule } from '@platform/modules/branding/src';
 import { CartModule } from '@platform/modules/cart/src';
 import { CatalogModule } from '@platform/modules/catalog/src';
 import { OrdersModule } from '@platform/modules/orders/src';
@@ -61,6 +62,7 @@ import { StorefrontWebhookModule } from './storefront-webhook.module';
     CatalogModule,
     SearchModule,
     PricingModule,
+    BrandingModule,
     CartModule,
     OrdersModule,
     CapabilitiesModule,

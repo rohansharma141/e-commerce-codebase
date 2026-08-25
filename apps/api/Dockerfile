@@ -23,6 +23,7 @@ COPY --from=builder /workspace/dist/apps/api ./
 # apply them at boot. Path mirrors what each module's onModuleInit looks for.
 COPY --from=builder /workspace/packages/modules/catalog/src/db/migrations ./migrations/catalog
 COPY --from=builder /workspace/packages/modules/pricing/src/db/migrations ./migrations/pricing
+COPY --from=builder /workspace/packages/modules/branding/src/db/migrations ./migrations/branding
 COPY --from=builder /workspace/packages/modules/orders/src/db/migrations ./migrations/orders
 COPY --from=builder /workspace/packages/shared/security/src/db/migrations ./migrations/audit
 RUN if [ -f package.json ]; then pnpm install --prod --frozen-lockfile=false; fi
