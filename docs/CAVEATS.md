@@ -148,7 +148,7 @@ Every item has a **status**: *by design* (intentional, see linked ADR), *scoped 
 
 ## Demo-readiness gaps (separate from platform gaps)
 
-Items tracked in the pre-demo checklist (in user memory). They don't affect platform capability:
+Sequenced in [BACKLOG.md](BACKLOG.md) under 8d. They don't affect platform capability:
 
 - GitHub repo description + topics empty.
 - No `v0.1.0` git tag.

@@ -63,8 +63,9 @@ packages/
     cart/               Redis-backed cart
     orders/             checkout, snapshot integrity, idempotency
 
-docs/                   ARCHITECTURE, DECISIONS, CAVEATS, STOREFRONT,
-                        RUNBOOK, HANDOVER, LOOM-SCRIPT, adr/0001-0012
+docs/                   ARCHITECTURE, DECISIONS, CAVEATS, BACKLOG,
+                        STOREFRONT, RUNBOOK, HANDOVER, LOOM-SCRIPT,
+                        adr/0001-0013
 docker/                 Postgres init (creates the non-superuser app role)
 ```
 
@@ -140,6 +141,8 @@ Documented as "designed, not built" where relevant — each has a written ration
 ---
 
 ## 7. Known gaps and current work items
+
+*The sequenced queue lives in `docs/BACKLOG.md`: individually shippable increments, each with a stated verification, none longer than about two hours.*
 
 Honest list. Nothing here is hidden in the repo — most is already tracked in `docs/CAVEATS.md`.
 

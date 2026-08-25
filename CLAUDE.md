@@ -71,9 +71,11 @@ The API MVP (steps 1–6) is **complete**. Active work begins at step 7.
    - 8c. API-as-product, split into independently shippable steps:
      - 8c-1. ✅ `Query.capabilities` — the api describes its own currency, minor units, tax display, locales and feature map per tenant
      - 8c-2. ✅ Storefront reads capabilities instead of hardcoding `$`/`en-US`/2dp — proved by switching a tenant to JPY and watching prices re-render unscaled
-     - 8c-3. Extract `modules/branding/` with its own contracts + resolver, still reading `pricing.tenant_config.theme`
-     - 8c-4. Migrate theme storage into the branding module's own table and drop the pricing column
-   - 8d. Ship the story: `v0.1.0` tag, CI badge, screenshots, record the Loom, repo description + topics, cold clone-and-run of the README
+     - 8c-3. Extract `modules/branding/` — storage moves first (a module may not read another module's table), then contracts, then the module, then drop the old column
+     - 8c-5..7. Per-tenant locale, and a REST mirror of the capability endpoint
+   - 8d. Ship the story: tag, CI badge, screenshots, cold clone-and-run, record the Loom
+
+**Before starting anything in step 8, read @docs/BACKLOG.md** — it decomposes the above into individually shippable increments with a stated verification for each. One item, one commit, one check. Anything that would take longer than about two hours gets split before it is started, not while it is being built.
 
 **The rule for step 8:** a claim in a doc, README, or ADR is part of the product. Fixing the claim to match reality counts as much as fixing the code — but where they disagree, the code is the contract and the doc is the bug.
 
