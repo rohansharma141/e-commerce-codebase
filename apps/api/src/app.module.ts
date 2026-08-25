@@ -18,6 +18,7 @@ import { CatalogModule } from '@platform/modules/catalog/src';
 import { OrdersModule } from '@platform/modules/orders/src';
 import { PricingModule } from '@platform/modules/pricing/src';
 import { SearchModule } from '@platform/modules/search/src';
+import { CapabilitiesModule } from './capabilities.module';
 import { DemoHooksModule } from './demo-hooks.module';
 import { HealthController } from './health.controller';
 import { StorefrontWebhookModule } from './storefront-webhook.module';
@@ -62,6 +63,7 @@ import { StorefrontWebhookModule } from './storefront-webhook.module';
     PricingModule,
     CartModule,
     OrdersModule,
+    CapabilitiesModule,
     DemoHooksModule,
     StorefrontWebhookModule,
   ],

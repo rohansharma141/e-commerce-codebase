@@ -70,11 +70,17 @@ Every item has a **status**: *by design* (intentional, see linked ADR), *scoped 
 
 ## API surface
 
-### The API cannot describe itself to a consumer it didn't ship with
+### The capability endpoint is GraphQL-only, and features are deployment-wide
+- **Status:** open; the gap it replaces is closed.
+- **What:** `Query.capabilities` now advertises the calling tenant's currency, its minor-unit exponent, tax display mode and rate, supported locales, and a keyed feature map — including honest `false` entries for customer accounts, multi-currency, i18n, inventory, shipping and payments. Two things it does not do: it is only on the GraphQL edge, so a REST-only consumer still has nothing to read; and the feature map describes the deployment rather than the tenant, so a per-tenant toggle has no way to express itself yet.
+- **Impact:** a REST integrator is still configured out of band. Per-tenant feature variation does not exist today, so the second limitation costs nothing until it does.
+- **Fix:** mirror it at `GET /system/capabilities` for REST consumers, which is also what an ICM-style facade ([ADR-0013](adr/0013-icm-conformance-and-compat-facade.md)) would read at boot. Per-tenant overrides would flip individual entries in the existing list without changing the response shape — the list-of-keys form was chosen over fixed boolean fields for exactly that reason.
+
+### The storefront still hardcodes what the API now advertises
 - **Status:** open.
-- **What:** the public surface exposes catalog, search, pricing, cart and orders, but nothing that advertises the platform's *own* configuration — supported locales, currency, tax display behaviour, which optional capabilities a given tenant has enabled. A consumer has to be told all of it out of band.
-- **Impact:** our storefront papers over this by hardcoding what it needs, which only works because one author wrote both sides. Any consumer we didn't write — a customer's own frontend, a mobile client, a partner integration — has no way to discover what a tenant supports, and has to be hand-configured per deployment. For a headless API sold as a standalone product, self-description is table stakes, and its absence undercuts the "complete product on its own" claim more than any missing feature does.
-- **Fix:** a `Query.capabilities` resolver (or `GET /storefront/config`) returning per-tenant locales, currency, tax display mode, and a feature map, sourced from the tenant config that already exists. Small, additive, no new storage. Worth doing regardless of who the second consumer turns out to be.
+- **What:** [money.ts](../apps/storefront/src/lib/money.ts) and [price.ts](../apps/storefront/src/components/price.ts) format with a hardcoded `$`, `en-US` and two decimal places rather than reading `currency`, `currencyMinorUnits` and `defaultLocale` from `Query.capabilities`.
+- **Impact:** a tenant configured in JPY would render prices 100× too large with a dollar sign in front. Nothing exercises that today because all three demo tenants are USD, which is precisely why it would go unnoticed.
+- **Fix:** the next build increment — have the storefront read capabilities and format from them. That change is also what proves the endpoint is *sufficient* rather than merely present.
 
 ---
 

@@ -26,6 +26,35 @@ export type AttributeFilterInput = {
   lte?: InputMaybe<Scalars['Float']['input']>;
 };
 
+/** What this API supports, for the calling tenant. */
+export type CapabilitiesType = {
+  __typename?: 'CapabilitiesType';
+  /** Version of the platform serving this request. */
+  apiVersion: Scalars['String']['output'];
+  /** False when this tenant has no pricing configuration yet, in which case currency and taxRateBps are platform defaults rather than real settings. */
+  configured: Scalars['Boolean']['output'];
+  /** ISO 4217 code this tenant trades in. */
+  currency: Scalars['String']['output'];
+  /** Decimal places in the currency. Every money value in this API is an integer in minor units: 19999 with minorUnits 2 is 199.99. A consumer that assumes 2 will be wrong for JPY. */
+  currencyMinorUnits: Scalars['Int']['output'];
+  defaultLocale: Scalars['String']['output'];
+  features: Array<CapabilityFeature>;
+  /** BCP-47 tags this deployment can serve. */
+  locales: Array<Scalars['String']['output']>;
+  taxDisplay: TaxDisplay;
+  /** Tax rate in basis points. 875 is 8.75%. */
+  taxRateBps: Scalars['Int']['output'];
+  tenantId: Scalars['String']['output'];
+};
+
+/** A named capability of this deployment. */
+export type CapabilityFeature = {
+  __typename?: 'CapabilityFeature';
+  enabled: Scalars['Boolean']['output'];
+  /** Stable dotted key, e.g. promotions.coupon */
+  key: Scalars['String']['output'];
+};
+
 export type FacetBucketType = {
   __typename?: 'FacetBucketType';
   count: Scalars['Int']['output'];
@@ -48,6 +77,7 @@ export type ProductHitType = {
 
 export type Query = {
   __typename?: 'Query';
+  capabilities: CapabilitiesType;
   product?: Maybe<ProductHitType>;
   search: SearchResultType;
   theme: StorefrontThemeType;
@@ -99,6 +129,12 @@ export type StorefrontThemeType = {
   pageBgHsl: Scalars['String']['output'];
   tagline: Scalars['String']['output'];
 };
+
+/** Whether listed prices include tax. */
+export enum TaxDisplay {
+  Exclusive = 'EXCLUSIVE',
+  Inclusive = 'INCLUSIVE'
+}
 
 export type CatalogSearchQueryVariables = Exact<{
   input: SearchInput;

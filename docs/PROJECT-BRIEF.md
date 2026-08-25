@@ -1,6 +1,6 @@
 # Project brief — e-commerce-codebase
 
-*A self-contained context document. Written to be handed to an assistant that has **no access to the repository** — everything needed to reason about the project is stated inline. Current as of 2026-08-20, commit `38f2287`.*
+*A self-contained context document. Written to be handed to an assistant that has **no access to the repository** — everything needed to reason about the project is stated inline. Current as of 2026-08-25, commit `0f94094` plus the capability endpoint.*
 
 ---
 
@@ -74,7 +74,7 @@ Every domain module is split into **`contracts/` (public)** and **`src/` (privat
 
 ## 4. What is already built
 
-All seven steps of the planned build priority are complete, committed, and pushed. 17 commits on `main`.
+All seven steps of the planned build priority are complete, as are steps 8a and 8b of the consolidation pass. 19 commits on `main`.
 
 ### Steps 1–6 — the API (complete)
 
@@ -87,6 +87,7 @@ All seven steps of the planned build priority are complete, committed, and pushe
 | **Pricing** | Prices, per-tenant tax config, promotion engine with best-single stacking, all money as integer cents with banker's rounding |
 | **Cart** | Redis-backed, tenant-prefixed keys (`t:<tenant>:cart:<id>`), snapshots SKU and name at add-time |
 | **Orders** | Transactional checkout — `Idempotency-Key` support, conditional promotion consumption under concurrency, full price/promo/tax snapshot written into the order so historical records never drift when live config changes |
+| **Self-description** | `Query.capabilities` reports, per tenant: currency and its minor-unit exponent (every money value in the API is an integer in minor units, so a consumer that assumes 2 decimals is wrong for JPY), tax display mode and rate, supported locales, and a keyed feature map with honest `false` entries for customer accounts, multi-currency, i18n, inventory, shipping and payments |
 | **Cross-cutting** | Helmet, per-tenant rate limiting, an audit log of every successful mutation under `/admin/*` and `/storefront/checkout`, request-id propagation end to end, `/health` + `/ready` (probes all three stores), Swagger UI at `/docs`, a Postman collection, a typed hook registry for extension points |
 
 **Seeded demo data:** three tenants — `t-fashion`, `t-electronics`, `t-books` — roughly 33,000 products each, written to both Postgres (canonical) and the tenant's OpenSearch index (queryable projection), along with six attribute definitions, 33,000 prices, and sample promotions per tenant. Measured search latency from the seed CLI's own benchmark: p50 ≈ 5ms, p95 ≈ 12ms, p99 ≈ 26ms over 200 random queries per tenant.
@@ -165,7 +166,8 @@ Work is organised as step 8, "make every claim the repo makes hold". Sub-step 8a
 - Webhook delivery goes through a transactional outbox with exponential-backoff retry. Verified by stopping the storefront, changing a price, and watching the delivery retry and land on recovery.
 
 **Open — architectural, with known fix paths**
-- **The API cannot describe itself.** There is no endpoint advertising supported locales, currency, tax display behaviour, or per-tenant enabled features. Our own storefront hardcodes what it needs, which only works because one author wrote both sides; any consumer we didn't write has to be configured out of band. For a headless product sold standalone this undercuts the "complete on its own" claim more than any missing feature. (8c)
+- **The storefront hardcodes what the API now advertises.** `Query.capabilities` reports the tenant's currency, minor-unit exponent, tax display, locales and a feature map, but the storefront still formats money with a hardcoded `$`, `en-US` and two decimals — a JPY tenant would render prices 100x too large. Making the storefront read the endpoint is what proves it sufficient rather than merely present. (8c-2)
+- **The capability endpoint is GraphQL-only.** A REST-only integrator still has nothing to read; a `GET /system/capabilities` mirror is the follow-up, and is also what an ICM-style facade would read at boot. (8c)
 - **Theme storage is on the pricing module's tenant config table** — a deliberate shortcut that muddles module ownership. Extracting a small branding module is the clean fix and wouldn't change the public resolver shape. (8c)
 - **No customer auth.** Order confirmation reads through the admin endpoint, so anyone holding an order UUID can fetch it within that tenant. Fine for a demo, not for production; the fix is customer JWTs plus a storefront-scoped order endpoint. Scoped out, needs its own decision record.
 - **Rate limiting keys on tenant id, not IP**, so during the trust-by-header window a caller impersonating a tenant can throttle that tenant's real traffic. Per-IP limits belong at the gateway.

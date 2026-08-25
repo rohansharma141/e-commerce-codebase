@@ -68,7 +68,11 @@ The API MVP (steps 1–6) is **complete**. Active work begins at step 7.
 8. **🚧 Consolidation — make every claim the repo makes hold:**
    - 8a. ✅ Credibility pass: seed writes `catalog.products` + attribute definitions (the README's RLS proof counted an empty table before), storefront Dockerfile + compose service, production CSP via per-request nonce, storefront↔API contract-conformance tests, doc reconciliation, LICENSE
    - 8b. ✅ CI that actually verifies + close the event loop: backing services in CI so the integration suites stop skipping (they rotted undetected for several commits behind green CI); pricing domain events; `search.product.indexed` so cache invalidation follows the read model rather than racing it; webhook outbox with exponential-backoff retry instead of fire-and-forget. *(CI itself is unproven until its first run on GitHub.)*
-   - 8c. API-as-product: capability-advertisement endpoint (the api can't currently describe its own locales/currency/features to a consumer it didn't ship with); extract `modules/branding/` out of `pricing.tenant_config`
+   - 8c. API-as-product, split into independently shippable steps:
+     - 8c-1. ✅ `Query.capabilities` — the api describes its own currency, minor units, tax display, locales and feature map per tenant
+     - 8c-2. Storefront reads capabilities instead of hardcoding `$`/`en-US`/2dp — proves the endpoint is *sufficient*, not merely present
+     - 8c-3. Extract `modules/branding/` with its own contracts + resolver, still reading `pricing.tenant_config.theme`
+     - 8c-4. Migrate theme storage into the branding module's own table and drop the pricing column
    - 8d. Ship the story: `v0.1.0` tag, CI badge, screenshots, record the Loom, repo description + topics, cold clone-and-run of the README
 
 **The rule for step 8:** a claim in a doc, README, or ADR is part of the product. Fixing the claim to match reality counts as much as fixing the code — but where they disagree, the code is the contract and the doc is the bug.

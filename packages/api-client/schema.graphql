@@ -10,6 +10,43 @@ input AttributeFilterInput {
   lte: Float
 }
 
+"""What this API supports, for the calling tenant."""
+type CapabilitiesType {
+  """Version of the platform serving this request."""
+  apiVersion: String!
+
+  """
+  False when this tenant has no pricing configuration yet, in which case currency and taxRateBps are platform defaults rather than real settings.
+  """
+  configured: Boolean!
+
+  """ISO 4217 code this tenant trades in."""
+  currency: String!
+
+  """
+  Decimal places in the currency. Every money value in this API is an integer in minor units: 19999 with minorUnits 2 is 199.99. A consumer that assumes 2 will be wrong for JPY.
+  """
+  currencyMinorUnits: Int!
+  defaultLocale: String!
+  features: [CapabilityFeature!]!
+
+  """BCP-47 tags this deployment can serve."""
+  locales: [String!]!
+  taxDisplay: TaxDisplay!
+
+  """Tax rate in basis points. 875 is 8.75%."""
+  taxRateBps: Int!
+  tenantId: String!
+}
+
+"""A named capability of this deployment."""
+type CapabilityFeature {
+  enabled: Boolean!
+
+  """Stable dotted key, e.g. promotions.coupon"""
+  key: String!
+}
+
 type FacetBucketType {
   count: Int!
   value: String!
@@ -33,6 +70,7 @@ type ProductHitType {
 }
 
 type Query {
+  capabilities: CapabilitiesType!
   product(id: ID!): ProductHitType
   search(input: SearchInput!): SearchResultType!
   theme: StorefrontThemeType!
@@ -71,4 +109,10 @@ type StorefrontThemeType {
   logoMark: String!
   pageBgHsl: String!
   tagline: String!
+}
+
+"""Whether listed prices include tax."""
+enum TaxDisplay {
+  EXCLUSIVE
+  INCLUSIVE
 }
