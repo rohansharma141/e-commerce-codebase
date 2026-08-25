@@ -1,13 +1,14 @@
 /**
  * Storefront theme — per-tenant branding overrides.
  *
- * Lives on `pricing.tenant_config.theme` (JSONB) for storage convenience;
- * the concept is independent of pricing and would migrate to a dedicated
- * branding module in a real extraction. See docs/CAVEATS.md.
+ * The public contract of the branding module. Storage still lives on
+ * `pricing.tenant_config.theme` at this point in the extraction; moving the
+ * type out first means every consumer is already importing from branding by
+ * the time the table moves, so the storage change is invisible to them.
  *
- * Fields are intentionally narrow today — enough to make the multi-tenant
- * skinning visibly different on the demo. Easy to grow without a migration
- * because the column is jsonb.
+ * Fields are intentionally narrow — enough to make multi-tenant skinning
+ * visibly different. Cheap to grow: the column is jsonb, and every field has
+ * a default, so an older row missing a new field still renders.
  */
 export interface StorefrontTheme {
   /** Display name shown in the header. */
