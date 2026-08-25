@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import type { CartWithTotals } from '@platform/api-client';
-import { formatCents } from '@/lib/money';
+import { formatMinorUnitsIn, type MoneyFormat } from '@/lib/money';
 import {
   applyCoupon,
   checkout,
@@ -16,7 +16,7 @@ import {
  * fetched. Mutations call server actions; on success the server-action
  * call revalidates this path so the next render reflects new state.
  */
-export function CartView({ cart }: { cart: CartWithTotals }) {
+export function CartView({ cart, money }: { cart: CartWithTotals; money: MoneyFormat }) {
   return (
     <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_360px]">
       <section aria-labelledby="lines-heading">
@@ -34,6 +34,7 @@ export function CartView({ cart }: { cart: CartWithTotals }) {
                 unitPriceCents={priced?.unitPriceCents}
                 lineTotalCents={priced?.lineTotalCents}
                 currency={cart.totals.currency}
+                money={money}
               />
             );
           })}
@@ -44,8 +45,9 @@ export function CartView({ cart }: { cart: CartWithTotals }) {
           couponCode={cart.couponCode}
           discountCents={cart.totals.discountCents}
           currency={cart.totals.currency}
+                money={money}
         />
-        <TotalsBlock totals={cart.totals} />
+        <TotalsBlock totals={cart.totals} money={money} />
         <CheckoutButton lineCount={cart.lines.length} />
       </aside>
     </div>
@@ -60,6 +62,7 @@ function CartLineRow({
   unitPriceCents,
   lineTotalCents,
   currency,
+  money,
 }: {
   productId: string;
   sku: string;
@@ -68,6 +71,7 @@ function CartLineRow({
   unitPriceCents: number | undefined;
   lineTotalCents: number | undefined;
   currency: string;
+  money: MoneyFormat;
 }) {
   const [pending, startTransition] = useTransition();
 
@@ -82,7 +86,7 @@ function CartLineRow({
         <p className="text-sm font-medium text-slate-900">{name}</p>
         <p className="mt-1 text-xs text-slate-500">{sku}</p>
         <p className="mt-1 text-xs text-slate-600">
-          {unitPriceCents !== undefined ? formatCents(unitPriceCents, currency) : '—'} ea
+          {unitPriceCents !== undefined ? formatMinorUnitsIn(unitPriceCents, currency, money) : '—'} ea
         </p>
       </div>
       <div className="flex items-center gap-1">
@@ -108,7 +112,7 @@ function CartLineRow({
       </div>
       <div className="w-24 text-right">
         <p className="text-sm font-semibold text-slate-900">
-          {lineTotalCents !== undefined ? formatCents(lineTotalCents, currency) : '—'}
+          {lineTotalCents !== undefined ? formatMinorUnitsIn(lineTotalCents, currency, money) : '—'}
         </p>
         <button
           type="button"
@@ -127,10 +131,12 @@ function CouponBlock({
   couponCode,
   discountCents,
   currency,
+  money,
 }: {
   couponCode: string | null;
   discountCents: number;
   currency: string;
+  money: MoneyFormat;
 }) {
   const [pending, startTransition] = useTransition();
   const [code, setCode] = useState('');
@@ -160,7 +166,7 @@ function CouponBlock({
             <code className="font-mono text-emerald-700">{couponCode}</code>
             {discountCents > 0 ? (
               <span className="ml-2 text-emerald-700">
-                −{formatCents(discountCents, currency)}
+                −{formatMinorUnitsIn(discountCents, currency, money)}
               </span>
             ) : null}
           </div>
@@ -196,25 +202,31 @@ function CouponBlock({
   );
 }
 
-function TotalsBlock({ totals }: { totals: CartWithTotals['totals'] }) {
+function TotalsBlock({
+  totals,
+  money,
+}: {
+  totals: CartWithTotals['totals'];
+  money: MoneyFormat;
+}) {
   return (
     <dl className="mt-4 space-y-1.5 rounded-lg border border-slate-200 bg-white p-4 text-sm">
-      <Row label="Subtotal" value={formatCents(totals.subtotalCents, totals.currency)} />
+      <Row label="Subtotal" value={formatMinorUnitsIn(totals.subtotalCents, totals.currency, money)} />
       {totals.discountCents > 0 ? (
         <Row
           label="Discount"
-          value={`−${formatCents(totals.discountCents, totals.currency)}`}
+          value={`−${formatMinorUnitsIn(totals.discountCents, totals.currency, money)}`}
           tone="positive"
         />
       ) : null}
       <Row
         label={`Tax (${(totals.taxRateBps / 100).toFixed(2)}%)`}
-        value={formatCents(totals.taxCents, totals.currency)}
+        value={formatMinorUnitsIn(totals.taxCents, totals.currency, money)}
       />
       <div className="my-2 border-t border-slate-200" />
       <Row
         label="Total"
-        value={formatCents(totals.grandTotalCents, totals.currency)}
+        value={formatMinorUnitsIn(totals.grandTotalCents, totals.currency, money)}
         tone="emphasis"
       />
     </dl>

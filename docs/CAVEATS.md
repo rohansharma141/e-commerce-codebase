@@ -76,11 +76,11 @@ Every item has a **status**: *by design* (intentional, see linked ADR), *scoped 
 - **Impact:** a REST integrator is still configured out of band. Per-tenant feature variation does not exist today, so the second limitation costs nothing until it does.
 - **Fix:** mirror it at `GET /system/capabilities` for REST consumers, which is also what an ICM-style facade ([ADR-0013](adr/0013-icm-conformance-and-compat-facade.md)) would read at boot. Per-tenant overrides would flip individual entries in the existing list without changing the response shape — the list-of-keys form was chosen over fixed boolean fields for exactly that reason.
 
-### The storefront still hardcodes what the API now advertises
-- **Status:** open.
-- **What:** [money.ts](../apps/storefront/src/lib/money.ts) and [price.ts](../apps/storefront/src/components/price.ts) format with a hardcoded `$`, `en-US` and two decimal places rather than reading `currency`, `currencyMinorUnits` and `defaultLocale` from `Query.capabilities`.
-- **Impact:** a tenant configured in JPY would render prices 100× too large with a dollar sign in front. Nothing exercises that today because all three demo tenants are USD, which is precisely why it would go unnoticed.
-- **Fix:** the next build increment — have the storefront read capabilities and format from them. That change is also what proves the endpoint is *sufficient* rather than merely present.
+### Locale is platform-wide, not per tenant
+- **Status:** open; small.
+- **What:** the storefront now formats money from `Query.capabilities` — currency, minor-unit exponent and locale all come from the api ([money.ts](../apps/storefront/src/lib/money.ts)). But `defaultLocale` is a single platform constant, so a JPY tenant renders `¥1,000` with en-US grouping rather than ja-JP conventions.
+- **Impact:** cosmetic for currencies whose grouping matches en-US, wrong for those that don't (de-DE would want `1.000,00`). Nothing exercises it today because all three demo tenants are en-US.
+- **Fix:** a `locale` column on tenant config, surfaced through the same capability field the storefront already reads. No storefront change at all — it is already asking the api what locale to use, which is the point of having built it this way.
 
 ---
 

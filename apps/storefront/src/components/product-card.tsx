@@ -1,6 +1,7 @@
 import { Badge } from './ui/badge';
 import { Card } from './ui/card';
-import { formatPriceFromAttr } from './price';
+import { formatMajorUnits } from '@/lib/money';
+import type { MoneyFormat } from '@/lib/money';
 
 interface ProductHit {
   id: string;
@@ -13,12 +14,12 @@ function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === 'object' ? (v as Record<string, unknown>) : {};
 }
 
-export function ProductCard({ product }: { product: ProductHit }) {
+export function ProductCard({ product, money }: { product: ProductHit; money: MoneyFormat }) {
   const attrs = asRecord(product.attributes);
   const brand = typeof attrs['brand'] === 'string' ? attrs['brand'] : null;
   const color = typeof attrs['color'] === 'string' ? attrs['color'] : null;
   const size = typeof attrs['size'] === 'string' ? attrs['size'] : null;
-  const price = formatPriceFromAttr(attrs['price']);
+  const price = formatMajorUnits(attrs['price'], money);
   const inStock = attrs['in_stock'] !== false;
 
   return (

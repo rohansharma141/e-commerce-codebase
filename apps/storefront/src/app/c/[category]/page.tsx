@@ -1,6 +1,7 @@
 import { CatalogSearchDocument } from '@platform/api-client';
 import { graphqlQuery } from '@/lib/api-graphql';
 import { getTenantId } from '@/lib/tenant';
+import { getMoneyFormat } from '@/lib/capabilities';
 import { FacetSidebar } from '@/components/facet-sidebar';
 import { Pagination } from '@/components/pagination';
 import { ProductGrid } from '@/components/product-grid';
@@ -33,6 +34,7 @@ export default async function CategoryPage({ params, searchParams = {} }: Catego
   const parsed = parseSearchParams(searchParams, category);
   const basePath = `/c/${encodeURIComponent(category)}`;
 
+  const money = await getMoneyFormat();
   const data = await graphqlQuery(CatalogSearchDocument, parsed.variables, {
     tags: [`browse:${tenantId}`],
   });
@@ -47,7 +49,7 @@ export default async function CategoryPage({ params, searchParams = {} }: Catego
       </nav>
       <h1 className="mb-4 text-2xl font-bold tracking-tight capitalize md:text-3xl">{category}</h1>
       <div className="mb-6">
-        <SearchBar basePath={basePath} searchParams={searchParams} />
+        <SearchBar money={money} basePath={basePath} searchParams={searchParams} />
       </div>
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[260px_1fr]">
         <FacetSidebar
@@ -68,7 +70,7 @@ export default async function CategoryPage({ params, searchParams = {} }: Catego
             total={search?.total ?? 0}
             latencyMs={search?.latencyMs}
           />
-          <ProductGrid items={search?.items ?? []} view={parsed.view} />
+          <ProductGrid money={money} items={search?.items ?? []} view={parsed.view} />
           <Pagination
             basePath={basePath}
             searchParams={searchParams}

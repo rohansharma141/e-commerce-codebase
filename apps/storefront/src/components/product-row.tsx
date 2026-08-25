@@ -1,6 +1,7 @@
 import { Badge } from './ui/badge';
 import { Card } from './ui/card';
-import { formatPriceFromAttr } from './price';
+import { formatMajorUnits } from '@/lib/money';
+import type { MoneyFormat } from '@/lib/money';
 
 interface ProductHit {
   id: string;
@@ -13,10 +14,10 @@ function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === 'object' ? (v as Record<string, unknown>) : {};
 }
 
-export function ProductRow({ product }: { product: ProductHit }) {
+export function ProductRow({ product, money }: { product: ProductHit; money: MoneyFormat }) {
   const attrs = asRecord(product.attributes);
   const brand = typeof attrs['brand'] === 'string' ? attrs['brand'] : null;
-  const price = formatPriceFromAttr(attrs['price']);
+  const price = formatMajorUnits(attrs['price'], money);
   const inStock = attrs['in_stock'] !== false;
 
   const promoted = new Set(['brand', 'price', 'in_stock']);

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { getCart } from '@/lib/cart';
 import { getTenantId } from '@/lib/tenant';
+import { getMoneyFormat } from '@/lib/capabilities';
 import { CartView } from './cart-view';
 
 /**
@@ -19,6 +20,7 @@ export const metadata = {
 export default async function CartPage() {
   const tenantId = getTenantId();
   const cart = await getCart(tenantId);
+  const money = await getMoneyFormat();
 
   if (!cart || cart.lines.length === 0) {
     return (
@@ -43,7 +45,7 @@ export default async function CartPage() {
   return (
     <main className="container mx-auto px-4 py-6">
       <h1 className="mb-6 text-2xl font-bold tracking-tight md:text-3xl">Your cart</h1>
-      <CartView cart={cart} />
+      <CartView cart={cart} money={money} />
     </main>
   );
 }

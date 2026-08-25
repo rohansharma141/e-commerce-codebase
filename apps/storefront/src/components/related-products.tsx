@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { CatalogSearchDocument } from '@platform/api-client';
 import { graphqlQuery } from '@/lib/api-graphql';
 import { getTenantId } from '@/lib/tenant';
+import { getMoneyFormat } from '@/lib/capabilities';
 import { ProductCard } from './product-card';
 
 interface RelatedProductsProps {
@@ -33,6 +34,12 @@ export async function RelatedProducts({ excludeProductId, filter }: RelatedProdu
   const items = data.search.items.filter((p) => p.id !== excludeProductId).slice(0, 6);
   if (items.length === 0) return null;
 
+  // Fetched here rather than passed in: this is a server component, and the
+  // capabilities query is served from Next's data cache, so asking again
+  // costs nothing and keeps the PDP from threading a prop through purely to
+  // reach the rail.
+  const money = await getMoneyFormat();
+
   return (
     <section className="mt-16">
       <header className="mb-4 flex items-baseline justify-between">
@@ -50,7 +57,7 @@ export async function RelatedProducts({ excludeProductId, filter }: RelatedProdu
               prefetch={false}
               className="block rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
             >
-              <ProductCard product={p} />
+              <ProductCard money={money} product={p} />
             </Link>
           </li>
         ))}

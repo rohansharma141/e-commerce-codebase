@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { ProductCard } from './product-card';
 import { ProductRow } from './product-row';
 import type { ViewMode } from '@/lib/search-params';
+import type { MoneyFormat } from '@/lib/money';
 
 interface ProductHit {
   id: string;
@@ -13,6 +14,9 @@ interface ProductHit {
 interface ProductGridProps {
   items: readonly ProductHit[];
   view: ViewMode;
+  /** How to render prices. Comes from Query.capabilities, threaded down
+   *  rather than re-fetched per card. */
+  money: MoneyFormat;
 }
 
 const linkClass =
@@ -24,7 +28,7 @@ const linkClass =
  * wrap each item in a <Link prefetch={false}> to the PDP — the same path
  * regardless of how the item is rendered.
  */
-export function ProductGrid({ items, view }: ProductGridProps) {
+export function ProductGrid({ items, view, money }: ProductGridProps) {
   if (items.length === 0) {
     return (
       <div className="flex min-h-[300px] flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 p-8 text-center">
@@ -40,7 +44,7 @@ export function ProductGrid({ items, view }: ProductGridProps) {
         {items.map((p) => (
           <li key={p.id}>
             <Link href={`/p/${p.id}`} prefetch={false} className={linkClass}>
-              <ProductRow product={p} />
+              <ProductRow money={money} product={p} />
             </Link>
           </li>
         ))}
@@ -53,7 +57,7 @@ export function ProductGrid({ items, view }: ProductGridProps) {
       {items.map((p) => (
         <li key={p.id}>
           <Link href={`/p/${p.id}`} prefetch={false} className={linkClass}>
-            <ProductCard product={p} />
+            <ProductCard money={money} product={p} />
           </Link>
         </li>
       ))}

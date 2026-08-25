@@ -186,9 +186,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       // set and the theme do.
       const bTag = `browse:${body.tenantId}`;
       const tTag = `theme:${body.tenantId}`;
+      // Capabilities carry the currency and its minor-unit exponent, which
+      // every rendered price depends on. A tenant switching currency without
+      // this would leave the whole catalogue formatted in the old one until
+      // the hourly fallback expired.
+      const cTag = `capabilities:${body.tenantId}`;
       revalidateTag(bTag);
       revalidateTag(tTag);
-      invalidated.push(bTag, tTag);
+      revalidateTag(cTag);
+      invalidated.push(bTag, tTag, cTag);
       break;
     }
     default: {

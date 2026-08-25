@@ -70,7 +70,7 @@ The API MVP (steps 1–6) is **complete**. Active work begins at step 7.
    - 8b. ✅ CI that actually verifies + close the event loop: backing services in CI so the integration suites stop skipping (they rotted undetected for several commits behind green CI); pricing domain events; `search.product.indexed` so cache invalidation follows the read model rather than racing it; webhook outbox with exponential-backoff retry instead of fire-and-forget. *(CI itself is unproven until its first run on GitHub.)*
    - 8c. API-as-product, split into independently shippable steps:
      - 8c-1. ✅ `Query.capabilities` — the api describes its own currency, minor units, tax display, locales and feature map per tenant
-     - 8c-2. Storefront reads capabilities instead of hardcoding `$`/`en-US`/2dp — proves the endpoint is *sufficient*, not merely present
+     - 8c-2. ✅ Storefront reads capabilities instead of hardcoding `$`/`en-US`/2dp — proved by switching a tenant to JPY and watching prices re-render unscaled
      - 8c-3. Extract `modules/branding/` with its own contracts + resolver, still reading `pricing.tenant_config.theme`
      - 8c-4. Migrate theme storage into the branding module's own table and drop the pricing column
    - 8d. Ship the story: `v0.1.0` tag, CI badge, screenshots, record the Loom, repo description + topics, cold clone-and-run of the README

@@ -2,7 +2,8 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { Order } from '@platform/api-client';
 import { apiFetch } from '@/lib/api-rest';
-import { formatCents } from '@/lib/money';
+import { formatMinorUnitsIn } from '@/lib/money';
+import { getMoneyFormat } from '@/lib/capabilities';
 
 /**
  * Order confirmation page — server-rendered. Reads via /admin/orders/:id
@@ -24,6 +25,7 @@ interface PageProps {
 }
 
 export default async function OrderConfirmationPage({ params }: PageProps) {
+  const money = await getMoneyFormat();
   const order = await apiFetch<Order | null>(`/admin/orders/${params.id}`, {
     throwOn404: false,
   });
@@ -51,11 +53,11 @@ export default async function OrderConfirmationPage({ params }: PageProps) {
                 <div className="flex-1">
                   <p className="font-medium text-slate-900">{line.name}</p>
                   <p className="mt-0.5 text-xs text-slate-500">
-                    {line.sku} · qty {line.qty} · {formatCents(line.unitPriceCents, order.currency)} ea
+                    {line.sku} · qty {line.qty} · {formatMinorUnitsIn(line.unitPriceCents, order.currency, money)} ea
                   </p>
                 </div>
                 <p className="font-semibold text-slate-900">
-                  {formatCents(line.lineTotalCents, order.currency)}
+                  {formatMinorUnitsIn(line.lineTotalCents, order.currency, money)}
                 </p>
               </li>
             ))}
@@ -63,22 +65,22 @@ export default async function OrderConfirmationPage({ params }: PageProps) {
         </section>
 
         <dl className="mt-6 space-y-1.5 text-sm">
-          <Row label="Subtotal" value={formatCents(order.subtotalCents, order.currency)} />
+          <Row label="Subtotal" value={formatMinorUnitsIn(order.subtotalCents, order.currency, money)} />
           {order.discountCents > 0 ? (
             <Row
               label={order.appliedPromotion?.code ? `Discount (${order.appliedPromotion.code})` : 'Discount'}
-              value={`−${formatCents(order.discountCents, order.currency)}`}
+              value={`−${formatMinorUnitsIn(order.discountCents, order.currency, money)}`}
               tone="positive"
             />
           ) : null}
           <Row
             label={`Tax (${(order.taxRateBps / 100).toFixed(2)}%)`}
-            value={formatCents(order.taxCents, order.currency)}
+            value={formatMinorUnitsIn(order.taxCents, order.currency, money)}
           />
           <div className="my-2 border-t border-slate-200" />
           <Row
             label="Total"
-            value={formatCents(order.grandTotalCents, order.currency)}
+            value={formatMinorUnitsIn(order.grandTotalCents, order.currency, money)}
             tone="emphasis"
           />
         </dl>

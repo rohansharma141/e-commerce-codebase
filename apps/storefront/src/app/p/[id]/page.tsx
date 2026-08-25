@@ -2,6 +2,8 @@ import { notFound } from 'next/navigation';
 import { ProductDetailDocument } from '@platform/api-client';
 import { graphqlQuery } from '@/lib/api-graphql';
 import { getTenantId } from '@/lib/tenant';
+import { getMoneyFormat } from '@/lib/capabilities';
+import { formatMajorUnits } from '@/lib/money';
 import { Breadcrumbs, type Crumb } from '@/components/breadcrumbs';
 import { RelatedProducts } from '@/components/related-products';
 import { Badge } from '@/components/ui/badge';
@@ -44,13 +46,9 @@ function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === 'object' ? (v as Record<string, unknown>) : {};
 }
 
-function formatCurrency(n: unknown): string {
-  if (typeof n !== 'number' || !Number.isFinite(n)) return '—';
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
-}
-
 export default async function ProductPage({ params }: PageProps) {
   const tenantId = getTenantId();
+  const money = await getMoneyFormat();
   const data = await fetchProductDetail(tenantId, params.id);
   const product = data.product;
   if (!product) {
@@ -58,7 +56,7 @@ export default async function ProductPage({ params }: PageProps) {
   }
 
   const attrs = asRecord(product.attributes);
-  const price = formatCurrency(attrs['price']);
+  const price = formatMajorUnits(attrs['price'], money);
   const brand = typeof attrs['brand'] === 'string' ? attrs['brand'] : null;
   const category = typeof attrs['category'] === 'string' ? attrs['category'] : null;
   const inStock = attrs['in_stock'] !== false;

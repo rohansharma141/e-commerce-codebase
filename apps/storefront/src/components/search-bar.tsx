@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Search, X } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import { formatPriceFromAttr } from './price';
+import { formatMajorUnits, type MoneyFormat } from '@/lib/money';
 
 /**
  * Search input with debounced live suggestions.
@@ -29,12 +29,15 @@ interface Suggestion {
 interface SearchBarProps {
   basePath: string;
   searchParams: Record<string, string | string[] | undefined>;
+  /** Passed down because this is a client component and cannot reach the
+   *  api itself — the server page resolves capabilities once per render. */
+  money: MoneyFormat;
 }
 
 const DEBOUNCE_MS = 200;
 const MIN_QUERY = 2;
 
-export function SearchBar({ basePath, searchParams }: SearchBarProps) {
+export function SearchBar({ basePath, searchParams, money }: SearchBarProps) {
   const initialQ =
     typeof searchParams['q'] === 'string'
       ? searchParams['q']
@@ -175,7 +178,7 @@ export function SearchBar({ basePath, searchParams }: SearchBarProps) {
                     </div>
                     {s.price !== null ? (
                       <span className="shrink-0 text-sm font-semibold text-slate-900">
-                        {formatPriceFromAttr(s.price)}
+                        {formatMajorUnits(s.price, money)}
                       </span>
                     ) : null}
                   </Link>
