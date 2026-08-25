@@ -2,6 +2,8 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { Inject, Logger, Module, type OnModuleInit } from '@nestjs/common';
 import { DatabaseModule, MIGRATION_RUNNER, type MigrationRunner } from '@platform/shared/database';
+import { BrandingResolver } from './branding.resolver';
+import { ThemeRepository } from './theme.repository';
 
 export const BRANDING_SCHEMA_NAME = 'branding';
 
@@ -20,18 +22,17 @@ function migrationsDir(): string {
 /**
  * Branding module — owns per-tenant storefront theming.
  *
- * At this point in the extraction it owns storage and nothing else: the table
- * exists and carries a copy of every theme, while `Query.theme` is still
- * served by the pricing module reading its own column. Both copies are live
- * and identical, which is what makes the next step a cutover rather than a
- * migration — the resolver moves once, with the data already in place, and
- * can be reverted by pointing it back.
+ * Owns the theme table and serves `Query.theme` from it. Pricing keeps a now
+ * unread `theme` column until the next step drops it, which is what makes
+ * this cutover reversible: the data is in both places, so pointing the
+ * resolver back is a one-line revert rather than a restore.
  *
- * Deliberately not @Global: nothing injects from branding yet. It becomes a
- * provider of a repository and resolver in the next step.
+ * Not @Global — nothing injects from branding across module lines. The only
+ * consumer is the public graph, and that is reached through the resolver.
  */
 @Module({
   imports: [DatabaseModule],
+  providers: [ThemeRepository, BrandingResolver],
 })
 export class BrandingModule implements OnModuleInit {
   private readonly logger = new Logger(BrandingModule.name);

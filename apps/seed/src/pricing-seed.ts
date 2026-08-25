@@ -29,7 +29,7 @@ const TAX_RATES_BY_TENANT: Record<string, number> = {
  * Storefront themes per tenant. Three visibly distinct skins make the
  * multi-tenant story tangible — same Next.js code, same routes, three
  * different brand experiences. Shape mirrors StorefrontTheme in
- * @platform/modules/pricing/contracts/theme.dto.ts; the seed writes raw
+ * @platform/modules/branding/contracts/theme.dto.ts; the seed writes raw
  * JSONB so we don't need to import the contract here.
  *
  * HSL tuples use the "h s% l%" form ready for direct `hsl(var(--brand))`
@@ -142,12 +142,26 @@ export async function seedPricingForTenant(
   await sql`DELETE FROM pricing.promotions`;
   await sql`DELETE FROM pricing.prices`;
   await sql`DELETE FROM pricing.tenant_config`;
+  await sql`DELETE FROM branding.theme`;
 
-  const theme = THEMES_BY_TENANT[fixture.tenantId] ?? null;
   await sql`
-    INSERT INTO pricing.tenant_config (tenant_id, currency, tax_rate_bps, theme, updated_at)
-    VALUES (${fixture.tenantId}, 'USD', ${taxRateBps}, ${theme ? sql.json(theme as never) : null}, now())
+    INSERT INTO pricing.tenant_config (tenant_id, currency, tax_rate_bps, updated_at)
+    VALUES (${fixture.tenantId}, 'USD', ${taxRateBps}, now())
   `;
+
+  // Themes belong to the branding module now. Written on the same connection,
+  // which already has app.tenant_id bound, so branding.theme's RLS admits the
+  // insert exactly as pricing's does. The pricing.theme column is left unset
+  // and is dropped in the next step.
+  const theme = THEMES_BY_TENANT[fixture.tenantId] ?? null;
+  if (theme) {
+    await sql`
+      INSERT INTO branding.theme (tenant_id, theme, updated_at)
+      VALUES (${fixture.tenantId}, ${sql.json(theme as never)}, now())
+      ON CONFLICT (tenant_id) DO UPDATE
+        SET theme = EXCLUDED.theme, updated_at = now()
+    `;
+  }
 
   // Bulk INSERT prices. postgres-js batches efficiently with the helper form.
   let upserted = 0;
