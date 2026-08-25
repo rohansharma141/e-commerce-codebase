@@ -16,8 +16,8 @@ CI has never run on a GitHub runner. Until it has, every "verified" claim rests 
 
 | id | item | done when | size |
 |---|---|---|---|
-| P0-1 | Push `main` and watch the first CI run end to end | both jobs report a result | XS |
-| P0-2 | Fix whatever that run reveals — likely candidates are OpenSearch memory limits on the runner, compose startup timing, or the seed step | CI green on `main` | S–M, genuinely unknown |
+| P0-1 | ✅ Push `main` and watch the first CI run end to end | both jobs report a result | XS |
+| P0-2 | ✅ Fix what the run revealed — concurrent migrations racing on a fresh database, not the predicted memory/timing issues. Migration runner now takes an advisory lock | CI green on `main` | S |
 
 ---
 

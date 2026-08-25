@@ -108,11 +108,13 @@ Every item has a **status**: *by design* (intentional, see linked ADR), *scoped 
 
 ## Architecture
 
-### CI runs the integration tests, but has never been observed doing it
-- **Status:** open until the first green run on GitHub.
-- **What:** [ci.yml](../.github/workflows/ci.yml) now stands the backing services up from this repo's own `docker-compose.yml` and exports `TEST_DATABASE_URL` / `TEST_REDIS_URL` / `TEST_OPENSEARCH_URL`, with a second job that seeds an api and runs the storefront conformance suite. Compose is used rather than GitHub service containers on purpose: the compose file mounts the init script that creates the non-superuser `platform` role, and RLS only bites for a role without BYPASSRLS — a plain `postgres:` service would run the isolation tests as a superuser and pass them vacuously.
-- **Why it matters:** for several commits this workflow had no services at all, so every integration suite skipped. `catalog.integration.spec.ts` and `checkout.integration.spec.ts` stopped compiling when their services gained a `HookRegistry` argument, then stopped binding the ALS tenant context — the suites proving RLS isolation, snapshot integrity, promotion races and idempotency were dead the whole time while CI stayed green.
-- **Remaining risk:** everything above is verified locally. The workflow itself has not run on a GitHub runner yet, so timing, memory limits for OpenSearch, and the compose-on-CI assumption are unproven. Treat the first push as the test.
+### CI's first real run found a concurrency bug in the migration runner
+- **Status:** closed, recorded because the failure mode is worth remembering.
+- **What:** CI's `verify` job runs 23 projects in parallel against a *fresh* database, so several module suites applied their migrations at once. `CREATE EXTENSION IF NOT EXISTS pgcrypto` is not atomic — two transactions both saw it missing, both inserted, one died on `pg_extension_name_index`, and the aborted apply left that module's schema uncreated so every later statement failed with "schema does not exist".
+- **Why it was invisible locally:** a developer's database already has every migration applied, so the files are skipped and nothing races. Only a first run on an empty database exposes it — which is exactly what CI does and what a `docker compose down -v` does.
+- **Fix:** [migrator.ts](../packages/shared/database/src/migrator.ts) now holds a session-level advisory lock for the whole of `apply()`, covering the ledger read-then-write as well as the DDL. Reproduced locally by dropping all four schemas plus the extension, then re-running the suite.
+- **Worth noting:** this was never only a test problem. Two api replicas starting together, or a rolling deploy, race identically.
+
 
 ### Integration suites are destructive to seeded data
 - **Status:** by design, but sharp-edged.
