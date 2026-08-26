@@ -104,5 +104,17 @@ Back-office admin UI, CMS, MDM, job scheduler portal, omni-channel breadth, actu
 - `pnpm nx run-many -t build` — build all
 - `pnpm nx build api` / `pnpm nx build storefront` — build one deployable
 
+## Verification discipline
+
+Every rule here was paid for by a bug that got through. They are cheap to follow and were expensive to learn.
+
+- **A check that can pass vacuously is not a check.** The README's RLS killshot returned `0 / 0 / 0` against an empty table and read as a pass. A backfill migration reported "row counts match" as `0 = 0` because RLS hid the source rows from it. Before trusting a green check, ask what it would print if the thing under test did nothing at all.
+- **Migrations must be verified on a cold database.** The migration ledger records what was applied, so a developer machine never re-runs the failing path. Two bugs — a concurrency race on `CREATE EXTENSION` and a backfill reading a column that a later migration drops — were invisible locally and fatal on first boot. `docker compose down -v`, start, and watch it migrate from empty before pushing anything with a migration in it.
+- **Do not run the integration suites against the database you demo from.** They drop and rebuild the catalog, pricing and orders schemas. A green suite followed by a broken demo is the suite working as designed.
+- **Execute documented commands, do not re-read them.** Extract the block from the README with `sed` and run it. That is how the claim-3 flow was found to be unrunnable, and how a stale promotion was found to be silently invalidating the proof it was part of.
+- **Local success says little about CI or a cold clone.** `pnpm nx` sets up an environment that a direct `node node_modules/nx/bin/nx.js` does not; a warm Docker cache hides a six-minute build; an installed toolchain hides an `engines` mismatch. When a claim is about a fresh environment, test it in one.
+- **A commit message is a claim about the code.** One commit here stated a fix that never landed, because the script making the edit aborted before writing. If the message says it, verify it is in the diff.
+- **Prefer demonstrating over asserting.** "A broken endpoint fails the seed" was proved by breaking the endpoint and showing exit 0 versus exit 1. That contrast is worth more than any wording.
+
 ## When unsure
 Prefer the choice that keeps modules decoupled, the API self-sufficient, and the hero feature strong. If a request implies the storefront knowing something the API doesn't expose, flag it — the fix is to extend the API, not the frontend. If a request implies building something in the out-of-scope list, flag it against scope before proceeding. The architecture doc and DECISIONS.md are the source of truth for "why".

@@ -1,6 +1,6 @@
 # Project brief — e-commerce-codebase
 
-*A self-contained context document. Written to be handed to an assistant that has **no access to the repository** — everything needed to reason about the project is stated inline. Current as of 2026-08-25, commit `0f94094` plus the capability endpoint.*
+*A self-contained context document. Written to be handed to an assistant that has **no access to the repository** — everything needed to reason about the project is stated inline. Current as of 2026-08-26, commit `82f72ea`. 44 commits on `main`, CI green.*
 
 ---
 
@@ -59,7 +59,8 @@ packages/
   modules/
     catalog/            products + tenant-defined typed attributes
     search/             OpenSearch indexer + GraphQL Query.search  ← hero
-    pricing/            prices, tax, promotions, totals, tenant theme
+    pricing/            prices, tax, promotions, totals, per-tenant config
+    branding/           per-tenant storefront theme (own schema)
     cart/               Redis-backed cart
     orders/             checkout, snapshot integrity, idempotency
 
@@ -75,7 +76,7 @@ Every domain module is split into **`contracts/` (public)** and **`src/` (privat
 
 ## 4. What is already built
 
-All seven steps of the planned build priority are complete, as are steps 8a and 8b of the consolidation pass. 19 commits on `main`.
+All seven steps of the planned build priority are complete, as is step 8 apart from a recorded walkthrough and a handful of hardening items. The sequenced queue lives in `docs/BACKLOG.md`: 19 of its 27 rows are done, plus two items that predate the file.
 
 ### Steps 1–6 — the API (complete)
 
@@ -88,7 +89,9 @@ All seven steps of the planned build priority are complete, as are steps 8a and 
 | **Pricing** | Prices, per-tenant tax config, promotion engine with best-single stacking, all money as integer cents with banker's rounding |
 | **Cart** | Redis-backed, tenant-prefixed keys (`t:<tenant>:cart:<id>`), snapshots SKU and name at add-time |
 | **Orders** | Transactional checkout — `Idempotency-Key` support, conditional promotion consumption under concurrency, full price/promo/tax snapshot written into the order so historical records never drift when live config changes |
-| **Self-description** | `Query.capabilities` reports, per tenant: currency and its minor-unit exponent (every money value in the API is an integer in minor units, so a consumer that assumes 2 decimals is wrong for JPY), tax display mode and rate, supported locales, and a keyed feature map with honest `false` entries for customer accounts, multi-currency, i18n, inventory, shipping and payments |
+| **Self-description** | `Query.capabilities` and `GET /system/capabilities` (one implementation, two transports) report per tenant: currency and its minor-unit exponent (every money value in the API is an integer in minor units, so a consumer assuming 2 decimals is wrong for JPY), locale, tax display mode and rate, and a keyed feature map with honest `false` entries for customer accounts, multi-currency, i18n, inventory, shipping and payments |
+| **Branding** | `modules/branding/` owns per-tenant theme in its own schema, extracted out of pricing in four reversible steps with `Query.theme` byte-identical throughout |
+| **Delivery** | Storefront revalidation goes through a transactional outbox: exponential-backoff retry, then a bounded dead-letter sweep that re-drives exhausted rows three times before leaving them for good |
 | **Cross-cutting** | Helmet, per-tenant rate limiting, an audit log of every successful mutation under `/admin/*` and `/storefront/checkout`, request-id propagation end to end, `/health` + `/ready` (probes all three stores), Swagger UI at `/docs`, a Postman collection, a typed hook registry for extension points |
 
 **Seeded demo data:** three tenants — `t-fashion`, `t-electronics`, `t-books` — roughly 33,000 products each, written to both Postgres (canonical) and the tenant's OpenSearch index (queryable projection), along with six attribute definitions, 33,000 prices, and sample promotions per tenant. Measured search latency from the seed CLI's own benchmark: p50 ≈ 5ms, p95 ≈ 12ms, p99 ≈ 26ms over 200 random queries per tenant.
@@ -146,49 +149,48 @@ Documented as "designed, not built" where relevant — each has a written ration
 
 Honest list. Nothing here is hidden in the repo — most is already tracked in `docs/CAVEATS.md`.
 
-Work is organised as step 8, "make every claim the repo makes hold". Sub-step 8a is complete.
+Work is organised as step 8, "make every claim the repo makes hold". 8a through 8c are complete, 8d all but the recorded walkthrough, and the hardening list is half done.
 
-**Closed in 8a**
-- The seed now writes `catalog.products` and `catalog.attribute_definitions` alongside the search index, so the README's RLS proof compares 0 unbound against 33,000 bound instead of an empty table against itself.
-- The storefront has a Dockerfile and a compose service, making the two-deployables claim real. `docker compose up api` still runs the platform without it.
-- Production CSP issues a per-request nonce from middleware, so a production build hydrates. This was pulled forward from 8b because shipping a container that renders but never hydrates would have replaced one false claim with another.
-- The storefront has tests: a URL-contract unit suite and a conformance suite that drives every operation the storefront issues against a live API, asserting exact key sets for the hand-mirrored REST types.
-- Docs reconciled with what actually shipped; `LICENSE` added.
+**Closed so far**
+- The seed writes `catalog.products` and attribute definitions, so the README's RLS proof compares 0 unbound against 33,000 bound rather than an empty table against itself. `SEED_VIA_API=1` additionally routes a 25-product slice per tenant through the real HTTP endpoints, so a broken `POST /admin/products` fails the seed instead of going unnoticed.
+- Both deployables have Docker images and a compose service; production CSP issues a per-request nonce, so a production build actually hydrates.
+- The storefront has tests: a URL-contract unit suite and a conformance suite that issues every operation it uses against a live API, asserting exact key sets for the hand-mirrored REST types.
+- CI stands up Postgres, Redis and OpenSearch from the repo's own compose file and runs the integration suites, with a second job that seeds an api and runs conformance. It is green.
+- Cache invalidation keys off `search.product.indexed`, published only once the index write is readable, rather than racing the indexer.
+- Webhook delivery goes through a transactional outbox with backoff and a bounded dead-letter sweep.
+- The api describes itself over both GraphQL and REST; the storefront formats money from what it reports, proven by switching a tenant to JPY and to de-DE and watching it re-render with no storefront change.
+- `modules/branding/` extracted from pricing; the pricing column is dropped.
+- The module boundary is enforced in spec files too, and by relative path as well as by alias.
+- The README's tour was run from a cold clone and all seven findings fixed.
 
-**What the pass uncovered — none of it visible before the work started**
-- **The storefront build was broken.** `@graphql-typed-document-node/core` wasn't declared in the storefront's `package.json`, so under pnpm's isolated node_modules the type failed to resolve, `TypedDocumentNode` degraded, and *every* `graphqlQuery` call site silently inferred `unknown`. The "fully typed generated client" was not typed at all, and `next build` had been failing since the autocomplete commit. Declaring the dependency fixed the build and restored inference everywhere.
-- **Two load-bearing integration suites had been dead for several commits.** `catalog.integration.spec.ts` and `checkout.integration.spec.ts` stopped compiling when their services gained a `HookRegistry` constructor argument, then needed the ALS tenant context the services had begun requiring. The tests proving RLS isolation, snapshot integrity, promotion races and idempotency were not running.
-- **CI never runs the integration tests at all** — the workflow declares no service containers, so those suites skip and green CI means "compiles and unit tests pass". That is why the two failures above went unnoticed, and it is now the top open item.
-- **The module suites destroy seeded data**, dropping the catalog, pricing and orders schemas. Running the full suite against the demo database silently empties it.
-- The ESLint module boundary doesn't catch deep relative imports (`../../cart/src/...`), so the "never import another module's `src/`" rule holds for the shape people usually write rather than universally.
-
-**Closed in 8b**
-- CI now stands up Postgres, Redis and OpenSearch from the repo's own compose file and runs the integration suites, with a second job that seeds an api and runs the storefront conformance suite. Unproven until its first run on a GitHub runner.
-- Pricing emits domain events; the search indexer patches the denormalised price and the storefront rebuilds the affected pages within about a second of an admin price change.
-- Cache invalidation now keys off `search.product.indexed` — published once the index write is readable — rather than the domain event, which was racing the indexer and could re-cache a stale render for an hour. That bug predated the pricing work and affected catalog edits too.
-- Webhook delivery goes through a transactional outbox with exponential-backoff retry. Verified by stopping the storefront, changing a price, and watching the delivery retry and land on recovery.
-
-**Open — architectural, with known fix paths**
-- **Locale is a platform constant, not a per-tenant setting.** The storefront now takes currency, minor-unit exponent and locale from `Query.capabilities`, but the api reports one locale for every tenant, so a JPY tenant gets yen formatted with en-US grouping. Adding a locale column to tenant config needs no storefront change — it already asks the api. (8c)
-- **The capability endpoint is GraphQL-only.** A REST-only integrator still has nothing to read; a `GET /system/capabilities` mirror is the follow-up, and is also what an ICM-style facade would read at boot. (8c)
-- **Theme storage is on the pricing module's tenant config table** — a deliberate shortcut that muddles module ownership. Extracting a small branding module is the clean fix and wouldn't change the public resolver shape. (8c)
-- **No customer auth.** Order confirmation reads through the admin endpoint, so anyone holding an order UUID can fetch it within that tenant. Fine for a demo, not for production; the fix is customer JWTs plus a storefront-scoped order endpoint. Scoped out, needs its own decision record.
+**Still open**
+- **Node 22 only.** pnpm 9.12 crashes on Node 24, so `engines` pins `>=22 <23` and `.npmrc` sets `engine-strict`. A reader on Node 24 gets a clear message rather than a stack trace — but that explains the wall instead of removing it. Moving off pnpm 9.12 is the fix. (H-6)
+- **No customer auth.** Order confirmation reads through the admin endpoint, so anyone holding an order UUID can fetch it within that tenant. Fine for a demo, not for production. Scoped out; needs its own decision record.
 - **Rate limiting keys on tenant id, not IP**, so during the trust-by-header window a caller impersonating a tenant can throttle that tenant's real traffic. Per-IP limits belong at the gateway.
-- **The seed bypasses the HTTP write path.** It writes to Postgres and OpenSearch directly, so a broken `POST /admin/products` would still leave a fully-populated demo, and attribute validation never runs against seeded data. Deliberate: 99,000 HTTP round-trips would turn a 15-second seed into a multi-minute one.
+- **Capability features describe the deployment, not the tenant.** The per-tenant half (currency, locale, tax) is real; the feature map is a constant. Costs nothing until a capability actually varies per tenant, and the list-of-keys shape was chosen so it can.
+- **Browse cache tags are coarse** — one `browse:<tenant>` tag, so any product change invalidates every browse render for that tenant. Invisible at demo volumes. (H-3)
+- **The REST types in `api-client` are hand-mirrored.** The conformance suite catches structural drift, including exact key sets, but not a field that became optional. Retiring the mirror via `@ApiProperty` DTOs plus `openapi-typescript` is the R-series in the backlog.
+- **Price is denormalised into the search index.** Canonical price is `pricing.prices`; the index copy converges within about a second via events. Checkout never reads the copy — totals are computed from the canonical row inside the transaction.
+- **Exhausted webhooks are queryable but not escalated.** After three sweep re-queues a row stays a dead letter with its last error. Alerting on `WHERE exhausted` is the fix when there is an operator to alert.
 
-**Presentation polish (8d)**
-- No release tag, no CI badge, no screenshots. A walkthrough script is written but nothing has been recorded. The README's cold-clone quickstart has never been run from scratch. GitHub repo description and topics are empty.
+**Remaining presentation work**
+- The 2–3 minute walkthrough (`docs/LOOM-SCRIPT.md`) is written but unrecorded. That is the only 8d item left, and it is a human task.
 
 ---
 
 ## 8. How to run it
 
+Prerequisites: Docker, **Node 22** (newer majors are rejected at install time — see the open list), pnpm 9.12 via corepack.
+
 ```bash
 pnpm install
-docker compose up --build      # Postgres, Redis, OpenSearch, api
-pnpm seed                      # ~10s: 99k products, prices, promotions, 3 tenants
-pnpm nx serve storefront       # separate terminal, port 3001
+docker compose up --build -d   # Postgres, Redis, OpenSearch, api, storefront
+                               # first build ~6 min (two images); later starts are seconds
+pnpm seed                      # ~30s: 99k products, prices, promotions, 3 tenants
+SEED_VIA_API=1 pnpm seed       # optional: routes a slice through the real HTTP write path
 ```
+
+The storefront is already running in compose on port 3001; `pnpm nx serve storefront` is only for hot reload, and needs the container stopped first.
 
 - API at `http://localhost:3000` — `/health`, `/ready`, `/docs` (Swagger), `/graphql`
 - Storefront at `http://t-fashion.localhost:3001/` (also `t-electronics`, `t-books`). Modern browsers resolve `*.localhost` natively; no hosts-file edits needed.

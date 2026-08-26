@@ -8,6 +8,10 @@ The granular work queue. [CLAUDE.md](../CLAUDE.md) holds the coarse build priori
 
 Each row states what "done" means as a single check. If the check can't be written down, the item isn't understood well enough to start.
 
+**Status: 19 of 27 rows done** (plus 8c-1 and 8c-2, which shipped before this file existed). What is left: one human task (8d-5, the walkthrough recording), four items in the R series, and H-3, H-5, H-6.
+
+**A note on how these got verified.** Several of these items were "done" by a check that could not have failed — a row count of `0 = 0`, an RLS proof against an empty table, a commit message describing an edit that never wrote. The lessons are recorded under *Verification discipline* in [CLAUDE.md](../CLAUDE.md) and are worth reading before ticking anything here.
+
 ---
 
 ## P0 — unblock everything downstream
