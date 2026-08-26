@@ -59,13 +59,102 @@ The outbox is the record of what the storefront was told and whether it heard.
 
 ```powershell
 # pending, failed and dead-lettered deliveries (system worker sees all tenants)
-docker compose exec postgres psql -U platform -d platform -c "SELECT set_config('app.system_worker','on',false); SELECT event, attempts, requeues, exhausted, delivered_at IS NOT NULL AS done, left(last_error,60) FROM audit.webhook_outbox ORDER BY created_at DESC LIMIT 10;"
+docker compose exec postgres psql -U platform -d platform -c "SELECT set_config('app.system_worker','on',false); SELECT event, attempts, requeues, exhausted, delivered_at IS NOT NULL AND NOT exhausted AS delivered, left(last_error,60) FROM audit.webhook_outbox ORDER BY created_at DESC LIMIT 10;"
 
 # anything that gave up for good
 docker compose exec postgres psql -U platform -d platform -c "SELECT set_config('app.system_worker','on',false); SELECT count(*) FROM audit.webhook_outbox WHERE exhausted;"
 ```
 
 A row with `exhausted = true` and `requeues = 3` has been given up on permanently; its `last_error` says why.
+
+**Do not read `delivered_at` on its own.** It is set when a delivery *settles*, which includes giving up — `markExhausted` stamps it so the row leaves the queue. A raw `delivered_at IS NOT NULL` therefore reports a webhook that never arrived as delivered, which is why the projection above subtracts `exhausted`.
+
+If the first query returns `0` rows rather than a count, the `set_config` did not take: without it RLS hides every row from `platform` and the table reads as empty. Run the two statements above and confirm the count is non-zero before concluding there is nothing queued.
+
+## Rotating the revalidate secret
+
+The api and the storefront share one bearer token. It is checked into
+[docker-compose.yml](../docker-compose.yml) as `dev-revalidate-secret-change-me`,
+which is fine for a laptop and must not survive a deploy anyone can reach.
+
+**It has two different names.** The sender reads `STOREFRONT_REVALIDATE_SECRET`
+(api); the receiver reads `REVALIDATE_SECRET` (storefront, also in
+[apps/storefront/.env.local](../apps/storefront/.env.local)). Rotating one and
+not the other is the likeliest way to get this wrong.
+
+**Rotation is a restart, not a reload.** Both sides capture the value once at
+process start — a module-scope `const` in the route, a class field in the
+dispatcher and worker. Changing the environment under a running process does
+nothing.
+
+**There is no overlap window.** The route compares against exactly one string,
+so the two sides are mismatched for as long as the rolling restart takes. Plan
+for the gap rather than trying to avoid it.
+
+Rotate the **storefront first**, then the api. That order means the old secret
+stops being accepted at the first restart; the reverse leaves a leaked secret
+working while the api is still coming up.
+
+Compose hard-codes the dev value, so recreating a container on its own re-applies
+the *old* secret. The new value has to reach the environment first — in
+production from the secret store, and locally via an override file:
+
+```yaml
+# rotate.yml — note the two different variable names
+services:
+  api:
+    environment:
+      STOREFRONT_REVALIDATE_SECRET: <new value>
+  storefront:
+    environment:
+      REVALIDATE_SECRET: <new value>
+```
+
+```powershell
+# storefront first — the old secret stops being accepted here
+docker compose -f docker-compose.yml -f rotate.yml up -d --force-recreate storefront
+
+# then the api
+docker compose -f docker-compose.yml -f rotate.yml up -d --force-recreate api
+```
+
+**What the gap costs.** Deliveries in flight get 401s. A 401 is not special-cased,
+so it is treated as a retryable failure like any other: the row stays in the
+outbox, backs off (2s, 4s, 8s, 16s, 32s), exhausts after `STOREFRONT_WEBHOOK_MAX_ATTEMPTS`,
+and is then re-queued by the dead-letter sweep up to `STOREFRONT_OUTBOX_MAX_REQUEUES`
+times. On production defaults that is several minutes of tolerance — far longer
+than a restart. Nothing is silently dropped; a delivery that outlives even the
+sweep is visible as `exhausted = true` in the query above, and the affected pages
+still self-correct on the hourly ISR fallback.
+
+**Verify both directions.** A check that only tries the new secret cannot fail
+usefully — a route that accepted everything would pass it.
+
+```bash
+# must be 401
+curl -s -o /dev/null -w '%{http_code}\n' -X POST http://t-fashion.localhost:3001/api/revalidate \
+  -H 'content-type: application/json' -H 'authorization: Bearer definitely-not-the-secret' \
+  -d '{"event":"pricing.promotion.created","tenantId":"t-fashion"}'
+
+# must be 200, and name the tags it dropped
+curl -s -X POST http://t-fashion.localhost:3001/api/revalidate \
+  -H 'content-type: application/json' -H "authorization: Bearer $NEW_SECRET" \
+  -d '{"event":"pricing.promotion.created","tenantId":"t-fashion"}'
+```
+
+**This was run, not reasoned about.** Rotating the storefront alone flipped the
+old secret from 200 to 401 immediately and the new one to 200. A promotion
+created during the gap failed with `HTTP 401`, exhausted, was re-queued by the
+sweep, and delivered on its own once the api restarted — `requeues = 3`,
+`exhausted = false`, no error. Under the demo settings in compose (2 attempts,
+15s sweep) that used the entire requeue budget, so the tolerance is real but not
+generous; production's 6 attempts and 60s sweep are what make it comfortable.
+
+In production the value belongs in the platform's secret store and must not be
+written into compose or `.env.local` at all. Accepting a list of secrets on the
+storefront side would make rotation seamless; it is not built, because the
+outbox already absorbs the gap and a second accepted secret is a second thing
+that can be left enabled by mistake.
 
 ## Common errors
 

@@ -38,7 +38,7 @@ Every item has a **status**: *by design* (intentional, see linked ADR), *scoped 
 - **Status:** open; only a dev concern.
 - **What:** `STOREFRONT_REVALIDATE_SECRET=dev-revalidate-secret-change-me` is in [docker-compose.yml](../docker-compose.yml).
 - **Impact:** anyone with the repo can forge a revalidate request to a publicly-reachable storefront. In prod this is overridden via env or a secret manager.
-- **Fix:** rotate before any prod deploy. Document in deployment guide (a deferred 7g sub-item).
+- **Fix:** rotate before any prod deploy. The procedure, the two different env-var names, what the mismatch window costs and how to verify it in both directions are in [RUNBOOK.md](RUNBOOK.md#rotating-the-revalidate-secret).
 
 ---
 

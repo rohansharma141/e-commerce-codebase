@@ -119,6 +119,8 @@ Static headers live in `apps/storefront/next.config.mjs`; the CSP is issued per 
 
 The api adds its own helmet baseline. Both layers carry independent headers so a misconfiguration on one doesn't silently weaken the other.
 
+`/api/revalidate` is the one storefront route that authenticates, via a bearer token shared with the api. It fails closed — no secret configured means every request is refused. The dev value is checked in; [rotating it](RUNBOOK.md#rotating-the-revalidate-secret) is a restart of both sides, not a config reload.
+
 ## Theming and money — both come from the api
 
 Neither is configured in the storefront. Both are fetched per request and cached under their own tag, so a tenant changing either reaches rendered pages in seconds rather than waiting out the hourly fallback.

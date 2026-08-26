@@ -148,6 +148,15 @@ export class WebhookOutboxRepository {
    * populated is the record of a webhook that never made it, which is exactly
    * what you want to be able to query after an incident.
    */
+  /**
+   * Give up on a delivery.
+   *
+   * Note `delivered_at` is stamped here too, on a webhook that never arrived.
+   * The column is what takes a row out of the queue — `claimDue` skips
+   * anything with it set — so it means *settled*, not *received*. Anything
+   * reporting on delivery has to read it together with `exhausted`; on its own
+   * it counts give-ups as successes.
+   */
   async markExhausted(id: string, error: string): Promise<void> {
     await this.sql.begin(async (tx) => {
       await tx`SELECT set_config('app.system_worker', 'on', true)`;
