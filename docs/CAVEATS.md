@@ -14,6 +14,12 @@ Every item has a **status**: *by design* (intentional, see linked ADR), *scoped 
 - **Impact:** a storefront down for longer than that keeps whatever it had cached until the one-hour time-based fallback expires. The change is not lost silently — there is a queryable row saying which webhook never landed and why — but nothing re-drives it automatically.
 - **Fix:** a dead-letter sweep that re-queues exhausted rows, or a startup reconciliation on the storefront side that drops its cache wholesale after downtime. Neither is worth building before there is an operator to act on it.
 
+### A dark tenant theme renders unreadable body text
+- **Status:** open. Found by screenshotting, not by testing.
+- **What:** `StorefrontTheme` carries a page background (`pageBgHsl`) and a brand colour, but no page *foreground*. [layout.tsx](../apps/storefront/src/app/layout.tsx) hardcodes `text-slate-800` on `<body>`, so a tenant with a dark background gets dark-grey text on near-black. The t-electronics theme (`210 30% 6%`) is affected: headings, the product count, the latency badge and the nav links are all close to invisible, while the cards stay readable because they paint their own white background.
+- **Impact:** one of the three seeded demo tenants looks broken to anyone who opens it. Nothing catches it — no test asserts contrast, and the page renders without error.
+- **Fix:** add `pageFgHsl` to the theme contract with a default that keeps today's look, surface it as a CSS variable next to the others, and have `<body>` use it instead of a literal Tailwind colour. Contract, seed fixtures, and one layout line.
+
 ### Cache tags are coarse for browse pages
 - **Status:** open.
 - **What:** every browse / category page renders with one tag: `browse:<tenant>`. Any product create or delete in that tenant invalidates every browse render.

@@ -2,6 +2,10 @@
 
 [![ci](https://github.com/rohansharma141/e-commerce-codebase/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/rohansharma141/e-commerce-codebase/actions/workflows/ci.yml)
 
+![Storefront browse — faceted search across 33,000 products](docs/screenshots/storefront-browse.png)
+
+<sub>Faceted browse over one tenant's 33,000 products. Facet counts are computed across the whole result set rather than the returned page, and the timing beside the product count is the api's own measurement of that query.</sub>
+
 Enterprise commerce platform: multi-tenant, headless, API-first. Built from scratch as a portfolio piece demonstrating platform-architecture capability. **Depth over breadth** — a hero feature that sings on a clean spine, with a sharp architecture story.
 
 **Stack**: Node.js + TypeScript, NestJS, PostgreSQL (orders/tenancy/money), OpenSearch (search), Redis (cart/sessions), Drizzle ORM, GraphQL (storefront reads) + REST (admin/system), pnpm + Nx monorepo.
@@ -53,6 +57,10 @@ A Next.js storefront ships alongside the api as a separately-deployable artifact
 
 `http://t-fashion.localhost:3001/` — or `t-electronics`, `t-books`. Modern browsers resolve `*.localhost` natively, so no `/etc/hosts` edits.
 
+![The same code serving a second tenant with its own theme](docs/screenshots/storefront-tenant-theme.png)
+
+<sub>The same routes and the same build, serving a different tenant. Brand name, colours, typography and catalogue all come from the api at request time — there is no per-tenant fork.</sub>
+
 To prove the api ships without it, start the api alone: `docker compose up api`.
 
 For hot reload while working on the storefront, stop the container first and run it from source — otherwise both want port 3001:
@@ -101,6 +109,10 @@ docker exec e-commerce-codebase-postgres-1 psql -U platform -d platform \
 docker exec e-commerce-codebase-postgres-1 psql -U postgres -d platform \
   -c "SELECT count(*) AS true_count FROM catalog.products;"
 ```
+
+![RLS killshot — 0 unbound, 33,000 bound, 99,002 via superuser bypass](docs/screenshots/rls-killshot.png)
+
+Expect `0`, then `33000`, then `99002`. **If all three come back `0`, the seed hasn't run** — every count is zero against an empty table, so the comparison demonstrates nothing. That is the failure mode to watch for, because it looks exactly like a pass.
 
 The same shape works on `orders.orders` and `pricing.*`. See [ADR-0003](docs/adr/0003-rls-not-where-only.md) for why this is the load-bearing test.
 
