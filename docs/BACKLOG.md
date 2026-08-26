@@ -54,7 +54,7 @@ CI has never run on a GitHub runner. Until it has, every "verified" claim rests 
 | 8d-4 | Screenshots — search latency, storefront browse, RLS killshot — embedded in the README | images render in the README | S |
 | 8d-5 | Record the Loom from [LOOM-SCRIPT.md](LOOM-SCRIPT.md) | video exists and is linked | M — human task |
 | 8d-6 | ✅ Cold clone-and-run the README's 60-second tour, writing down every deviation | findings recorded | S |
-| 8d-7 | Fix what 8d-6 found — the seven findings below | the tour runs clean from a cold clone | M |
+| 8d-7 | ✅ Fix what 8d-6 found — the seven findings below | the tour runs clean from a cold clone | M |
 
 ### What the cold run found
 
@@ -85,6 +85,7 @@ Each is independent of the others and of the sequence above. All correspond to a
 | H-3 | Category-scoped cache tags (`browse:<tenant>:category:<slug>`) | editing one category leaves other category caches warm | M |
 | H-4 | `SEED_VIA_API=1` mode routing a small slice through the real HTTP write path | a broken `POST /admin/products` fails the seed | S |
 | H-5 | Deployment-guide note on rotating the checked-in dev revalidate secret | documented | XS |
+| H-6 | Support Node 24 by moving off pnpm 9.12, whose postinstall crashes on it. 8d-7 pinned `engines` to `>=22 <23` so the failure is a clear message instead of a stack trace — this removes the restriction rather than explaining it | `pnpm install` succeeds on Node 24 | M |
 
 ---
 

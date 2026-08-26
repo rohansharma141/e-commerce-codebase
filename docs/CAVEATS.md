@@ -136,7 +136,7 @@ Every item has a **status**: *by design* (intentional, see linked ADR), *scoped 
 Sequenced in [BACKLOG.md](BACKLOG.md) under 8d. They don't affect platform capability:
 
 - No screencast or screenshots; [LOOM-SCRIPT.md](LOOM-SCRIPT.md) is written but nothing is recorded.
-- The README's 60-second tour was run cold on 2026-08-26 and does **not** complete as written: `pnpm install` fails on Node 24, so the seed never runs and two of the three verifiable claims degrade to proving nothing. Seven findings are recorded under 8d-7 in [BACKLOG.md](BACKLOG.md). The Docker half of the tour works fully.
+- The README's tour was run cold on 2026-08-26; all seven findings are fixed (8d-7). It now states its prerequisites, the build time is honest, and every verification is runnable end to end. One restriction remains by choice: **Node 22 only**, because pnpm 9.12 crashes on Node 24 — the failure is now an explicit engine error rather than a stack trace. Lifting it is H-6.
 
 ---
 

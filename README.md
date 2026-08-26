@@ -10,15 +10,29 @@ Enterprise commerce platform: multi-tenant, headless, API-first. Built from scra
 
 ---
 
-## 60-second tour
+## Running it
+
+**Prerequisites**
+
+| | |
+|---|---|
+| Docker Desktop | running before any `docker compose` command |
+| Node **22** | the version in `.nvmrc`. Newer majors are rejected at install time — pnpm 9.12 crashes on Node 24, so `engines` pins the range rather than letting it fail obscurely |
+| pnpm 9.12 | `corepack enable && corepack prepare pnpm@9.12.0 --activate` |
+
+Node and pnpm are needed only for the seed and for running things outside Docker. The stack itself needs Docker alone.
 
 ```bash
 git clone https://github.com/rohansharma141/e-commerce-codebase
 cd e-commerce-codebase
-docker compose up --build      # ~30s once images are pulled; first run pulls images
+
+docker compose up --build -d   # first build ~6 min (two images: api + storefront);
+                               # subsequent starts are seconds. -d so you keep the shell
 pnpm install                   # installs the monorepo
-pnpm seed                      # ~10s; 99k products + prices + sample promotions across 3 tenants
+pnpm seed                      # ~30s; 99k products + prices + promotions across 3 tenants
 ```
+
+The seed is not optional if you intend to try the verifications below — two of the three read as passing but prove nothing against an empty database.
 
 When the seed finishes, the api is live at `http://localhost:3000`:
 
@@ -35,13 +49,18 @@ When the seed finishes, the api is live at `http://localhost:3000`:
 
 ### Storefront
 
-A Next.js storefront ships alongside the api as a separately-deployable artifact. To run it:
+A Next.js storefront ships alongside the api as a separately-deployable artifact, and `docker compose up` already started it. Open:
+
+`http://t-fashion.localhost:3001/` — or `t-electronics`, `t-books`. Modern browsers resolve `*.localhost` natively, so no `/etc/hosts` edits.
+
+To prove the api ships without it, start the api alone: `docker compose up api`.
+
+For hot reload while working on the storefront, stop the container first and run it from source — otherwise both want port 3001:
 
 ```bash
+docker compose stop storefront
 pnpm nx serve storefront
 ```
-
-Then open `http://t-fashion.localhost:3001/` (or `t-electronics`, `t-books`). Modern browsers resolve `*.localhost` natively — no `/etc/hosts` edits.
 
 The storefront imports ONLY from `@platform/api-client` and talks to the api exclusively over the public GraphQL + REST schema. The sellable-separately rule is enforced by ESLint. See [docs/STOREFRONT.md](docs/STOREFRONT.md).
 
@@ -87,17 +106,42 @@ The same shape works on `orders.orders` and `pricing.*`. See [ADR-0003](docs/adr
 
 ### 3. Snapshot integrity — historical orders never mutate when live config changes
 
-```bash
-# (after the curl flow above produced an order, captured as ORDER_ID)
-# Edit the promotion the order used:
-curl -s -X PATCH "http://localhost:3000/admin/promotions/$PROMO_ID" \
-  -H 'x-tenant-id: t-fashion' -H 'content-type: application/json' \
-  -d '{"action":{"type":"percent","value":9000}}'
+Place an order, then move the promotion out from under it. Copy-paste in order:
 
-# Re-fetch the order — actionValue, discountCents, grandTotalCents
-# are all UNCHANGED.
-curl -s "http://localhost:3000/admin/orders/$ORDER_ID" -H 'x-tenant-id: t-fashion'
+```bash
+H='-H content-type:application/json -H x-tenant-id:t-fashion'
+
+# 1. pick any seeded product
+read -r PID SKU <<< $(curl -s -X POST http://localhost:3000/graphql $H \
+  -d '{"query":"query{search(input:{limit:1}){items{id sku}}}"}' \
+  | python -c "import sys,json;i=json.load(sys.stdin)['data']['search']['items'][0];print(i['id'],i['sku'])")
+
+# 2. create a cart, add two of it
+CART=$(curl -s -X POST http://localhost:3000/storefront/carts $H \
+  | python -c "import sys,json;print(json.load(sys.stdin)['cartId'])")
+curl -s -X POST "http://localhost:3000/storefront/carts/$CART/items" $H \
+  -d "{\"productId\":\"$PID\",\"sku\":\"$SKU\",\"name\":\"demo\",\"qty\":2}" > /dev/null
+
+# 3. apply the seeded 25% coupon, then check out
+curl -s -X POST "http://localhost:3000/storefront/carts/$CART/coupon" $H \
+  -d '{"code":"SPRING25"}' > /dev/null
+ORDER=$(curl -s -X POST http://localhost:3000/storefront/checkout $H \
+  -H "idempotency-key: $(python -c 'import uuid;print(uuid.uuid4())')" \
+  -d "{\"cartId\":\"$CART\"}")
+echo "$ORDER" | python -m json.tool | grep -E 'grandTotalCents|discountCents|actionValue'
+
+# 4. change that promotion from 25% to 90%
+PROMO=$(echo "$ORDER" | python -c "import sys,json;print(json.load(sys.stdin)['appliedPromotion']['promotionId'])")
+ORDER_ID=$(echo "$ORDER" | python -c "import sys,json;print(json.load(sys.stdin)['id'])")
+curl -s -X PATCH "http://localhost:3000/admin/promotions/$PROMO" $H \
+  -d '{"action":{"type":"percent","value":9000}}' > /dev/null
+
+# 5. re-fetch the order — every number is identical
+curl -s "http://localhost:3000/admin/orders/$ORDER_ID" $H \
+  | python -m json.tool | grep -E 'grandTotalCents|discountCents|actionValue'
 ```
+
+The order still reports the 2500 bps it was placed under, the same discount and the same total, while the live promotion now reads 9000. Price, promotion terms and tax rate are all copied into the order at checkout, so editing catalog or pricing data afterwards cannot rewrite financial history.
 
 ---
 

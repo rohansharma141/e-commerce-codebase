@@ -2,10 +2,10 @@
   "name": "e-commerce-codebase",
   "version": "0.0.0",
   "private": true,
-  "description": "Enterprise commerce platform — multi-tenant, headless, API-first monorepo",
+  "description": "Enterprise commerce platform \u2014 multi-tenant, headless, API-first monorepo",
   "packageManager": "pnpm@9.12.0",
   "engines": {
-    "node": ">=22"
+    "node": ">=22 <23"
   },
   "scripts": {
     "dev": "nx serve api",
