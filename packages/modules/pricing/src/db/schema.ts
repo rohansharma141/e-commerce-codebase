@@ -19,7 +19,9 @@ export const tenantConfig = pricingSchema.table('tenant_config', {
   tenantId: text('tenant_id').primaryKey(),
   currency: char('currency', { length: 3 }).notNull(),
   taxRateBps: integer('tax_rate_bps').notNull().default(0),
-  // Storefront branding (colors, brand name, etc). Nullable — falls back to
+  // BCP-47 tag used to format money for this tenant. Not null: every tenant
+  // has one, and a null here would force every consumer to invent a fallback.
+  locale: text('locale').notNull().default('en-US'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

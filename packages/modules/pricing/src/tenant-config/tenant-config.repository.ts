@@ -11,13 +11,30 @@ export class TenantConfigRepository {
     return this.accessor.get();
   }
 
-  async upsert(tenantId: string, currency: string, taxRateBps: number): Promise<TenantConfig> {
+  /**
+   * `locale` is optional all the way down: undefined means "leave it alone".
+   * On insert the column default applies; on conflict the key is simply
+   * absent from the SET, so a caller changing only the tax rate cannot reset
+   * a tenant's formatting as a side effect.
+   */
+  async upsert(
+    tenantId: string,
+    currency: string,
+    taxRateBps: number,
+    locale?: string,
+  ): Promise<TenantConfig> {
     const [row] = await this.db
       .insert(tenantConfig)
-      .values({ tenantId, currency, taxRateBps, updatedAt: new Date() })
+      .values({
+        tenantId,
+        currency,
+        taxRateBps,
+        ...(locale ? { locale } : {}),
+        updatedAt: new Date(),
+      })
       .onConflictDoUpdate({
         target: tenantConfig.tenantId,
-        set: { currency, taxRateBps, updatedAt: sql`now()` },
+        set: { currency, taxRateBps, ...(locale ? { locale } : {}), updatedAt: sql`now()` },
       })
       .returning();
     if (!row) throw new Error('tenant_config upsert returned no row');
@@ -40,6 +57,7 @@ function toDomain(row: TenantConfigRow): TenantConfig {
     tenantId: row.tenantId,
     currency: row.currency,
     taxRateBps: row.taxRateBps,
+    locale: row.locale,
     updatedAt: row.updatedAt.toISOString(),
   };
 }

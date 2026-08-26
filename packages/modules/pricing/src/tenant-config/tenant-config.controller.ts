@@ -13,7 +13,7 @@ export class TenantConfigController {
   constructor(private readonly service: TenantConfigService) {}
 
   @Put()
-  @ApiOperation({ summary: 'Set currency + tax rate (bps) for this tenant' })
+  @ApiOperation({ summary: 'Set currency, tax rate (bps) and locale for this tenant' })
   upsert(
     @CurrentTenant() tenant: TenantContext,
     @Body() dto: UpsertTenantConfigDto,
@@ -22,7 +22,7 @@ export class TenantConfigController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Get this tenant\'s currency + tax config' })
+  @ApiOperation({ summary: 'Get this tenant\'s currency, tax and locale config' })
   get(@CurrentTenant() tenant: TenantContext): Promise<TenantConfig> {
     return this.service.get(tenant.tenantId);
   }
