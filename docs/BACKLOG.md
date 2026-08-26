@@ -53,8 +53,24 @@ CI has never run on a GitHub runner. Until it has, every "verified" claim rests 
 | 8d-3 | ✅ `v0.1.0` tag | tag pushed | XS |
 | 8d-4 | Screenshots — search latency, storefront browse, RLS killshot — embedded in the README | images render in the README | S |
 | 8d-5 | Record the Loom from [LOOM-SCRIPT.md](LOOM-SCRIPT.md) | video exists and is linked | M — human task |
-| 8d-6 | Cold clone-and-run the README's 60-second tour, writing down every deviation | findings recorded | S |
-| 8d-7 | Fix what 8d-6 found | the tour runs clean from a cold clone | S–M, unknown |
+| 8d-6 | ✅ Cold clone-and-run the README's 60-second tour, writing down every deviation | findings recorded | S |
+| 8d-7 | Fix what 8d-6 found — the seven findings below | the tour runs clean from a cold clone | M |
+
+### What the cold run found
+
+Run on 2026-08-26: fresh `git clone` from GitHub into an empty directory, dev stack torn down with `down -v` first so nothing was warm except Docker's layer cache. Findings in the order a reader hits them.
+
+| # | finding | severity |
+|---|---|---|
+| 1 | **`pnpm install` fails outright on Node 24.** `engines` says `>=22`, which admits 24; the pinned pnpm 9.12.0 crashes in nx's postinstall with `readStream must be readable`. `.nvmrc` says `22` but nothing enforces it, and the README never mentions a Node version. Everything downstream of this step is unreachable. | blocking |
+| 2 | **`pnpm seed` therefore fails** with `'nx' is not recognized` — the install left `node_modules` incomplete. The tour cannot be completed on the documented steps alone. | blocking |
+| 3 | **Claim 2, the RLS killshot, returns `0 / 0 / 0`** without a seed — unbound, bound, and superuser counts are all zero, so it demonstrates nothing. This is the same empty-table problem 8a fixed at the seed level, reachable again by any reader whose seed didn't run. | high — it is the headline proof |
+| 4 | **Claim 3 is unrunnable as written.** It uses `$PROMO_ID` and `$ORDER_ID` and says "after the curl flow above produced an order" — no such flow exists anywhere in the README. Nothing shows how to create a cart, check out, or list promotions. | high |
+| 5 | **`docker compose up --build` took 6m03s**, against a documented "~30s once images are pulled" — and that was *with* a warm Docker layer cache. The estimate predates the storefront image added in 8a, so the tour now builds two images. | medium |
+| 6 | **The README's foreground `docker compose up --build` blocks the terminal**, then the next line tells the reader to run `pnpm install`. Needs `-d` or an explicit "second terminal" instruction. | medium |
+| 7 | **The storefront section is stale.** It says to run `pnpm nx serve storefront`, but compose has started a storefront container on port 3001 since 8a — so the instruction is redundant, would collide on the port, and fails on Node 24 anyway. | medium |
+
+What did work, unchanged: `git clone` (2.4s), the whole Docker stack coming up healthy, and every endpoint in the README's table — `/health`, `/ready`, `/docs`, `/graphql`, and the storefront on `t-fashion.localhost:3001` — all returning 200.
 
 ---
 
