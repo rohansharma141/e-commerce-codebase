@@ -142,8 +142,9 @@ export class WebhookOutboxRepository {
   }
 
   /**
-   * Gives up on a delivery. Marked delivered so it stops being retried, with
-   * the reason preserved — a row with `delivered_at` set and `last_error`
+   * Gives up on a delivery. Marked delivered so it stops being retried, and
+   * flagged exhausted so the sweep can tell it apart from one that actually
+   * arrived, with the reason preserved — a row with `delivered_at` set and `last_error`
    * populated is the record of a webhook that never made it, which is exactly
    * what you want to be able to query after an incident.
    */
@@ -153,9 +154,48 @@ export class WebhookOutboxRepository {
       await tx`
         UPDATE audit.webhook_outbox
            SET delivered_at = now(),
+               exhausted = true,
                last_error = ${`gave up after retries: ${error}`.slice(0, 500)}
          WHERE id = ${id}
       `;
     });
+  }
+
+  /**
+   * Re-drive dead letters.
+   *
+   * The worker's give-up is deliberate — six attempts over roughly two
+   * minutes is the right patience for a redeploy, not for an outage. What was
+   * missing is the other half: an outage longer than that used to leave rows
+   * that nothing would ever retry, recoverable only by hand.
+   *
+   * Resets the row to pending and counts the re-queue. The count is the point:
+   * a consumer that is gone for good stops being chased after `maxRequeues`
+   * rounds, so this recovers from downtime without becoming an infinite
+   * retry loop wearing a different name.
+   */
+  async sweepExhausted(maxRequeues: number, limit: number): Promise<number> {
+    const rows = await this.sql.begin(async (tx) => {
+      await tx`SELECT set_config('app.system_worker', 'on', true)`;
+      return tx<Array<{ id: string }>>`
+        UPDATE audit.webhook_outbox
+           SET delivered_at = NULL,
+               exhausted = false,
+               attempts = 0,
+               requeues = requeues + 1,
+               next_attempt_at = now()
+         WHERE id IN (
+           SELECT id
+             FROM audit.webhook_outbox
+            WHERE exhausted
+              AND requeues < ${maxRequeues}
+            ORDER BY created_at
+            FOR UPDATE SKIP LOCKED
+            LIMIT ${limit}
+         )
+        RETURNING id
+      `;
+    });
+    return (rows as unknown as Array<{ id: string }>).length;
   }
 }

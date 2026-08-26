@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  boolean,
   integer,
   jsonb,
   index,
@@ -46,6 +47,12 @@ export const webhookOutbox = auditSchema.table(
     nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
     deliveredAt: timestamp('delivered_at', { withTimezone: true }),
     lastError: text('last_error'),
+    /** True when the worker gave up. Distinguishes a failure from a success:
+     *  both set deliveredAt, only one of them is a dead letter. */
+    exhausted: boolean('exhausted').notNull().default(false),
+    /** How many times a sweep has re-driven this row. Bounded so a permanently
+     *  unreachable consumer cannot make the sweep spin forever. */
+    requeues: integer('requeues').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

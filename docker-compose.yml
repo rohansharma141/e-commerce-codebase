@@ -82,6 +82,11 @@ services:
       #   STOREFRONT_REVALIDATE_URL=http://host.docker.internal:3001/api/revalidate
       STOREFRONT_REVALIDATE_URL: http://storefront:3001/api/revalidate
       STOREFRONT_REVALIDATE_SECRET: dev-revalidate-secret-change-me
+      # Give up quickly and sweep often, so the dead-letter path is observable
+      # in a demo rather than taking minutes. Production defaults are 6
+      # attempts and a 60s sweep.
+      STOREFRONT_WEBHOOK_MAX_ATTEMPTS: "2"
+      STOREFRONT_OUTBOX_SWEEP_MS: "15000"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:

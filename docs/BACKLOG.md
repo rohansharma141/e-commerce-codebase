@@ -81,7 +81,7 @@ Each is independent of the others and of the sequence above. All correspond to a
 | id | item | done when | size |
 |---|---|---|---|
 | H-1 | ✅ ESLint `no-restricted-imports` banning `../../*/src/*`, plus fixing the one existing violation in the orders integration spec | lint fails on a deliberately added violation | S |
-| H-2 | Dead-letter sweep that re-queues exhausted outbox rows | an exhausted row is retried after the sweep | S |
+| H-2 | ✅ Dead-letter sweep that re-queues exhausted outbox rows | an exhausted row is retried after the sweep | S |
 | H-3 | Category-scoped cache tags (`browse:<tenant>:category:<slug>`) | editing one category leaves other category caches warm | M |
 | H-4 | ✅ `SEED_VIA_API=1` mode routing a small slice through the real HTTP write path | a broken `POST /admin/products` fails the seed | S |
 | H-5 | Deployment-guide note on rotating the checked-in dev revalidate secret | documented | XS |

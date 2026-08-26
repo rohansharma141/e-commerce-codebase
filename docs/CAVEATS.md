@@ -8,12 +8,13 @@ Every item has a **status**: *by design* (intentional, see linked ADR), *scoped 
 
 ## Storefront
 
-### Webhook delivery gives up after six attempts
-- **Status:** by design, but know where the edge is.
-- **What:** deliveries go through the `audit.webhook_outbox` table and a polling worker that retries with exponential backoff — 2s doubling to a 5-minute cap, six attempts, roughly two minutes of total patience. After that the row is marked delivered with the failure preserved in `last_error`.
-- **Impact:** a storefront down for longer than that keeps whatever it had cached until the one-hour time-based fallback expires. The change is not lost silently — there is a queryable row saying which webhook never landed and why — but nothing re-drives it automatically.
-- **Fix:** a dead-letter sweep that re-queues exhausted rows, or a startup reconciliation on the storefront side that drops its cache wholesale after downtime. Neither is worth building before there is an operator to act on it.
-
+### Webhook delivery gives up, then a sweep re-drives it — three times
+- **Status:** by design; know where the last door closes.
+- **What:** deliveries retry with exponential backoff (2s doubling, six attempts, roughly two minutes of patience) and are then marked `exhausted`. A dead-letter sweep runs on a slower cadence, returns exhausted rows to the queue and counts the re-queue in `requeues`. After three re-queues the row stays a dead letter for good.
+- **Why bounded:** an unbounded sweep is an infinite retry loop wearing a different name. The cap means an outage recovers automatically while a consumer that is genuinely gone stops being chased.
+- **Impact:** a storefront down longer than the backoff no longer strands changes — that used to require someone noticing and writing `UPDATE` by hand. What is still manual is the row that exhausts its re-queues: it is queryable (`WHERE exhausted`) and carries its last error, but nothing escalates it.
+- **Fix if it ever matters:** alerting on `SELECT count(*) FROM audit.webhook_outbox WHERE exhausted`, which is the metric an operator would actually want. Not worth building before there is an operator.
+- **Demo settings:** `docker-compose.yml` sets 2 attempts and a 15s sweep so the whole cycle is observable in under a minute. Production defaults are 6 and 60s.
 ### Cache tags are coarse for browse pages
 - **Status:** open.
 - **What:** every browse / category page renders with one tag: `browse:<tenant>`. Any product create or delete in that tenant invalidates every browse render.

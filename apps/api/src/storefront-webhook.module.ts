@@ -177,8 +177,31 @@ class WebhookOutboxWorker implements OnModuleInit, OnModuleDestroy {
     10,
   );
   private readonly batchSize = 32;
-  private readonly maxAttempts = 6;
+  /**
+   * Env-configurable so the give-up path can be exercised without waiting out
+   * two minutes of backoff. Six is the production default: enough patience for
+   * a redeploy, not enough to chase an outage.
+   */
+  private readonly maxAttempts = Number.parseInt(
+    process.env['STOREFRONT_WEBHOOK_MAX_ATTEMPTS'] ?? '6',
+    10,
+  );
+  /**
+   * The dead-letter sweep runs on its own, much slower cadence. Rows only
+   * reach it after the delivery worker has already given up, so sweeping
+   * often would just re-check the same failures; the interval is the real
+   * recovery window for an outage longer than the backoff.
+   */
+  private readonly sweepMs = Number.parseInt(
+    process.env['STOREFRONT_OUTBOX_SWEEP_MS'] ?? '60000',
+    10,
+  );
+  private readonly maxRequeues = Number.parseInt(
+    process.env['STOREFRONT_OUTBOX_MAX_REQUEUES'] ?? '3',
+    10,
+  );
   private timer?: NodeJS.Timeout;
+  private sweepTimer?: NodeJS.Timeout;
   /** Guards against a slow tick overlapping the next one. */
   private running = false;
 
@@ -189,13 +212,43 @@ class WebhookOutboxWorker implements OnModuleInit, OnModuleDestroy {
     this.timer = setInterval(() => void this.tick(), this.pollMs);
     // Don't hold the process open on shutdown for the sake of a poll.
     this.timer.unref();
+
+    this.sweepTimer = setInterval(() => void this.sweep(), this.sweepMs);
+    this.sweepTimer.unref();
+
     this.logger.log(
-      `outbox worker polling every ${this.pollMs}ms → ${this.url} (max ${this.maxAttempts} attempts)`,
+      `outbox worker polling every ${this.pollMs}ms → ${this.url} ` +
+        `(max ${this.maxAttempts} attempts, dead-letter sweep every ${this.sweepMs}ms, ` +
+        `max ${this.maxRequeues} requeues)`,
     );
   }
 
   onModuleDestroy(): void {
     if (this.timer) clearInterval(this.timer);
+    if (this.sweepTimer) clearInterval(this.sweepTimer);
+  }
+
+  /**
+   * Return dead letters to the queue.
+   *
+   * Deliveries give up after `maxAttempts`, which is right for a redeploy and
+   * wrong for an outage: before this, a storefront down for longer than the
+   * backoff window left rows nothing would ever re-drive. The sweep is the
+   * recovery path, bounded by `maxRequeues` so a consumer that is genuinely
+   * gone stops being chased instead of being retried forever under a new
+   * name.
+   */
+  private async sweep(): Promise<void> {
+    try {
+      const requeued = await this.outbox.sweepExhausted(this.maxRequeues, this.batchSize);
+      if (requeued > 0) {
+        this.logger.log(`outbox sweep: re-queued ${requeued} exhausted delivery(ies)`);
+      }
+    } catch (err) {
+      this.logger.warn(
+        `outbox sweep failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   /**
