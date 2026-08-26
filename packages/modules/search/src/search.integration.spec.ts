@@ -55,9 +55,20 @@ describeIfOs('search integration', () => {
    * isn't long enough to guarantee an async handler that talks to OpenSearch
    * has actually completed. Poll the predicate instead.
    */
+  /**
+   * 15s rather than 5s. The indexer writes single documents with
+   * `refresh: 'wait_for'`, so every write blocks until OpenSearch's next
+   * refresh cycle — a test that publishes a create and an update back to back
+   * waits out two of them before the assertion can pass. That is comfortable
+   * locally and marginal on a loaded CI runner, where this timed out.
+   *
+   * Raising the ceiling costs nothing in rigour: the predicate is the
+   * assertion, and it still fails if the behaviour never happens. Only the
+   * patience changes.
+   */
   const waitFor = async (
     pred: () => Promise<boolean>,
-    { timeoutMs = 5000, intervalMs = 50 } = {},
+    { timeoutMs = 15_000, intervalMs = 50 } = {},
   ): Promise<void> => {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
