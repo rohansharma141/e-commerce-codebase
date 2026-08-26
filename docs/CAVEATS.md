@@ -135,7 +135,6 @@ Every item has a **status**: *by design* (intentional, see linked ADR), *scoped 
 
 Sequenced in [BACKLOG.md](BACKLOG.md) under 8d. They don't affect platform capability:
 
-- GitHub repo description + topics empty.
 - No screencast or screenshots; [LOOM-SCRIPT.md](LOOM-SCRIPT.md) is written but nothing is recorded.
 - The README's 60-second tour has never been run from a cold clone.
 

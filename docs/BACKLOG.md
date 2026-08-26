@@ -48,7 +48,7 @@ CI has never run on a GitHub runner. Until it has, every "verified" claim rests 
 
 | id | item | done when | size |
 |---|---|---|---|
-| 8d-1 | GitHub repo description + topics | visible on the repo page | XS |
+| 8d-1 | ✅ GitHub repo description + topics | visible on the repo page | XS |
 | 8d-2 | ✅ CI badge in the README | badge renders green | XS |
 | 8d-3 | ✅ `v0.1.0` tag | tag pushed | XS |
 | 8d-4 | Screenshots — search latency, storefront browse, RLS killshot — embedded in the README | images render in the README | S |
