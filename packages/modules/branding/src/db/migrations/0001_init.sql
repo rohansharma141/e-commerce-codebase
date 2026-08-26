@@ -44,7 +44,20 @@ CREATE TABLE IF NOT EXISTS branding.theme (
 -- which it deliberately is not.
 DO $$
 BEGIN
-  IF to_regclass('pricing.tenant_config') IS NOT NULL THEN
+  -- Both conditions matter, and the second is the one that bites. On an empty
+  -- database pricing migrates 0003 (adds the theme column) and 0004 (drops it
+  -- again) before anyone reads this, so the table exists while the column does
+  -- not. Guarding only on the table means a fresh install fails at boot with
+  -- `column "theme" does not exist` — which is invisible on a developer
+  -- machine, where the column was still there when branding first migrated.
+  IF to_regclass('pricing.tenant_config') IS NOT NULL
+     AND EXISTS (
+       SELECT 1
+         FROM information_schema.columns
+        WHERE table_schema = 'pricing'
+          AND table_name = 'tenant_config'
+          AND column_name = 'theme'
+     ) THEN
     ALTER TABLE pricing.tenant_config NO FORCE ROW LEVEL SECURITY;
 
     INSERT INTO branding.theme (tenant_id, theme)
