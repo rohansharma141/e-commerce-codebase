@@ -155,7 +155,7 @@ export function SearchBar({ basePath, searchParams, money }: SearchBarProps) {
         <div
           id="search-suggestions"
           role="listbox"
-          className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-md border border-slate-200 bg-white shadow-lg"
+          className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-md border border-slate-200 bg-white text-slate-800 shadow-lg"
         >
           {loading && suggestions.length === 0 ? (
             <div className="px-3 py-2 text-sm text-slate-500">Searching…</div>

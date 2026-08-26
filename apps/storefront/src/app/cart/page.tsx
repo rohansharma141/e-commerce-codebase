@@ -27,8 +27,8 @@ export default async function CartPage() {
       <main className="container mx-auto px-4 py-10">
         <h1 className="mb-6 text-2xl font-bold tracking-tight md:text-3xl">Your cart</h1>
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 p-12 text-center">
-          <p className="text-base font-medium text-slate-700">Your cart is empty.</p>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="text-base font-medium opacity-80">Your cart is empty.</p>
+          <p className="mt-1 text-sm opacity-60">
             Find something to buy and we&apos;ll keep it here.
           </p>
           <Link

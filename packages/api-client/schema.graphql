@@ -108,6 +108,7 @@ type StorefrontThemeType {
   fontSans: String!
   logoMark: String!
   pageBgHsl: String!
+  pageFgHsl: String!
   tagline: String!
 }
 

@@ -32,8 +32,8 @@ export function ProductGrid({ items, view, money }: ProductGridProps) {
   if (items.length === 0) {
     return (
       <div className="flex min-h-[300px] flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 p-8 text-center">
-        <p className="text-base font-medium text-slate-700">No results</p>
-        <p className="mt-1 text-sm text-slate-500">Try clearing some filters.</p>
+        <p className="text-base font-medium opacity-80">No results</p>
+        <p className="mt-1 text-sm opacity-60">Try clearing some filters.</p>
       </div>
     );
   }

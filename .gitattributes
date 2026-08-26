@@ -1,0 +1,17 @@
+# Normalise line endings in the repository, and check text out as LF on every
+# platform.
+#
+# This is not cosmetic here. The migration runner records a sha256 of each
+# .sql file and refuses to re-run a file whose checksum has changed, which is
+# what makes migrations immutable once applied. With core.autocrlf=true on
+# Windows and no rules here, the same commit can produce CRLF bytes on one
+# checkout and LF on another — so an untouched migration hashes differently
+# and the api refuses to boot with "modified after being applied". The content
+# never changed; only the bytes did.
+* text=auto eol=lf
+
+# Binary assets must never be touched.
+*.png binary
+*.jpg binary
+*.ico binary
+*.docx binary

@@ -35,6 +35,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   --brand: ${theme.brandHsl};
   --brand-fg: ${theme.brandFgHsl};
   --page-bg: ${theme.pageBgHsl};
+  --page-fg: ${theme.pageFgHsl};
   --font-sans: ${theme.fontSans};
 }`;
 
@@ -43,7 +44,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <head>
         <style dangerouslySetInnerHTML={{ __html: themeCss }} />
       </head>
-      <body className="min-h-screen bg-page font-sans text-slate-800">
+      <body className="min-h-screen bg-page font-sans text-page-fg">
         <header className="border-b border-slate-200/70 bg-page/80 backdrop-blur">
           <div className="container mx-auto flex items-center justify-between px-4 py-4">
             <a href="/" className="flex items-center gap-2 text-lg font-semibold tracking-tight">

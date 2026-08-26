@@ -6,7 +6,10 @@ export const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDi
     <div
       ref={ref}
       className={cn(
-        'overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm transition-shadow',
+        // A card paints its own light surface, so it sets its own text colour
+        // rather than inheriting the tenant's page foreground — otherwise a dark
+        // theme renders light text on a white card.
+        'overflow-hidden rounded-lg border border-slate-200 bg-white text-slate-800 shadow-sm transition-shadow',
         className,
       )}
       {...props}

@@ -43,7 +43,7 @@ export default async function OrderConfirmationPage({ params }: PageProps) {
           The totals on this page are the immutable snapshot taken at checkout — they will not move if the catalog price changes.
         </p>
 
-        <section className="mt-8 overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <section className="mt-8 overflow-hidden rounded-lg border border-slate-200 bg-white text-slate-800">
           <header className="border-b border-slate-200 bg-slate-50 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
             Lines
           </header>

@@ -24,6 +24,16 @@ export interface StorefrontTheme {
   /** Page background tint. HSL tuple. */
   readonly pageBgHsl: string;
   /**
+   * Body text colour on that background. HSL tuple.
+   *
+   * Exists because a background alone is not a theme: a tenant that sets a
+   * dark `pageBgHsl` used to get the storefront's hardcoded dark-grey body
+   * text on near-black, which rendered headings and counts effectively
+   * invisible. Anything that carries a background has to carry the
+   * foreground that goes with it, or the pair can be set inconsistently.
+   */
+  readonly pageFgHsl: string;
+  /**
    * Font stack. Use CSS-safe entries; the storefront sets `--font-sans` to
    * this value and the layout's `<html>` reads it.
    */
@@ -37,5 +47,6 @@ export const DEFAULT_THEME: StorefrontTheme = {
   brandHsl: '220 90% 56%',
   brandFgHsl: '0 0% 100%',
   pageBgHsl: '0 0% 100%',
+  pageFgHsl: '215 25% 27%', // slate-800, the colour the storefront used to hardcode
   fontSans: "'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif",
 };

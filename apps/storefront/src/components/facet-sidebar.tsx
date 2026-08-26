@@ -46,7 +46,7 @@ export function FacetSidebar({
 
   return (
     <aside className="lg:sticky lg:top-4 lg:self-start" aria-label="Filters">
-      <div className="rounded-lg border border-slate-200 bg-white p-4">
+      <div className="rounded-lg border border-slate-200 bg-white p-4 text-slate-800">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-slate-900">Filters</h2>
           {hasAnySelection ? (

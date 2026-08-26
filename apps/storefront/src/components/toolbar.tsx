@@ -48,7 +48,7 @@ export function Toolbar({
       </div>
       <div className="flex items-center gap-2">
         <details className="group relative">
-          <summary className="flex cursor-pointer items-center gap-2 rounded-md border border-slate-300 bg-white/90 px-3 py-1.5 text-sm marker:hidden hover:bg-slate-100">
+          <summary className="flex cursor-pointer items-center gap-2 rounded-md border border-slate-300 bg-white/90 px-3 py-1.5 text-sm text-slate-800 marker:hidden hover:bg-slate-100">
             <span className="opacity-60">Sort:</span>
             <span className="font-medium">{currentSort.label}</span>
             <svg
@@ -65,7 +65,7 @@ export function Toolbar({
             </svg>
           </summary>
           <ul
-            className="absolute right-0 z-10 mt-1 w-56 overflow-hidden rounded-md border border-slate-200 bg-white shadow-lg"
+            className="absolute right-0 z-10 mt-1 w-56 overflow-hidden rounded-md border border-slate-200 bg-white text-slate-800 shadow-lg"
             role="listbox"
           >
             {SORT_OPTIONS.map((opt) => {
@@ -110,7 +110,7 @@ function ViewToggle({
 }) {
   return (
     <div
-      className="inline-flex overflow-hidden rounded-md border border-slate-300 bg-white/90"
+      className="inline-flex overflow-hidden rounded-md border border-slate-300 bg-white/90 text-slate-800"
       role="group"
       aria-label="View"
     >

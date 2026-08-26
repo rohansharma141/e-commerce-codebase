@@ -21,7 +21,7 @@ export function CartView({ cart, money }: { cart: CartWithTotals; money: MoneyFo
     <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_360px]">
       <section aria-labelledby="lines-heading">
         <h2 id="lines-heading" className="sr-only">Items</h2>
-        <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white" role="list">
+        <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white text-slate-800" role="list">
           {cart.lines.map((line) => {
             const priced = cart.totals.lines.find((l) => l.productId === line.productId);
             return (
@@ -158,7 +158,7 @@ function CouponBlock({
     });
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
+    <div className="rounded-lg border border-slate-200 bg-white p-4 text-slate-800">
       <h2 className="text-sm font-semibold text-slate-900">Coupon</h2>
       {couponCode ? (
         <div className="mt-2 flex items-center justify-between rounded bg-emerald-50 px-3 py-2">
@@ -210,7 +210,7 @@ function TotalsBlock({
   money: MoneyFormat;
 }) {
   return (
-    <dl className="mt-4 space-y-1.5 rounded-lg border border-slate-200 bg-white p-4 text-sm">
+    <dl className="mt-4 space-y-1.5 rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-800">
       <Row label="Subtotal" value={formatMinorUnitsIn(totals.subtotalCents, totals.currency, money)} />
       {totals.discountCents > 0 ? (
         <Row

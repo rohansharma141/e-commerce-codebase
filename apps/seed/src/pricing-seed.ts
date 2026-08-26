@@ -43,6 +43,7 @@ const THEMES_BY_TENANT: Record<string, Record<string, string>> = {
     brandHsl: '340 65% 48%', // muted rose
     brandFgHsl: '0 0% 100%',
     pageBgHsl: '40 30% 98%', // warm off-white
+    pageFgHsl: '340 12% 18%', // warm near-black, picks up the rose
     fontSans: "'Cormorant Garamond', 'Georgia', serif",
   },
   't-electronics': {
@@ -52,6 +53,7 @@ const THEMES_BY_TENANT: Record<string, Record<string, string>> = {
     brandHsl: '195 95% 45%', // electric cyan
     brandFgHsl: '210 50% 8%', // near-black with blue
     pageBgHsl: '210 30% 6%', // dark mode page
+    pageFgHsl: '205 25% 88%', // light text — the whole point of a dark theme
     fontSans: "'JetBrains Mono', 'Consolas', monospace",
   },
   't-books': {
@@ -61,6 +63,7 @@ const THEMES_BY_TENANT: Record<string, Record<string, string>> = {
     brandHsl: '25 70% 38%', // burnt sienna
     brandFgHsl: '40 60% 96%',
     pageBgHsl: '40 50% 95%', // creamy paper
+    pageFgHsl: '25 30% 20%', // ink brown
     fontSans: "'Lora', 'Iowan Old Style', Georgia, serif",
   },
 };

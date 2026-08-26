@@ -27,6 +27,7 @@ export class StorefrontThemeType implements StorefrontTheme {
   @Field(() => String) brandHsl!: string;
   @Field(() => String) brandFgHsl!: string;
   @Field(() => String) pageBgHsl!: string;
+  @Field(() => String) pageFgHsl!: string;
   @Field(() => String) fontSans!: string;
 }
 

@@ -59,7 +59,7 @@ A Next.js storefront ships alongside the api as a separately-deployable artifact
 
 ![The same code serving a second tenant with its own theme](docs/screenshots/storefront-tenant-theme.png)
 
-<sub>The same routes and the same build, serving a different tenant. Brand name, colours, typography and catalogue all come from the api at request time — there is no per-tenant fork.</sub>
+<sub>The same routes and the same build, serving a different tenant — including a dark theme. Brand name, colours, typography, page foreground and catalogue all come from the api at request time; there is no per-tenant fork and no theme-specific CSS.</sub>
 
 To prove the api ships without it, start the api alone: `docker compose up api`.
 
