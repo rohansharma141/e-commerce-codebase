@@ -105,12 +105,11 @@ Every item has a **status**: *by design* (intentional, see linked ADR), *scoped 
 - **Impact:** running the full test suite against the same database you demo from silently empties it. The storefront then renders products with no prices, and checkout fails.
 - **Mitigation today:** documented in the README's command block, and the storefront conformance suite fails fast with an explicit "run `pnpm seed`" message rather than a confusing assertion. A dedicated test database would remove the foot-gun entirely.
 
-### The module boundary has a hole for relative imports
-- **Status:** open.
-- **What:** the ESLint boundary rule keys on Nx project tags, which catches `@platform/modules/x/src` imports. It does not catch a deep relative path — [checkout.integration.spec.ts](../packages/modules/orders/src/checkout.integration.spec.ts) reaches into `../../cart/src/cart.repository` and `../../pricing/src/...` and lints clean.
-- **Impact:** the "never import another module's `src/`" rule is enforced for the shape people usually write, not for every shape. In this instance it is a test wiring several modules together the way the composition root does, which is defensible — but the rule isn't actually holding the line, and nothing would stop production code doing the same.
-- **Fix:** add an `no-restricted-imports` pattern banning `../../*/src/*` across `packages/modules/**`, then either move the cross-module test wiring into a composition-root-level test project or have it import through each module's public contracts.
-
+### Cross-module test wiring lives in the composition root
+- **Status:** by design, worth knowing where to put things.
+- **What:** the boundary rule is now enforced in spec files as well as production code, and a second rule bans reaching into another module's `src` by relative path. A test that genuinely needs to wire several modules together — [checkout.integration.spec.ts](../apps/api/src/checkout.integration.spec.ts), which builds cart + pricing + orders into one object graph — therefore lives in `apps/api`, the one place permitted to know module internals.
+- **Consequence:** `packages/modules/orders/src` has no spec of its own, and its jest target runs with `passWithNoTests`. The module's behaviour is covered, just from the composition root rather than from inside.
+- **Why not exempt tests instead:** that was the previous arrangement and it meant the repository's loudest architectural claim was unenforced in precisely the files most tempted to break it.
 ### In-process event bus, not a real broker
 - **Status:** by design.
 - **What:** [@platform/shared/event-bus](../packages/shared/event-bus/src/event-bus.ts) dispatches via `queueMicrotask` in the same process. No durability, no retry, no fan-out across processes.

@@ -25,15 +25,24 @@ import {
   withTenantConnection,
 } from '@platform/shared/database';
 import { TenantRedisClient } from '@platform/shared/redis';
-import { CartRepository } from '../../cart/src/cart.repository';
-import { CartService } from '../../cart/src/cart.service';
-import { TenantConfigRepository } from '../../pricing/src/tenant-config/tenant-config.repository';
-import { TenantConfigService } from '../../pricing/src/tenant-config/tenant-config.service';
-import { PricesRepository } from '../../pricing/src/prices/prices.repository';
-import { PromotionsRepository } from '../../pricing/src/promotions/promotions.repository';
-import { TotalsService } from '../../pricing/src/totals/totals.service';
+import { CartRepository } from '@platform/modules/cart/src/cart.repository';
+import { CartService } from '@platform/modules/cart/src/cart.service';
+import { TenantConfigRepository } from '@platform/modules/pricing/src/tenant-config/tenant-config.repository';
+import { TenantConfigService } from '@platform/modules/pricing/src/tenant-config/tenant-config.service';
+import { PricesRepository } from '@platform/modules/pricing/src/prices/prices.repository';
+import { PromotionsRepository } from '@platform/modules/pricing/src/promotions/promotions.repository';
+import { TotalsService } from '@platform/modules/pricing/src/totals/totals.service';
 import type { Promotion } from '@platform/modules/pricing/contracts';
-import { CheckoutService } from './checkout.service';
+import { CheckoutService } from '@platform/modules/orders/src/checkout.service';
+
+/**
+ * This spec lives in apps/api rather than in the orders module, because what
+ * it does — wiring cart, pricing and orders together into one working object
+ * graph — is composition-root work. A module may not reach into another
+ * module's src, and a test is not an exemption from that; it just needs to
+ * live where the wiring legitimately happens.
+ */
+const MODULES = join(__dirname, '..', '..', '..', 'packages', 'modules');
 
 const PG_URL = process.env['TEST_DATABASE_URL'];
 const REDIS_URL = process.env['TEST_REDIS_URL'];
@@ -78,11 +87,8 @@ describeIf('orders checkout integration', () => {
     // references conceptually but no cross-schema FKs; pricing is independent.
     await sql.unsafe('DROP SCHEMA IF EXISTS orders CASCADE');
     await sql.unsafe('DROP SCHEMA IF EXISTS pricing CASCADE');
-    await runner.apply(
-      join(__dirname, '..', '..', 'pricing', 'src', 'db', 'migrations'),
-      'pricing',
-    );
-    await runner.apply(join(__dirname, 'db', 'migrations'), 'orders');
+    await runner.apply(join(MODULES, 'pricing', 'src', 'db', 'migrations'), 'pricing');
+    await runner.apply(join(MODULES, 'orders', 'src', 'db', 'migrations'), 'orders');
 
     bus = new EventBus();
     const tenantConfigRepo = new TenantConfigRepository(tenantDrizzleAccessor);

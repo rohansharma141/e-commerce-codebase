@@ -106,11 +106,39 @@ module.exports = {
       files: ['*.spec.ts', '*.test.ts'],
       rules: {
         '@typescript-eslint/no-explicit-any': 'off',
-        // Tests sometimes need to hand-construct repositories and services
-        // across module boundaries to set up integration fixtures. The
-        // boundary discipline is about production code; relaxing it for
-        // specs keeps tests honest without forcing a layer of test-only DI.
-        '@nx/enforce-module-boundaries': 'off',
+        // NOTE: '@nx/enforce-module-boundaries' is deliberately NOT disabled
+        // here any more. It used to be, with the reasoning that boundary
+        // discipline is about production code and integration fixtures need
+        // to hand-construct services across modules. The effect was that the
+        // repository's single loudest architectural claim — never import
+        // another module's src — was unenforced in exactly the files most
+        // tempted to break it. A rule that is off where it would bite is not
+        // a rule. Cross-module wiring belongs in the composition root
+        // (apps/api), which is permitted to know module internals; a test
+        // that needs it belongs there too.
+      },
+    },
+    {
+      // Belt to the boundary rule's braces.
+      //
+      // @nx/enforce-module-boundaries reasons about imports by project alias,
+      // so it sees '@platform/modules/cart/src' and stops it. It does not see
+      // '../../cart/src/cart.repository' — the same import, spelled as a
+      // relative path, walks straight through. This closes that spelling.
+      files: ['packages/modules/**/*.ts'],
+      rules: {
+        'no-restricted-imports': [
+          'error',
+          {
+            patterns: [
+              {
+                group: ['../../*/src/*', '../../*/src', '**/../../*/src/*'],
+                message:
+                  "Never reach into another module's src, even by relative path — import its contracts instead. Cross-module wiring belongs in apps/api. See CLAUDE.md.",
+              },
+            ],
+          },
+        ],
       },
     },
   ],
