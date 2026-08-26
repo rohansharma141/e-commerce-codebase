@@ -1,5 +1,7 @@
 # e-commerce-codebase
 
+[![ci](https://github.com/rohansharma141/e-commerce-codebase/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/rohansharma141/e-commerce-codebase/actions/workflows/ci.yml)
+
 Enterprise commerce platform: multi-tenant, headless, API-first. Built from scratch as a portfolio piece demonstrating platform-architecture capability. **Depth over breadth** — a hero feature that sings on a clean spine, with a sharp architecture story.
 
 **Stack**: Node.js + TypeScript, NestJS, PostgreSQL (orders/tenancy/money), OpenSearch (search), Redis (cart/sessions), Drizzle ORM, GraphQL (storefront reads) + REST (admin/system), pnpm + Nx monorepo.
@@ -109,7 +111,8 @@ Modular monolith, not microservices. Three disciplines preserve a clean future s
 
 ```
 apps/
-  api/                  the single deployable
+  api/                  the backend deployable
+  storefront/           the Next.js deployable — separate image, ships alone
   seed/                 a CLI that bulk-loads 99k products + prices + promotions
 
 packages/
@@ -127,6 +130,7 @@ packages/
     catalog/            products + tenant-defined typed attributes
     search/             OpenSearch indexer + GraphQL Query.search
     pricing/            prices, tax, promotion engine (best-single stacking)
+    branding/           per-tenant storefront theme
     cart/               Redis-backed cart, snapshots sku/name at add-time
     orders/             transactional core: checkout, snapshot, idempotency
 ```
