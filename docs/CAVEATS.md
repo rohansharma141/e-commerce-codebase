@@ -70,12 +70,6 @@ Every item has a **status**: *by design* (intentional, see linked ADR), *scoped 
 - **Impact:** a REST integrator is still configured out of band. Per-tenant feature variation does not exist today, so the second limitation costs nothing until it does.
 - **Fix:** mirror it at `GET /system/capabilities` for REST consumers, which is also what an ICM-style facade ([ADR-0013](adr/0013-icm-conformance-and-compat-facade.md)) would read at boot. Per-tenant overrides would flip individual entries in the existing list without changing the response shape — the list-of-keys form was chosen over fixed boolean fields for exactly that reason.
 
-### Locale is platform-wide, not per tenant
-- **Status:** open; small.
-- **What:** the storefront now formats money from `Query.capabilities` — currency, minor-unit exponent and locale all come from the api ([money.ts](../apps/storefront/src/lib/money.ts)). But `defaultLocale` is a single platform constant, so a JPY tenant renders `¥1,000` with en-US grouping rather than ja-JP conventions.
-- **Impact:** cosmetic for currencies whose grouping matches en-US, wrong for those that don't (de-DE would want `1.000,00`). Nothing exercises it today because all three demo tenants are en-US.
-- **Fix:** a `locale` column on tenant config, surfaced through the same capability field the storefront already reads. No storefront change at all — it is already asking the api what locale to use, which is the point of having built it this way.
-
 ---
 
 ## Operations / Security

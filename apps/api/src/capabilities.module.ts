@@ -11,17 +11,18 @@ import { currentTenantOrThrow } from '@platform/shared/tenant-context';
  *
  * Every other endpoint answers a question about a tenant's data. This one
  * answers questions about the API: what currency this tenant trades in, how
- * many minor units that currency has, whether tax is added at checkout or
- * already in the listed price, which locales are supported, and which
+ * many minor units that currency has, which locale to format it in, whether
+ * tax is added at checkout or already in the listed price, and which
  * capabilities this deployment actually implements.
  *
- * Why it exists: the platform is sold as a standalone product, and until now a
- * consumer had no way to discover any of that. Our own storefront papers over
+ * Why it exists: the platform is sold as a standalone product, and a consumer
+ * had no way to discover any of that. Our own storefront used to paper over
  * the gap by hardcoding `en-US`, a `$` prefix and two decimal places — which
- * only works because the same author wrote both sides. Anyone else integrating
- * has to be told out of band, and out of band is how integrations drift. A
- * headless product that cannot describe itself is incomplete regardless of how
- * many features it has.
+ * only worked because the same author wrote both sides. It now formats from
+ * this endpoint instead, which is what proves the endpoint sufficient rather
+ * than merely present: a tenant switched to JPY or de-DE re-renders correctly
+ * with no storefront change at all. A headless product that cannot describe
+ * itself is incomplete regardless of how many features it has.
  *
  * Lives in the composition root rather than a domain module on purpose.
  * Capabilities are a property of the assembled deployment — which modules are
@@ -152,7 +153,12 @@ const FEATURES: ReadonlyArray<{ key: string; enabled: boolean }> = [
 ];
 
 const API_VERSION = '0.1.0';
-const DEFAULT_LOCALE = 'en-US';
+
+/**
+ * Used only when a tenant has no config row yet — reported alongside
+ * `configured: false` so a consumer can tell a real setting from a fallback.
+ */
+const FALLBACK_LOCALE = 'en-US';
 
 @Injectable()
 @Resolver()
@@ -166,6 +172,7 @@ export class CapabilitiesResolver {
     const tenant = currentTenantOrThrow();
     const config = await this.tenantConfig.findOptional(tenant.tenantId);
     const currency = config?.currency ?? DEFAULT_CURRENCY;
+    const locale = config?.locale ?? FALLBACK_LOCALE;
 
     return {
       tenantId: tenant.tenantId,
@@ -178,10 +185,13 @@ export class CapabilitiesResolver {
       taxDisplay: TaxDisplay.EXCLUSIVE,
       taxRateBps: config?.taxRateBps ?? DEFAULT_TAX_RATE_BPS,
       configured: config !== null,
-      defaultLocale: DEFAULT_LOCALE,
-      // One entry, honestly. The platform has no i18n; advertising more would
-      // be inventing a capability.
-      locales: [DEFAULT_LOCALE],
+      defaultLocale: locale,
+      // One entry, and it is the tenant's own. `locales` stays a list because
+      // the field describes what a consumer may ask for, and a deployment that
+      // later serves several would grow this array without changing the
+      // response shape. Advertising tags this platform cannot actually format
+      // would be inventing a capability, so it lists exactly one.
+      locales: [locale],
       features: FEATURES.map((f) => ({ ...f })),
     };
   }

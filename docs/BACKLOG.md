@@ -37,7 +37,7 @@ CI has never run on a GitHub runner. Until it has, every "verified" claim rests 
 | id | item | done when | size |
 |---|---|---|---|
 | 8c-5 | ✅ `locale` column on tenant config; admin endpoint accepts and returns it | PUT then GET round-trips a locale | S |
-| 8c-6 | `capabilities.defaultLocale` reports the per-tenant value. **No storefront change** — it already asks the api | a de-DE tenant renders `1.000,00` | XS |
+| 8c-6 | ✅ `capabilities.defaultLocale` reports the per-tenant value. **No storefront change** — it already asks the api | a de-DE tenant renders `1.000,00` | XS |
 | 8c-7 | `GET /system/capabilities` REST mirror, for consumers that don't speak GraphQL | curl returns the same data as the GraphQL query | S |
 
 ---
