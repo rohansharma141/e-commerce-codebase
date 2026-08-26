@@ -15,6 +15,7 @@ Every item has a **status**: *by design* (intentional, see linked ADR), *scoped 
 - **Impact:** a storefront down longer than the backoff no longer strands changes — that used to require someone noticing and writing `UPDATE` by hand. What is still manual is the row that exhausts its re-queues: it is queryable (`WHERE exhausted`) and carries its last error, but nothing escalates it.
 - **Fix if it ever matters:** alerting on `SELECT count(*) FROM audit.webhook_outbox WHERE exhausted`, which is the metric an operator would actually want. Not worth building before there is an operator.
 - **Demo settings:** `docker-compose.yml` sets 2 attempts and a 15s sweep so the whole cycle is observable in under a minute. Production defaults are 6 and 60s.
+
 ### Cache tags are coarse for browse pages
 - **Status:** open.
 - **What:** every browse / category page renders with one tag: `browse:<tenant>`. Any product create or delete in that tenant invalidates every browse render.
