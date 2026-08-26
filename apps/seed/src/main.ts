@@ -21,6 +21,7 @@ import {
   type GeneratedProduct,
 } from './pricing-seed';
 import { seedCatalogForTenant } from './catalog-seed';
+import { seedViaApi } from './api-seed';
 
 /**
  * Hero-feature seed. Bulk-indexes products per tenant via the live indexer's
@@ -41,6 +42,19 @@ const OS_URL = process.env['OPENSEARCH_URL'] ?? 'http://localhost:9200';
 const DATABASE_URL =
   process.env['DATABASE_URL'] ?? 'postgres://platform:platform@localhost:5432/platform';
 
+/**
+ * Opt-in: route a slice of each tenant through the api's real HTTP write path
+ * instead of writing straight to the stores. See api-seed.ts for why.
+ *
+ * The slice is taken OUT of the tenant's product budget rather than added to
+ * it, so totals stay exactly what the README claims whether this is on or
+ * off. 25 is enough to exercise every controller, validator and event in the
+ * write path; more would only make the seed slower.
+ */
+const VIA_API = process.env['SEED_VIA_API'] === '1';
+const VIA_API_SLICE = Number.parseInt(process.env['SEED_VIA_API_SLICE'] ?? '25', 10);
+const API_URL = process.env['SEED_API_URL'] ?? 'http://localhost:3000';
+
 async function seedTenant(
   fixture: TenantFixture,
   os: TenantSearchClient,
@@ -59,7 +73,9 @@ async function seedTenant(
   await idx.ensureIndex(buildMapping(defs));
 
   const batchTimings: number[] = [];
-  const total = fixture.productCount;
+  // Hold back the slice the api path will create, so the tenant still ends up
+  // with exactly fixture.productCount products either way.
+  const total = fixture.productCount - (VIA_API ? VIA_API_SLICE : 0);
   let inserted = 0;
   const generated: GeneratedProduct[] = [];
 
@@ -242,6 +258,26 @@ async function main(): Promise<void> {
     await sqlClient.end({ timeout: 5 });
   }
   console.log('');
+
+  if (VIA_API) {
+    console.log(
+      `via api: ${VIA_API_SLICE} products per tenant through POST /admin/* (${API_URL})`,
+    );
+    for (const fixture of fixtures) {
+      // Generated with indices past the bulk range so SKUs cannot collide
+      // with what the direct path already wrote.
+      const offset = fixture.productCount - VIA_API_SLICE;
+      const slice = Array.from({ length: VIA_API_SLICE }, (_, i) =>
+        generateProduct(fixture, offset + i),
+      );
+      const summary = await seedViaApi(API_URL, fixture, slice, priceCentsFor);
+      console.log(
+        `  ${summary.tenantId.padEnd(15)} attrs=${summary.attributeDefinitions}  ` +
+          `products=${summary.products}  prices=${summary.prices}`,
+      );
+    }
+    console.log('');
+  }
 
   console.log(`post-seed search: ${SEARCH_SAMPLES} random queries per tenant`);
   for (const fixture of fixtures) {

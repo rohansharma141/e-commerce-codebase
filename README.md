@@ -34,6 +34,11 @@ docker compose up --build -d   # first build ~6 min (two images: api + storefron
                                # subsequent starts are seconds. -d so you keep the shell
 pnpm install                   # installs the monorepo
 pnpm seed                      # ~30s; 99k products + prices + promotions across 3 tenants
+
+# Optional: route a 25-product slice per tenant through the real HTTP write
+# path instead of straight into the stores, so a broken admin endpoint fails
+# the seed instead of going unnoticed. Same totals either way.
+SEED_VIA_API=1 pnpm seed
 ```
 
 The seed is not optional if you intend to try the verifications below — two of the three read as passing but prove nothing against an empty database.

@@ -83,7 +83,7 @@ Each is independent of the others and of the sequence above. All correspond to a
 | H-1 | ✅ ESLint `no-restricted-imports` banning `../../*/src/*`, plus fixing the one existing violation in the orders integration spec | lint fails on a deliberately added violation | S |
 | H-2 | Dead-letter sweep that re-queues exhausted outbox rows | an exhausted row is retried after the sweep | S |
 | H-3 | Category-scoped cache tags (`browse:<tenant>:category:<slug>`) | editing one category leaves other category caches warm | M |
-| H-4 | `SEED_VIA_API=1` mode routing a small slice through the real HTTP write path | a broken `POST /admin/products` fails the seed | S |
+| H-4 | ✅ `SEED_VIA_API=1` mode routing a small slice through the real HTTP write path | a broken `POST /admin/products` fails the seed | S |
 | H-5 | Deployment-guide note on rotating the checked-in dev revalidate secret | documented | XS |
 | H-7 | ✅ Theme has no page foreground colour, so a dark tenant renders unreadable body text — add `pageFgHsl` (found while screenshotting for 8d-4) | t-electronics is legible | S |
 | H-6 | Support Node 24 by moving off pnpm 9.12, whose postinstall crashes on it. 8d-7 pinned `engines` to `>=22 <23` so the failure is a clear message instead of a stack trace — this removes the restriction rather than explaining it | `pnpm install` succeeds on Node 24 | M |

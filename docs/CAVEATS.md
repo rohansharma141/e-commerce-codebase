@@ -42,12 +42,12 @@ Every item has a **status**: *by design* (intentional, see linked ADR), *scoped 
 
 ## Catalog
 
-### The seed bypasses the API's write path
-- **Status:** open; deliberate trade-off.
-- **What:** [apps/seed](../apps/seed) writes attribute definitions and products straight to Postgres via `postgres-js` and straight to OpenSearch via the indexer's own transforms. It does not `POST /admin/products`.
-- **Impact:** the seed exercises the storage layers but not the HTTP write path, so it wouldn't catch a controller-level regression — a broken `POST /admin/products` would still leave a fully-populated demo. Attribute *validation* in particular is never run against seeded data.
-- **Fix:** an opt-in `SEED_VIA_API=1` mode that routes a small slice (say 500 products per tenant) through the real endpoints while the bulk path stays direct. Full HTTP seeding of 99k products would take minutes instead of seconds, which is why it isn't the default.
-- **Note:** the seed *does* bind `app.tenant_id` per connection, so it gets no RLS exemption — a policy that blocks the api blocks the seed too.
+### The seed's fast path bypasses the API, unless you ask it not to
+- **Status:** by design, with an opt-in check.
+- **What:** [apps/seed](../apps/seed) writes 99k products straight to Postgres and OpenSearch, because going through HTTP would turn a fifteen-second seed into a multi-minute one. `SEED_VIA_API=1` routes a 25-product slice per tenant through the real endpoints instead — `POST /admin/attribute-definitions`, `/admin/products`, `/admin/prices` — exercising middleware, tenant binding, DTO handling, attribute validation, the repository, the event bus and the indexer.
+- **Why the slice is small and subtracted:** it comes out of the tenant's product budget rather than being added to it, so totals stay exactly 33,000 either way and the README's numbers hold whichever mode you run.
+- **Verified:** with `POST /admin/products` deliberately throwing, the default seed still exits 0 — the blind spot — while `SEED_VIA_API=1` exits 1 naming the failing route and status.
+- **Remaining gap:** the default is still the fast path, so an unbroken CI run does not prove the write path works. Wiring `SEED_VIA_API=1` into the conformance job would close that; it needs the api up, which that job already has.
 
 ---
 
