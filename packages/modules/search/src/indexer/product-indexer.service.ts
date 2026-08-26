@@ -147,7 +147,7 @@ export class ProductIndexerService implements OnModuleInit {
     const product = event.payload.product;
     const idx = await this.ensureIndex(product.tenantId);
     await idx.indexDoc(product.id, productToDocument(product), { refresh: 'wait_for' });
-    await this.announceIndexed(product.tenantId, product.id, 'created');
+    await this.announceIndexed(product.tenantId, product.id, 'created', categoriesOf(product.attributes));
   }
 
   private async onProductUpdated(
@@ -155,8 +155,15 @@ export class ProductIndexerService implements OnModuleInit {
   ): Promise<void> {
     const product = event.payload.product;
     const idx = await this.ensureIndex(product.tenantId);
+    // Read before write. An edit that moves a product to another category
+    // leaves the category it came from still listing it, and once the document
+    // is overwritten there is nowhere left to learn what that category was.
+    const previous = await this.categoriesInIndex(idx, product.id);
     await idx.indexDoc(product.id, productToDocument(product), { refresh: 'wait_for' });
-    await this.announceIndexed(product.tenantId, product.id, 'updated');
+    await this.announceIndexed(product.tenantId, product.id, 'updated', [
+      ...previous,
+      ...categoriesOf(product.attributes),
+    ]);
   }
 
   private async onProductDeleted(
@@ -164,6 +171,12 @@ export class ProductIndexerService implements OnModuleInit {
   ): Promise<void> {
     const product = event.payload.product;
     const idx = this.searchClient.forTenant(product.tenantId);
+    // Same read-before-write reason as an update: after the delete there is no
+    // document to ask which listings just lost a product.
+    const categories = dedupe([
+      ...(await this.categoriesInIndex(idx, product.id)),
+      ...categoriesOf(product.attributes),
+    ]);
     await idx.deleteDoc(product.id, { refresh: 'wait_for' });
     await this.bus.publish({
       name: SEARCH_EVENTS.ProductRemoved,
@@ -173,6 +186,7 @@ export class ProductIndexerService implements OnModuleInit {
       payload: {
         tenantId: product.tenantId,
         productId: product.id,
+        categories,
       } as never,
     });
   }
@@ -186,14 +200,37 @@ export class ProductIndexerService implements OnModuleInit {
     tenantId: string,
     productId: string,
     reason: ProductIndexedPayload['reason'],
+    categories: readonly string[],
   ): Promise<void> {
     await this.bus.publish({
       name: SEARCH_EVENTS.ProductIndexed,
       eventId: randomUUID(),
       occurredAt: new Date().toISOString(),
       tenantId,
-      payload: { tenantId, productId, reason } as never,
+      payload: { tenantId, productId, reason, categories: dedupe(categories) } as never,
     });
+  }
+
+  /**
+   * The categories the indexed document currently claims.
+   *
+   * Best-effort on purpose: a miss here costs a category listing one extra
+   * rebuild, which is the same thing that happened before any of this existed.
+   * Failing the index write over it would be a much worse trade.
+   */
+  private async categoriesInIndex(idx: TenantIndex, productId: string): Promise<string[]> {
+    try {
+      const doc = await idx.getById<Record<string, unknown>>(productId);
+      if (!doc) return [];
+      return categoriesOf({ category: doc[attributeFieldName('category')] });
+    } catch (err) {
+      this.logger.warn(
+        `could not read previous categories for ${productId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return [];
+    }
   }
 
   /**
@@ -228,6 +265,39 @@ export class ProductIndexerService implements OnModuleInit {
     this.logger.log(
       `price: ${idx.indexName}/${price.productId} → ${price.unitPriceCents} cents`,
     );
-    await this.announceIndexed(price.tenantId, price.productId, 'price-changed');
+    // A price change does not move a product, so the document that was just
+    // patched is the authority on where it is listed.
+    await this.announceIndexed(
+      price.tenantId,
+      price.productId,
+      'price-changed',
+      await this.categoriesInIndex(idx, price.productId),
+    );
   }
+}
+
+/**
+ * Pull category values out of a product's attributes.
+ *
+ * `category` is a tenant-defined attribute like any other — the platform has no
+ * category entity, and `/c/<slug>` is just `eq:category=<slug>`. Reading it by
+ * name here is the one place that convention is written down on the api side,
+ * so it is deliberately narrow: an array of values, no routes, no slugs, no
+ * assumption about what a consumer does with them.
+ *
+ * Tolerates a single value or a list, because an attribute definition may be
+ * either and a product edited through the admin api can carry both shapes over
+ * its lifetime.
+ */
+function categoriesOf(attributes: Record<string, unknown>): string[] {
+  const raw = attributes['category'];
+  const values = Array.isArray(raw) ? raw : [raw];
+  return values
+    .filter((v): v is string => typeof v === 'string')
+    .map((v) => v.trim())
+    .filter((v) => v.length > 0);
+}
+
+function dedupe(values: readonly string[]): string[] {
+  return [...new Set(values)];
 }

@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { revalidatePath, revalidateTag } from 'next/cache';
+import { browseAllTag, browseTag, categoryTag } from '@/lib/cache-tags';
 
 /**
  * Cache revalidation webhook.
@@ -35,6 +36,13 @@ interface RevalidatePayload {
   event: string;
   tenantId: string;
   productId?: string;
+  /**
+   * Which category listings the api says are affected. Absent means it did not
+   * say — an older api, or a tenant-wide event — and the broad browse tag is
+   * used instead. Present but empty means it looked and the product is in no
+   * category, so only the unscoped listings need dropping.
+   */
+  categories?: string[];
   deliveryId?: string;
 }
 
@@ -64,6 +72,42 @@ function alreadyHandled(deliveryId: string | undefined): boolean {
     if (oldest) seenDeliveries.delete(oldest);
   }
   return false;
+}
+
+/**
+ * Drop the listings a single product change affects.
+ *
+ * Unscoped listings always go: the home page, search and the suggestion cache
+ * show products from everywhere. Category pages go one at a time, which is the
+ * point — an edit to a laptop must not cost the other five category pages
+ * their caches.
+ *
+ * `undefined` categories fall back to the tenant-wide tag. That is the
+ * deploy-skew path: an api that predates this field still emits product
+ * events, and treating "did not say" as "affects nothing" would leave category
+ * pages stale for an hour. Over-invalidating is the safe direction.
+ */
+function invalidateBrowse(
+  tenantId: string,
+  categories: string[] | undefined,
+  invalidated: string[],
+): void {
+  const all = browseAllTag(tenantId);
+  revalidateTag(all);
+  invalidated.push(all);
+
+  if (categories === undefined) {
+    const broad = browseTag(tenantId);
+    revalidateTag(broad);
+    invalidated.push(broad);
+    return;
+  }
+
+  for (const category of categories) {
+    const tag = categoryTag(tenantId, category);
+    revalidateTag(tag);
+    invalidated.push(tag);
+  }
 }
 
 function unauthorized(message = 'unauthorized'): NextResponse {
@@ -112,9 +156,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       // A new/removed product changes browse pages (different facet
       // counts, different totals). If we know the productId, the PDP for
       // a deleted product needs to flip to 404 too.
-      const browse = `browse:${body.tenantId}`;
-      revalidateTag(browse);
-      invalidated.push(browse);
+      invalidateBrowse(body.tenantId, body.categories, invalidated);
       if (body.productId) {
         const tag = `product:${body.tenantId}:${body.productId}`;
         revalidateTag(tag);
@@ -129,13 +171,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         return badRequest('productId is required for catalog.product.updated');
       }
       const pTag = `product:${body.tenantId}:${body.productId}`;
-      const bTag = `browse:${body.tenantId}`;
       revalidateTag(pTag);
-      revalidateTag(bTag);
+      invalidateBrowse(body.tenantId, body.categories, invalidated);
       // The PDP path tag is sufficient for most stores but the path-level
       // revalidate guarantees the route's RSC cache flips too.
       revalidatePath(`/p/${body.productId}`);
-      invalidated.push(pTag, bTag, `/p/${body.productId}`);
+      invalidated.push(pTag, `/p/${body.productId}`);
       break;
     }
     case 'search.product.indexed':
@@ -153,11 +194,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         return badRequest(`productId is required for ${body.event}`);
       }
       const pTag = `product:${body.tenantId}:${body.productId}`;
-      const bTag = `browse:${body.tenantId}`;
       revalidateTag(pTag);
-      revalidateTag(bTag);
+      invalidateBrowse(body.tenantId, body.categories, invalidated);
       revalidatePath(`/p/${body.productId}`);
-      invalidated.push(pTag, bTag, `/p/${body.productId}`);
+      invalidated.push(pTag, `/p/${body.productId}`);
       break;
     }
     case 'pricing.price.upserted': {
@@ -170,11 +210,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         return badRequest('productId is required for pricing.price.upserted');
       }
       const pTag = `product:${body.tenantId}:${body.productId}`;
-      const bTag = `browse:${body.tenantId}`;
       revalidateTag(pTag);
-      revalidateTag(bTag);
+      invalidateBrowse(body.tenantId, body.categories, invalidated);
       revalidatePath(`/p/${body.productId}`);
-      invalidated.push(pTag, bTag, `/p/${body.productId}`);
+      invalidated.push(pTag, `/p/${body.productId}`);
       break;
     }
     case 'pricing.promotion.created':
@@ -184,7 +223,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       // any page for this tenant, and there's no id to narrow it to. Cart and
       // checkout render dynamically so they need no invalidation; the browse
       // set and the theme do.
-      const bTag = `browse:${body.tenantId}`;
+      // The broad tag, deliberately: every browse page carries it, including
+      // the per-category ones, because a promotion changes prices everywhere.
+      const bTag = browseTag(body.tenantId);
+      const aTag = browseAllTag(body.tenantId);
       const tTag = `theme:${body.tenantId}`;
       // Capabilities carry the currency and its minor-unit exponent, which
       // every rendered price depends on. A tenant switching currency without
@@ -192,9 +234,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       // the hourly fallback expired.
       const cTag = `capabilities:${body.tenantId}`;
       revalidateTag(bTag);
+      revalidateTag(aTag);
       revalidateTag(tTag);
       revalidateTag(cTag);
-      invalidated.push(bTag, tTag, cTag);
+      invalidated.push(bTag, aTag, tTag, cTag);
       break;
     }
     default: {

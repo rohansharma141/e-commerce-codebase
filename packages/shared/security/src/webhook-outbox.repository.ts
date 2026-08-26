@@ -6,6 +6,12 @@ export interface NewOutboxEntry {
   readonly tenantId: string;
   readonly event: string;
   readonly productId?: string | null;
+  /**
+   * Category listings this change affects. `null` means the caller did not
+   * look — a consumer has to assume everything changed. `[]` means it looked
+   * and there are none.
+   */
+  readonly categories?: readonly string[] | null;
 }
 
 export interface OutboxDelivery {
@@ -13,6 +19,7 @@ export interface OutboxDelivery {
   readonly tenantId: string;
   readonly event: string;
   readonly productId: string | null;
+  readonly categories: string[] | null;
   readonly attempts: number;
 }
 
@@ -21,6 +28,7 @@ interface OutboxRow {
   tenant_id: string;
   event: string;
   product_id: string | null;
+  categories: string[] | null;
   attempts: number;
 }
 
@@ -73,8 +81,15 @@ export class WebhookOutboxRepository {
     await this.sql.begin(async (tx) => {
       await tx`SELECT set_config('app.tenant_id', ${entry.tenantId}, true)`;
       await tx`
-        INSERT INTO audit.webhook_outbox (tenant_id, event, product_id)
-        VALUES (${entry.tenantId}, ${entry.event}, ${entry.productId ?? null})
+        INSERT INTO audit.webhook_outbox (tenant_id, event, product_id, categories)
+        VALUES (
+          ${entry.tenantId},
+          ${entry.event},
+          ${entry.productId ?? null},
+          ${entry.categories === undefined || entry.categories === null
+            ? null
+            : tx.array(entry.categories as string[])}
+        )
       `;
     });
   }
@@ -104,7 +119,7 @@ export class WebhookOutboxRepository {
             FOR UPDATE SKIP LOCKED
             LIMIT ${limit}
          )
-        RETURNING id, tenant_id, event, product_id, attempts
+        RETURNING id, tenant_id, event, product_id, categories, attempts
       `;
     });
 
@@ -113,6 +128,7 @@ export class WebhookOutboxRepository {
       tenantId: r.tenant_id,
       event: r.event,
       productId: r.product_id,
+      categories: r.categories,
       attempts: r.attempts,
     }));
   }

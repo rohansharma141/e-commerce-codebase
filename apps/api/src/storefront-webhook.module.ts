@@ -93,6 +93,7 @@ class StorefrontWebhookDispatcher implements OnModuleInit {
           event: e.name,
           tenantId: e.payload.tenantId,
           productId: e.payload.productId,
+          categories: e.payload.categories,
         }),
     );
     this.bus.subscribe<DomainEvent<string, ProductRemovedPayload>>(
@@ -102,6 +103,7 @@ class StorefrontWebhookDispatcher implements OnModuleInit {
           event: e.name,
           tenantId: e.payload.tenantId,
           productId: e.payload.productId,
+          categories: e.payload.categories,
         }),
     );
 
@@ -135,6 +137,7 @@ class StorefrontWebhookDispatcher implements OnModuleInit {
     event: string;
     tenantId: string;
     productId?: string;
+    categories?: readonly string[];
   }): Promise<void> {
     if (!this.url || !this.secret) return; // re-check (TS narrows)
     try {
@@ -142,6 +145,12 @@ class StorefrontWebhookDispatcher implements OnModuleInit {
         tenantId: payload.tenantId,
         event: payload.event,
         productId: payload.productId ?? null,
+        // Undefined and empty are different answers. A tenant-wide event has
+        // no categories to name and stores NULL, which the storefront reads as
+        // "invalidate everything"; a product genuinely in no category stores
+        // an empty array. Collapsing them would make a promotion change quietly
+        // stop clearing browse pages.
+        categories: payload.categories ?? null,
       });
     } catch (err) {
       // Losing the enqueue must not fail the originating mutation — the page
@@ -300,6 +309,7 @@ class WebhookOutboxWorker implements OnModuleInit, OnModuleDestroy {
           event: delivery.event,
           tenantId: delivery.tenantId,
           productId: delivery.productId ?? undefined,
+          categories: delivery.categories ?? undefined,
           deliveryId: delivery.id,
         }),
         signal: AbortSignal.timeout(5000),

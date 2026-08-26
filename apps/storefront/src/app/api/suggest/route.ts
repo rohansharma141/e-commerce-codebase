@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { CatalogSearchDocument } from '@platform/api-client';
 import { graphqlQuery } from '@/lib/api-graphql';
+import { browseAllTag, browseTag } from '@/lib/cache-tags';
 
 /**
  * Type-ahead suggestions for the search bar. Returns the top 8 product hits
@@ -11,7 +12,7 @@ import { graphqlQuery } from '@/lib/api-graphql';
  *   GET /api/suggest?q=shir   →   { items: [{id, name, sku, price?}, ...] }
  *
  * Cached briefly per (tenant, q) so a flurry of keystrokes on the same
- * prefix don't all hit OpenSearch. Tagged `browse:<tenant>` so a catalog
+ * prefix don't all hit OpenSearch. Carries the unscoped browse tags so a catalog
  * mutation invalidates it alongside the browse pages.
  */
 export async function GET(req: NextRequest): Promise<NextResponse> {
@@ -35,7 +36,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
           autocomplete: true,
         },
       },
-      { tags: [`browse:${tenantId}`], revalidate: 30 },
+      { tags: [browseTag(tenantId), browseAllTag(tenantId)], revalidate: 30 },
     );
     const items = data.search.items.map((p) => {
       const attrs = (p.attributes ?? {}) as Record<string, unknown>;

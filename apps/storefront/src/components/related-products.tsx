@@ -3,6 +3,7 @@ import { CatalogSearchDocument } from '@platform/api-client';
 import { graphqlQuery } from '@/lib/api-graphql';
 import { getTenantId } from '@/lib/tenant';
 import { getMoneyFormat } from '@/lib/capabilities';
+import { browseAllTag, browseTag } from '@/lib/cache-tags';
 import { ProductCard } from './product-card';
 
 interface RelatedProductsProps {
@@ -29,7 +30,7 @@ export async function RelatedProducts({ excludeProductId, filter }: RelatedProdu
         facets: [],
       },
     },
-    { tags: [`browse:${tenantId}`] },
+    { tags: [browseTag(tenantId), browseAllTag(tenantId)] },
   );
   const items = data.search.items.filter((p) => p.id !== excludeProductId).slice(0, 6);
   if (items.length === 0) return null;

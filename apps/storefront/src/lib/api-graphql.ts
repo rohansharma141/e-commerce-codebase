@@ -16,11 +16,15 @@ import { getTenantId } from './tenant';
  * Tag conventions used by the storefront:
  *
  *   product:<tenantId>:<productId>     — single product detail
- *   browse:<tenantId>                  — any browse / search / category page
- *   tenant:<tenantId>                  — everything for a tenant (nuclear)
+ *   browse:<tenantId>                  — every browse page (tenant-wide changes)
+ *   browse:<tenantId>:all              — listings with no category filter
+ *   browse:<tenantId>:category:<slug>  — one category listing
+ *   theme:<tenantId>                   — the tenant's theme
+ *   capabilities:<tenantId>            — currency, locale, tax display
  *
  * The /api/revalidate route translates incoming events from the api into
- * revalidateTag calls against these tags.
+ * revalidateTag calls against these tags. The vocabulary and the reasoning
+ * behind the three browse tags live in `@/lib/cache-tags`.
  */
 const API_ORIGIN = process.env['API_ORIGIN'] ?? 'http://localhost:3000';
 

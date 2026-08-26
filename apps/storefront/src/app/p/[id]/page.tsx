@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { ProductDetailDocument } from '@platform/api-client';
 import { graphqlQuery } from '@/lib/api-graphql';
+import { browseTag } from '@/lib/cache-tags';
 import { getTenantId } from '@/lib/tenant';
 import { getMoneyFormat } from '@/lib/capabilities';
 import { formatMajorUnits } from '@/lib/money';
@@ -14,11 +15,12 @@ import { AddToCartButton } from './add-to-cart-button';
  *
  * Cached per (tenantId, productId) via Next.js data cache with two tags:
  *   - `product:<tenantId>:<productId>` (narrow)
- *   - `browse:<tenantId>` (broad)
+ *   - `browse:<tenantId>` (tenant-wide changes only, e.g. a promotion)
  *
- * Webhook dispatcher revalidates the narrow tag on catalog.product.updated
- * and the broad tag on created / deleted — back-office edits reflect on
- * the storefront within a webhook RTT, not within the 1-hour fallback.
+ * A product event revalidates the narrow tag and the page path, so an edit
+ * reflects on the storefront within a webhook RTT rather than within the
+ * 1-hour fallback. It deliberately does NOT drop every other product's page:
+ * that is what the category split in `@/lib/cache-tags` is for.
  */
 
 interface PageProps {
@@ -30,7 +32,7 @@ async function fetchProductDetail(tenantId: string, id: string) {
     ProductDetailDocument,
     { id },
     {
-      tags: [`product:${tenantId}:${id}`, `browse:${tenantId}`],
+      tags: [`product:${tenantId}:${id}`, browseTag(tenantId)],
     },
   );
 }

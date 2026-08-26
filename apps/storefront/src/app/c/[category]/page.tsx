@@ -8,6 +8,7 @@ import { ProductGrid } from '@/components/product-grid';
 import { SearchBar } from '@/components/search-bar';
 import { Toolbar } from '@/components/toolbar';
 import { parseSearchParams, type StorefrontSearchParams } from '@/lib/search-params';
+import { browseTag, categoryTag } from '@/lib/cache-tags';
 
 /**
  * Category browse — same component as the home page with a pinned
@@ -36,7 +37,7 @@ export default async function CategoryPage({ params, searchParams = {} }: Catego
 
   const money = await getMoneyFormat();
   const data = await graphqlQuery(CatalogSearchDocument, parsed.variables, {
-    tags: [`browse:${tenantId}`],
+    tags: [browseTag(tenantId), categoryTag(tenantId, category)],
   });
   const search = data.search;
 

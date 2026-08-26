@@ -8,9 +8,10 @@ import { ProductGrid } from '@/components/product-grid';
 import { SearchBar } from '@/components/search-bar';
 import { Toolbar } from '@/components/toolbar';
 import { parseSearchParams, type StorefrontSearchParams } from '@/lib/search-params';
+import { browseAllTag, browseTag } from '@/lib/cache-tags';
 
 /**
- * Browse-everything page. Tagged `browse:<tenantId>` so catalog mutations
+ * Browse-everything page. Carries the unscoped browse tags so catalog mutations
  * revalidate every browse render for that tenant. Search params still drive
  * the variables — Next's cache keys include the entire fetch payload, so
  * different filter combinations each get their own cache entry, all sharing
@@ -32,7 +33,7 @@ export default async function HomePage({ searchParams = {} }: PageProps) {
 
   const money = await getMoneyFormat();
   const data = await graphqlQuery(CatalogSearchDocument, parsed.variables, {
-    tags: [`browse:${tenantId}`],
+    tags: [browseTag(tenantId), browseAllTag(tenantId)],
   });
   const search = data.search;
 

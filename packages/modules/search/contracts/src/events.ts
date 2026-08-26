@@ -31,9 +31,30 @@ export interface ProductIndexedPayload {
   /** What caused the reindex — useful for logs and for consumers that want to
    *  treat a price change differently from a full product edit. */
   readonly reason: 'created' | 'updated' | 'price-changed';
+  /**
+   * Which category listings this change affects.
+   *
+   * Values, not routes: a consumer decides for itself what a category listing
+   * is called and how it caches one. The api's job is to say which listings
+   * stopped being accurate, which it knows and the consumer cannot work out
+   * after the fact.
+   *
+   * On an edit that moves a product between categories this carries BOTH the
+   * old and the new value. The old one is the whole reason the field exists —
+   * once the document is rewritten, nothing downstream can discover which
+   * listing the product just left, and that listing is precisely the one still
+   * showing it.
+   *
+   * Empty when the product has no category attribute. It is not a promise that
+   * nothing else changed; a consumer that cannot act on categories should fall
+   * back to invalidating everything.
+   */
+  readonly categories: readonly string[];
 }
 
 export interface ProductRemovedPayload {
   readonly tenantId: string;
   readonly productId: string;
+  /** The categories the product was listed in before it was removed. */
+  readonly categories: readonly string[];
 }
