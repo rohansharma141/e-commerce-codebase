@@ -121,6 +121,24 @@ Static headers live in `apps/storefront/next.config.mjs`; the CSP is issued per 
 
 The api adds its own helmet baseline. Both layers carry independent headers so a misconfiguration on one doesn't silently weaken the other.
 
+## Theming and money — both come from the api
+
+Neither is configured in the storefront. Both are fetched per request and cached under their own tag, so a tenant changing either reaches rendered pages in seconds rather than waiting out the hourly fallback.
+
+**Theme** (`Query.theme`, tag `theme:<tenant>`) supplies brand name, logo mark, tagline, accent colour, page background *and page foreground*, and a font stack, applied as CSS variables in `layout.tsx`.
+
+The foreground field is not decoration. A theme that sets a dark `pageBgHsl` against the storefront's previously-hardcoded `text-slate-800` produced dark-grey text on near-black — one of the three demo tenants was unreadable and nothing caught it, because the page rendered without error. The rule that resolves it, and which any new component must follow:
+
+> A surface that paints its own background sets its own text colour. Anything sitting directly on the themed page background inherits and uses `opacity-*` for hierarchy.
+
+That is why `Card`, `Input`, the sort control and the suggestions dropdown all carry an explicit `text-slate-800`, while empty states use `opacity-80` rather than a fixed slate.
+
+**Money** (`Query.capabilities`, tag `capabilities:<tenant>`) supplies currency, the currency's minor-unit exponent and the locale. `lib/money.ts` formats from that descriptor and nothing else.
+
+The exponent is the part that matters. Every money value in the api is an integer in minor units, and how many a currency has is a property of the currency — 2 for USD, 0 for JPY. The storefront used to divide by 100 unconditionally, which renders ¥1,000 as ¥10: silent, plausible, and only ever visible to a tenant nobody tested with. Verified by switching a tenant to JPY and to de-DE and watching prices re-render as `¥1,000` and `1.000,00 €` with no storefront change at all.
+
+That last part is the point of the arrangement. Because the storefront asks rather than assumes, adding a per-tenant locale to the api was a column and a resolver line — no storefront deploy, no coordination between the two artifacts.
+
 ## Mobile-first
 
 - Layout uses CSS Grid with mobile-first breakpoints: `grid-cols-2 sm:grid-cols-3 lg:grid-cols-4` for the product grid; `lg:grid-cols-[260px_1fr]` for catalog-with-facets so the sidebar drops below the grid under `lg`.
