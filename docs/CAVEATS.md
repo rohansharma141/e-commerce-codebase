@@ -53,12 +53,6 @@ Every item has a **status**: *by design* (intentional, see linked ADR), *scoped 
 
 ## Pricing
 
-### Theme/branding lives on pricing.tenant_config
-- **Status:** open; deliberate shortcut.
-- **What:** the storefront theme (brand name, colors, fonts) is stored as a `theme jsonb` column on [pricing.tenant_config](../packages/modules/pricing/src/db/migrations/0003_branding.sql) — one row already keyed per tenant. Exposed via a `Query.theme` resolver in the pricing module ([branding.resolver.ts](../packages/modules/pricing/src/branding/branding.resolver.ts)).
-- **Impact:** pricing now imports a concern (branding) that isn't pricing. The storefront-facing graph IS still separated (`Query.theme` is a different resolver from the admin tenant-config endpoints, so no tax/currency leakage), but the module ownership is muddled.
-- **Fix:** extract a `modules/branding/` module that owns the theme column (or its own table), with its own contracts package and resolver. Storage migrates with a `CREATE TABLE branding.theme AS SELECT tenant_id, theme FROM pricing.tenant_config WHERE theme IS NOT NULL` and a drop of the column. The resolver shape stays the same — storefront doesn't notice.
-
 ### Price is denormalised into the search index
 - **Status:** by design; kept honest by events.
 - **What:** the canonical price is the `pricing.prices` row. The PDP and browse cards read `attributes.price` from the OpenSearch document, which is a copy. `pricing.price.upserted` drives the search indexer to patch that copy, and the storefront's cache is invalidated only once the patched document is readable, so the copy converges within a second or so of the write.

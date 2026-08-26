@@ -67,11 +67,11 @@ The API MVP (steps 1–6) is **complete**. Active work begins at step 7.
    - 7g. Documentation: storefront architecture doc, deployment guide, and a 2–3 minute Loom walkthrough as the non-technical-audience pitch artifact
 8. **🚧 Consolidation — make every claim the repo makes hold:**
    - 8a. ✅ Credibility pass: seed writes `catalog.products` + attribute definitions (the README's RLS proof counted an empty table before), storefront Dockerfile + compose service, production CSP via per-request nonce, storefront↔API contract-conformance tests, doc reconciliation, LICENSE
-   - 8b. ✅ CI that actually verifies + close the event loop: backing services in CI so the integration suites stop skipping (they rotted undetected for several commits behind green CI); pricing domain events; `search.product.indexed` so cache invalidation follows the read model rather than racing it; webhook outbox with exponential-backoff retry instead of fire-and-forget. *(CI itself is unproven until its first run on GitHub.)*
+   - 8b. ✅ CI that actually verifies + close the event loop: backing services in CI so the integration suites stop skipping (they rotted undetected for several commits behind green CI); pricing domain events; `search.product.indexed` so cache invalidation follows the read model rather than racing it; webhook outbox with exponential-backoff retry instead of fire-and-forget. *(verified green on GitHub; the first run surfaced a migration concurrency bug, since fixed.)*
    - 8c. API-as-product, split into independently shippable steps:
      - 8c-1. ✅ `Query.capabilities` — the api describes its own currency, minor units, tax display, locales and feature map per tenant
      - 8c-2. ✅ Storefront reads capabilities instead of hardcoding `$`/`en-US`/2dp — proved by switching a tenant to JPY and watching prices re-render unscaled
-     - 8c-3. Extract `modules/branding/` — storage moves first (a module may not read another module's table), then contracts, then the module, then drop the old column
+     - 8c-3. ✅ Extracted `modules/branding/` — contracts, then storage + backfill, then the resolver cutover, then dropping the pricing column. `Query.theme` byte-identical throughout
      - 8c-5..7. Per-tenant locale, and a REST mirror of the capability endpoint
    - 8d. Ship the story: tag, CI badge, screenshots, cold clone-and-run, record the Loom
 

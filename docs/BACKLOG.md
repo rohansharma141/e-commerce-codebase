@@ -30,7 +30,7 @@ CI has never run on a GitHub runner. Until it has, every "verified" claim rests 
 | 8c-3a | ✅ Move `StorefrontTheme` + `DEFAULT_THEME` into `packages/modules/branding/contracts/`; pricing re-exports them so nothing breaks yet | build green, zero behaviour change | S |
 | 8c-3b | ✅ `branding` Postgres schema, `branding.theme` table, migration backfilling from the pricing column | row count per tenant matches the pricing column | S |
 | 8c-3c | ✅ Branding module: repository, resolver, app wiring. `Query.theme` reads the new table; seed writes it | `Query.theme` output byte-identical for all three tenants | M |
-| 8c-3d | Drop `pricing.tenant_config.theme` and the pricing-side theme code | no theme references left in pricing; themes still render | S |
+| 8c-3d | ✅ Drop `pricing.tenant_config.theme` and the pricing-side theme code | no theme references left in pricing; themes still render | S |
 
 ## 8c follow-ups — surfaced by the capability work
 
