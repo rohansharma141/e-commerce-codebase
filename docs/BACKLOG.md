@@ -49,8 +49,8 @@ CI has never run on a GitHub runner. Until it has, every "verified" claim rests 
 | id | item | done when | size |
 |---|---|---|---|
 | 8d-1 | GitHub repo description + topics | visible on the repo page | XS |
-| 8d-2 | CI badge in the README | badge renders green | XS |
-| 8d-3 | `v0.1.0` tag | tag pushed | XS |
+| 8d-2 | ✅ CI badge in the README | badge renders green | XS |
+| 8d-3 | ✅ `v0.1.0` tag | tag pushed | XS |
 | 8d-4 | Screenshots — search latency, storefront browse, RLS killshot — embedded in the README | images render in the README | S |
 | 8d-5 | Record the Loom from [LOOM-SCRIPT.md](LOOM-SCRIPT.md) | video exists and is linked | M — human task |
 | 8d-6 | Cold clone-and-run the README's 60-second tour, writing down every deviation | findings recorded | S |
