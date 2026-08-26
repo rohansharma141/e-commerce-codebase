@@ -21,8 +21,8 @@ Enterprise commerce platform: multi-tenant, headless, API-first. Built from scra
 | | |
 |---|---|
 | Docker Desktop | running before any `docker compose` command |
-| Node **22** | the version in `.nvmrc`. Newer majors are rejected at install time — pnpm 9.12 crashes on Node 24, so `engines` pins the range rather than letting it fail obscurely |
-| pnpm 9.12 | `corepack enable && corepack prepare pnpm@9.12.0 --activate` |
+| Node **22 or newer** | `.nvmrc` says 22, which is what CI builds on. 24 is tested too — a CI job installs and builds on it every push |
+| pnpm 10.34 | `corepack enable && corepack prepare pnpm@10.34.5 --activate`. A pnpm already on your PATH will switch to this version by itself: it is pinned in `packageManager` |
 
 Node and pnpm are needed only for the seed and for running things outside Docker. The stack itself needs Docker alone.
 

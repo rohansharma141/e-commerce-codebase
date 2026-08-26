@@ -21,7 +21,7 @@ That framing drives every trade-off. The guiding principle is **depth over bread
 ## 2. Tech stack (brief)
 
 **Backend — `apps/api`**
-- Node.js 22, TypeScript 5.5 (strict mode, no `any` without a justifying comment)
+- Node.js 22 or newer, TypeScript 5.5 (strict mode, no `any` without a justifying comment)
 - NestJS 10 — REST for admin/system, GraphQL (Apollo Server 4) for the storefront read edge
 - Drizzle ORM over `postgres-js`, kept behind per-module repositories so the ORM is swappable
 - zod for env validation, pino for structured logging, helmet + `@nestjs/throttler` for security, `@nestjs/swagger` for REST docs
@@ -162,9 +162,9 @@ Work is organised as step 8, "make every claim the repo makes hold". 8a through 
 - `modules/branding/` extracted from pricing; the pricing column is dropped.
 - The module boundary is enforced in spec files too, and by relative path as well as by alias.
 - The README's tour was run from a cold clone and all seven findings fixed.
+- Node 24 works. The whole pnpm 9 line crashed in nx's postinstall on it; pnpm 10 fixes it, and a CI job installs and builds on Node 24 every push.
 
 **Still open**
-- **Node 22 only.** pnpm 9.12 crashes on Node 24, so `engines` pins `>=22 <23` and `.npmrc` sets `engine-strict`. A reader on Node 24 gets a clear message rather than a stack trace — but that explains the wall instead of removing it. Moving off pnpm 9.12 is the fix. (H-6)
 - **No customer auth.** Order confirmation reads through the admin endpoint, so anyone holding an order UUID can fetch it within that tenant. Fine for a demo, not for production. Scoped out; needs its own decision record.
 - **Rate limiting keys on tenant id, not IP**, so during the trust-by-header window a caller impersonating a tenant can throttle that tenant's real traffic. Per-IP limits belong at the gateway.
 - **Capability features describe the deployment, not the tenant.** The per-tenant half (currency, locale, tax) is real; the feature map is a constant. Costs nothing until a capability actually varies per tenant, and the list-of-keys shape was chosen so it can.
@@ -180,7 +180,7 @@ Work is organised as step 8, "make every claim the repo makes hold". 8a through 
 
 ## 8. How to run it
 
-Prerequisites: Docker, **Node 22** (newer majors are rejected at install time — see the open list), pnpm 9.12 via corepack.
+Prerequisites: Docker, **Node 22 or newer** (24 is covered by CI), pnpm 10.34 via corepack.
 
 ```bash
 pnpm install

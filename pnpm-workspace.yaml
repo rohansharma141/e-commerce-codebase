@@ -3,3 +3,16 @@ packages:
   - packages/shared/*
   - packages/modules/*/*
   - packages/api-client
+
+# pnpm 10 refuses to run dependency build scripts unless they are named here.
+# These are the seven pnpm 9 was already running; the list exists so that a
+# green install still means the toolchain was actually built, not that the
+# build was skipped.
+onlyBuiltDependencies:
+  - '@apollo/protobufjs'
+  - '@nestjs/core'
+  - '@parcel/watcher'
+  - '@swc/core'
+  - esbuild
+  - nx
+  - unrs-resolver

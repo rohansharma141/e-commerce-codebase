@@ -8,7 +8,7 @@ The granular work queue. [CLAUDE.md](../CLAUDE.md) holds the coarse build priori
 
 Each row states what "done" means as a single check. If the check can't be written down, the item isn't understood well enough to start.
 
-**Status: 20 of 27 rows done** (plus 8c-1 and 8c-2, which shipped before this file existed). What is left: one human task (8d-5, the walkthrough recording), four items in the R series, and H-3, H-6.
+**Status: 21 of 27 rows done** (plus 8c-1 and 8c-2, which shipped before this file existed). What is left: one human task (8d-5, the walkthrough recording), four items in the R series, and H-3.
 
 **A note on how these got verified.** Several of these items were "done" by a check that could not have failed — a row count of `0 = 0`, an RLS proof against an empty table, a commit message describing an edit that never wrote. The lessons are recorded under *Verification discipline* in [CLAUDE.md](../CLAUDE.md) and are worth reading before ticking anything here.
 
@@ -90,7 +90,7 @@ Each is independent of the others and of the sequence above. All correspond to a
 | H-4 | ✅ `SEED_VIA_API=1` mode routing a small slice through the real HTTP write path | a broken `POST /admin/products` fails the seed | S |
 | H-5 | ✅ Deployment-guide note on rotating the checked-in dev revalidate secret | documented | XS |
 | H-7 | ✅ Theme has no page foreground colour, so a dark tenant renders unreadable body text — add `pageFgHsl` (found while screenshotting for 8d-4) | t-electronics is legible | S |
-| H-6 | Support Node 24 by moving off pnpm 9.12, whose postinstall crashes on it. 8d-7 pinned `engines` to `>=22 <23` so the failure is a clear message instead of a stack trace — this removes the restriction rather than explaining it | `pnpm install` succeeds on Node 24 | M |
+| H-6 | ✅ Support Node 24 by moving off pnpm 9 — the crash is the whole major line, not just 9.12. pnpm 10.34.5, `onlyBuiltDependencies` in `pnpm-workspace.yaml`, `engines` widened to `>=22`, and a CI job that installs and builds on Node 24 with the side-effects cache off | `pnpm install` succeeds on Node 24 | M |
 
 ---
 

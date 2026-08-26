@@ -13,7 +13,7 @@
 FROM node:22-alpine AS builder
 WORKDIR /workspace
 
-RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
+RUN corepack enable && corepack prepare pnpm@10.34.5 --activate
 
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
 COPY nx.json tsconfig.base.json .eslintrc.cjs jest.preset.js ./

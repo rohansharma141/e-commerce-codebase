@@ -42,7 +42,7 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 9.12.0
+          version: 10.34.5
 
       - uses: actions/setup-node@v4
         with:
@@ -93,7 +93,7 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 9.12.0
+          version: 10.34.5
 
       - uses: actions/setup-node@v4
         with:
@@ -133,3 +133,47 @@ jobs:
       - name: Service logs (on failure)
         if: failure()
         run: docker compose logs --tail=120
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # The toolchain still installs on a Node major newer than the one we pin.
+  #
+  # This exists because it did not, for a while, and nothing said so: pnpm 9
+  # crashed in nx's postinstall on Node 24 with `readStream must be readable`,
+  # which made a cold clone impossible for anyone on a current Node. `engines`
+  # was narrowed to turn that into a readable error, and this job is what
+  # stops it from silently narrowing again.
+  #
+  # `--config.sideEffectsCache=false` is the point of the job. Without it pnpm
+  # restores built artifacts from its cache instead of running the build
+  # scripts, so the install would pass without ever executing the script that
+  # used to crash — green would mean the cache was warm, not that Node 24
+  # works.
+  # ───────────────────────────────────────────────────────────────────────────
+  node-next:
+    name: install on Node 24
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.34.5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install, running every allowed build script
+        run: pnpm install --frozen-lockfile --config.sideEffectsCache=false
+
+      - name: Nothing was skipped
+        run: |
+          if pnpm install --frozen-lockfile 2>&1 | grep -q "Ignored build scripts"; then
+            echo "pnpm skipped build scripts — add them to onlyBuiltDependencies"
+            exit 1
+          fi
+
+      - name: Build both deployables
+        run: pnpm nx run-many -t build

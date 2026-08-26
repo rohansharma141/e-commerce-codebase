@@ -2,7 +2,7 @@
 FROM node:22-alpine AS builder
 WORKDIR /workspace
 
-RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
+RUN corepack enable && corepack prepare pnpm@10.34.5 --activate
 
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
 COPY nx.json tsconfig.base.json .eslintrc.cjs jest.preset.js ./
@@ -16,7 +16,7 @@ FROM node:22-alpine AS runner
 ENV NODE_ENV=production
 WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
+RUN corepack enable && corepack prepare pnpm@10.34.5 --activate
 
 COPY --from=builder /workspace/dist/apps/api ./
 # Module migrations are source-of-truth SQL files; copy them so the api can

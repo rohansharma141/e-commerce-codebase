@@ -29,8 +29,8 @@ Every tenant-scoped HTTP call must send an `x-tenant-id` header. The seed create
 | Tool            | Minimum version | Notes                                                                 |
 |-----------------|-----------------|-----------------------------------------------------------------------|
 | Docker Desktop  | 4.x             | Must be running before any `docker compose` command                   |
-| Node.js         | 22.x            | Only needed if you want to run `pnpm seed` from the host              |
-| pnpm            | 9.12+           | `corepack enable && corepack prepare pnpm@9.12.0 --activate`          |
+| Node.js         | 22 or newer     | Only needed if you want to run `pnpm seed` from the host              |
+| pnpm            | 10.34+          | `corepack enable && corepack prepare pnpm@10.34.5 --activate`         |
 | Git             | any             | To clone the repo                                                     |
 | Postman         | any recent      | Optional; can use Swagger UI in the browser instead                   |
 

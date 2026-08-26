@@ -276,6 +276,10 @@ importers:
         specifier: ^16.9.0
         version: 16.14.0
 
+  packages/modules/branding/contracts: {}
+
+  packages/modules/branding/src: {}
+
   packages/modules/cart/contracts: {}
 
   packages/modules/cart/src: {}

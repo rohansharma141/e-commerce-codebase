@@ -45,7 +45,11 @@ Learned by being bitten. Each of these produced a confusing symptom whose cause 
 
 **A migration checksum mismatch on a file you did not touch is line endings.** The runner hashes file bytes to enforce immutability. `.gitattributes` pins text to LF for exactly this reason; if it reappears, check what `git config core.autocrlf` did to the working tree.
 
-**`pnpm` refuses to run on Node 24.** `engines` pins `>=22 <23` because pnpm 9.12 crashes on 24. That is deliberate — use Node 22. To work around it locally for a single command, prefix with `npm_config_engine_strict=false`.
+**pnpm settings are not in `package.json` any more.** pnpm 10 silently ignores the `pnpm` field and reads its settings from `pnpm-workspace.yaml`. It says so in a warning that scrolls past. This matters because `onlyBuiltDependencies` lives there: put it in the wrong file and pnpm skips every dependency build script, the install still exits 0, and nx is left unbuilt.
+
+**The first pnpm 10 install wants to delete a pnpm 9 `node_modules`.** It asks first, and with no TTY it aborts with `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY` rather than guessing. Answer the prompt, or set `CI=true`.
+
+**Your `pnpm` will change version by itself.** `packageManager` pins 10.34.5 and pnpm self-manages to it, so `pnpm -v` may not report what you installed. That is working as intended; it is also why the version in the Dockerfiles and CI has to be kept in step with the field.
 
 **Do not call nx directly.** `node node_modules/nx/bin/nx.js` loses the environment `pnpm nx` sets up and produces a spurious `Cannot find module 'next/babel'` lint error that looks like a real regression.
 
