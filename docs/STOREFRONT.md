@@ -44,7 +44,7 @@ Everything below is a longer treatment of how those rules are realised in code.
        ▼                                         ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
 │  apps/api  (NestJS — REST + GraphQL)                                     │
-│    Query.search, Query.product (GraphQL)                                 │
+│    Query.search, Query.product, Query.theme, Query.capabilities (GraphQL)│
 │    /storefront/carts/*, /storefront/checkout (REST)                      │
 │    /admin/orders/:id (REST, used for confirmation today)                 │
 └──────────────────────────────────────────────────────────────────────────┘
@@ -102,8 +102,6 @@ Every mutation is a server action. The browser POSTs to the current page URL wit
 The api-client's `rest.ts` provides the typed shapes (`Cart`, `Order`, `ComputedTotals`, etc.). See [ADR-0010](adr/0010-storefront-sellable-separately.md) for why those are hand-mirrored today and the path to auto-generation.
 
 ## Security baseline
-
-Set in `apps/storefront/next.config.mjs` via the `headers()` config:
 
 Static headers live in `apps/storefront/next.config.mjs`; the CSP is issued per request from `src/middleware.ts`.
 
