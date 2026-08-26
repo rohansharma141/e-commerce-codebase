@@ -1,5 +1,6 @@
 import { Field, Int, ObjectType, Query, Resolver, registerEnumType } from '@nestjs/graphql';
-import { Inject, Injectable, Module } from '@nestjs/common';
+import { Controller, Get, Inject, Injectable, Module } from '@nestjs/common';
+import { ApiOkResponse, ApiOperation, ApiProperty, ApiTags } from '@nestjs/swagger';
 import {
   TENANT_CONFIG_QUERY,
   type ITenantConfigQuery,
@@ -50,51 +51,76 @@ registerEnumType(TaxDisplay, {
   description: 'Whether listed prices include tax.',
 });
 
+/**
+ * Carries both GraphQL and Swagger decorators on purpose. The two surfaces
+ * are meant to describe the identical shape — that is the entire promise of
+ * the REST mirror — and one decorated class is the only way to make that true
+ * by construction rather than by two definitions someone has to keep in step.
+ */
 @ObjectType({ description: 'A named capability of this deployment.' })
 export class CapabilityFeature {
   @Field(() => String, { description: 'Stable dotted key, e.g. promotions.coupon' })
+  @ApiProperty({ example: 'promotions.coupon' })
   key!: string;
 
   @Field(() => Boolean)
+  @ApiProperty()
   enabled!: boolean;
 }
 
 @ObjectType({ description: 'What this API supports, for the calling tenant.' })
 export class CapabilitiesType {
   @Field(() => String)
+  @ApiProperty({ example: 't-fashion' })
   tenantId!: string;
 
   @Field(() => String, { description: 'Version of the platform serving this request.' })
+  @ApiProperty({ example: '0.1.0' })
   apiVersion!: string;
 
   @Field(() => String, { description: 'ISO 4217 code this tenant trades in.' })
+  @ApiProperty({ example: 'USD', description: 'ISO 4217 code this tenant trades in.' })
   currency!: string;
 
   @Field(() => Int, {
     description:
       'Decimal places in the currency. Every money value in this API is an integer in minor units: 19999 with minorUnits 2 is 199.99. A consumer that assumes 2 will be wrong for JPY.',
   })
+  @ApiProperty({
+    example: 2,
+    description:
+      'Decimal places in the currency. Every money value in this API is an integer in minor units: 19999 with minorUnits 2 is 199.99. A consumer that assumes 2 will be wrong for JPY.',
+  })
   currencyMinorUnits!: number;
 
   @Field(() => TaxDisplay)
+  @ApiProperty({ enum: TaxDisplay, example: TaxDisplay.EXCLUSIVE })
   taxDisplay!: TaxDisplay;
 
   @Field(() => Int, { description: 'Tax rate in basis points. 875 is 8.75%.' })
+  @ApiProperty({ example: 875, description: 'Tax rate in basis points. 875 is 8.75%.' })
   taxRateBps!: number;
 
   @Field(() => Boolean, {
     description:
       'False when this tenant has no pricing configuration yet, in which case currency and taxRateBps are platform defaults rather than real settings.',
   })
+  @ApiProperty({
+    description:
+      'False when this tenant has no pricing configuration yet, in which case currency, locale and taxRateBps are platform defaults rather than real settings.',
+  })
   configured!: boolean;
 
   @Field(() => String)
+  @ApiProperty({ example: 'en-US' })
   defaultLocale!: string;
 
   @Field(() => [String], { description: 'BCP-47 tags this deployment can serve.' })
+  @ApiProperty({ type: [String], example: ['en-US'] })
   locales!: string[];
 
   @Field(() => [CapabilityFeature])
+  @ApiProperty({ type: [CapabilityFeature] })
   features!: CapabilityFeature[];
 }
 
@@ -160,15 +186,19 @@ const API_VERSION = '0.1.0';
  */
 const FALLBACK_LOCALE = 'en-US';
 
+/**
+ * Builds the capability description. Both transports call this — the GraphQL
+ * resolver and the REST controller below — so the two answers cannot drift
+ * apart. A mirror maintained as a second implementation is a mirror that
+ * eventually lies.
+ */
 @Injectable()
-@Resolver()
-export class CapabilitiesResolver {
+export class CapabilitiesService {
   constructor(
     @Inject(TENANT_CONFIG_QUERY) private readonly tenantConfig: ITenantConfigQuery,
   ) {}
 
-  @Query(() => CapabilitiesType, { name: 'capabilities' })
-  async capabilities(): Promise<CapabilitiesType> {
+  async describe(): Promise<CapabilitiesType> {
     const tenant = currentTenantOrThrow();
     const config = await this.tenantConfig.findOptional(tenant.tenantId);
     const currency = config?.currency ?? DEFAULT_CURRENCY;
@@ -197,7 +227,49 @@ export class CapabilitiesResolver {
   }
 }
 
+@Injectable()
+@Resolver()
+export class CapabilitiesResolver {
+  constructor(private readonly service: CapabilitiesService) {}
+
+  @Query(() => CapabilitiesType, { name: 'capabilities' })
+  capabilities(): Promise<CapabilitiesType> {
+    return this.service.describe();
+  }
+}
+
+/**
+ * REST mirror of `Query.capabilities`.
+ *
+ * The point of a self-description endpoint is that a consumer nobody here
+ * wrote can configure itself, and plenty of those consumers do not speak
+ * GraphQL — a mobile client, a partner integration, or the ICM-style facade
+ * sketched in ADR-0013, which would read exactly this at boot. Offering
+ * self-description only over the transport our own storefront happens to use
+ * would have missed most of the audience the endpoint exists for.
+ *
+ * Tenant-scoped like everything else: it goes through the tenant middleware
+ * and answers for whoever `x-tenant-id` names.
+ */
+@ApiTags('System')
+@Controller('system/capabilities')
+export class CapabilitiesController {
+  constructor(private readonly service: CapabilitiesService) {}
+
+  @Get()
+  @ApiOperation({
+    summary: 'What this API supports for the calling tenant',
+    description:
+      'Currency and its minor-unit exponent, locale, tax display mode and rate, and a feature map. Identical data to the GraphQL `capabilities` query — both are served by one implementation.',
+  })
+  @ApiOkResponse({ type: CapabilitiesType })
+  get(): Promise<CapabilitiesType> {
+    return this.service.describe();
+  }
+}
+
 @Module({
-  providers: [CapabilitiesResolver],
+  providers: [CapabilitiesService, CapabilitiesResolver],
+  controllers: [CapabilitiesController],
 })
 export class CapabilitiesModule {}

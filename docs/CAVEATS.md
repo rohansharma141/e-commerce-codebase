@@ -64,16 +64,11 @@ Every item has a **status**: *by design* (intentional, see linked ADR), *scoped 
 
 ## API surface
 
-### The capability endpoint is GraphQL-only, and features are deployment-wide
-- **Status:** open; the gap it replaces is closed.
-- **What:** `Query.capabilities` now advertises the calling tenant's currency, its minor-unit exponent, tax display mode and rate, supported locales, and a keyed feature map — including honest `false` entries for customer accounts, multi-currency, i18n, inventory, shipping and payments. Two things it does not do: it is only on the GraphQL edge, so a REST-only consumer still has nothing to read; and the feature map describes the deployment rather than the tenant, so a per-tenant toggle has no way to express itself yet.
-- **Impact:** a REST integrator is still configured out of band. Per-tenant feature variation does not exist today, so the second limitation costs nothing until it does.
-- **Fix:** mirror it at `GET /system/capabilities` for REST consumers, which is also what an ICM-style facade ([ADR-0013](adr/0013-icm-conformance-and-compat-facade.md)) would read at boot. Per-tenant overrides would flip individual entries in the existing list without changing the response shape — the list-of-keys form was chosen over fixed boolean fields for exactly that reason.
-
----
-
-## Operations / Security
-
+### Capability features describe the deployment, not the tenant
+- **Status:** open; costs nothing today.
+- **What:** `Query.capabilities` and `GET /system/capabilities` report per-tenant currency, minor units, locale, tax display and rate, plus a feature map. The per-tenant half is real; the feature map is a constant shared by every tenant.
+- **Impact:** none yet — no capability actually varies per tenant. It would matter the moment one did, e.g. a tenant on a plan without promotions.
+- **Fix:** a per-tenant override table consulted when building the list. The response is a list of `{key, enabled}` rather than fixed boolean fields precisely so this can land without changing the shape consumers already parse.
 ### Tenant id IS the trust on the api
 - **Status:** by design.
 - **What:** [`x-tenant-id` header](../packages/shared/tenant-context/src/tenant.middleware.ts) is accepted at face value with no signing or auth. A misbehaving caller can pretend to be any tenant.
