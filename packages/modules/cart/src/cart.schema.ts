@@ -13,8 +13,9 @@ import type * as Contract from '@platform/modules/cart/contracts';
  *
  * These classes exist because `@nestjs/swagger` reads decorator metadata, and
  * a TypeScript interface leaves none behind: every cart body and response in
- * `/docs-json` was `{}`, which is also why `packages/api-client/src/rest.ts`
- * has been maintained by hand.
+ * `/docs-json` was `{}`. That is why the storefront's REST types were mirrored
+ * by hand for so long — there was nothing worth generating from. They are
+ * generated now, so what is written here is what a consumer receives.
  *
  * They live here rather than in `contracts/` deliberately. The contracts
  * packages have no dependencies at all, and putting `@ApiProperty` in them

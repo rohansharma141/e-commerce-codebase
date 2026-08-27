@@ -209,5 +209,5 @@ pnpm codegen                          # rebuild typed documents
 | Order confirmation | [apps/storefront/src/app/orders/[id]/page.tsx](../apps/storefront/src/app/orders/%5Bid%5D/page.tsx) |
 | Security headers | [apps/storefront/next.config.mjs](../apps/storefront/next.config.mjs) |
 | ESLint boundary | [.eslintrc.cjs](../.eslintrc.cjs) (search for `scope:storefront`) |
-| api-client REST types | [packages/api-client/src/rest.ts](../packages/api-client/src/rest.ts) |
+| api-client REST types | [packages/api-client/src/index.ts](../packages/api-client/src/index.ts) — curated names, aliased from [generated/rest-api.ts](../packages/api-client/src/generated/rest-api.ts) |
 | api-client codegen | [packages/api-client/codegen.ts](../packages/api-client/codegen.ts) |

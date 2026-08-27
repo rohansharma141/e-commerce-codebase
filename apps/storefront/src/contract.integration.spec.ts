@@ -268,9 +268,11 @@ describeLive('storefront ↔ api contract', () => {
       expect([200, 201]).toContain(checkout.status);
       const order = checkout.body;
 
-      // An added field here means the api evolved and the hand-mirrored type
-      // in api-client is now stale. That is exactly the drift this file
-      // exists to surface — update rest.ts deliberately, don't loosen this.
+      // An added field here means the api's order shape changed. The types
+      // are generated now, so a regenerate would absorb that silently and the
+      // storefront would keep compiling against a surface nobody decided to
+      // accept. This assertion is what makes that a decision: widen the list
+      // deliberately, don't loosen it.
       expect(Object.keys(order).sort()).toEqual(
         [
           'appliedPromotion',

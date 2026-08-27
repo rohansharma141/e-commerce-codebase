@@ -3,6 +3,10 @@
 **Status:** Accepted
 **Date:** 2026-06-01
 
+> **Update, 2026-08-27.** The condition this ADR set for retiring the hand-mirror was met, and the mirror is gone. `packages/api-client/src/rest.ts` no longer exists: cart and orders DTOs are now classes carrying `@ApiProperty`, the api publishes 17 real OpenAPI schemas, and `src/generated/rest-api.ts` is produced from them by `pnpm nx run api-client:codegen-rest`. The public names are curated in `src/index.ts` as aliases into that output, so choosing what is public still happens here rather than being whatever the document contains.
+>
+> The decision below is unchanged and the reasoning is left as written — it says "once it lands, the hand-mirror retires", and this is that. What changed is the api's ability to describe itself, not the boundary.
+
 ## Context
 
 The API MVP shipped first (build priority 1–6) as a complete product. The Next.js storefront added later (priority 7) had to remain optional — some customers will only buy the API and front it with their own UI, others want the bundled storefront.
@@ -50,5 +54,5 @@ The hand-mirror is the controversial part — it could be auto-generated. We cho
 - [.eslintrc.cjs](../../.eslintrc.cjs) — the `scope:storefront` / `scope:api-client` constraints
 - [packages/api-client/codegen.ts](../../packages/api-client/codegen.ts) — codegen config
 - [packages/api-client/schema.graphql](../../packages/api-client/schema.graphql) — saved SDL snapshot
-- [packages/api-client/src/rest.ts](../../packages/api-client/src/rest.ts) — hand-mirrored REST types
+- [packages/api-client/src/index.ts](../../packages/api-client/src/index.ts) — the curated public REST names, aliased from generated output
 - [apps/storefront/tsconfig.json](../../apps/storefront/tsconfig.json) — storefront's TS paths

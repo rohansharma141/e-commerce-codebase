@@ -29,11 +29,12 @@ Every item has a **status**: *by design* (intentional, see linked ADR), *scoped 
 - **Impact if it regresses:** one tenant served another tenant's catalogue from cache. This is the worst failure available to this system, and it would look like a working, fast site.
 - **Held down by:** the unit test above for the header, and by running the stack — two tenants requesting the same page get their own brand and their own SKUs. Re-check it after any change to the read path or to caching.
 
-### Hand-mirrored REST types in api-client
-- **Status:** open; fix designed.
-- **What:** [packages/api-client/src/rest.ts](../packages/api-client/src/rest.ts) duplicates Cart, Order, ComputedTotals, etc. from each module's internal contracts package. The duplication is intentional ([ADR-0010](adr/0010-storefront-sellable-separately.md) explains why api-client is the public boundary), but the mirror is hand-written today.
-- **Impact:** if a module's contract evolves, the api-client type can drift. [contract.integration.spec.ts](../apps/storefront/src/contract.integration.spec.ts) closes most of the hole — it drives a real cart through checkout and asserts the *exact* key set of `Cart` and `Order`, so a field added or removed on either side fails the run. What it still can't see is a field that became optional, or one whose meaning changed while its name and type stayed put.
-- **Fix:** promote every DTO to a Nest class decorated with `@ApiProperty` so `@nestjs/swagger` emits real body schemas, then auto-generate the api-client REST types with `openapi-typescript`. The mirror retires; CI runs the generator and fails on drift.
+### The public REST names are curated by hand, the types are not
+- **Status:** resolved as a duplication problem; the remaining judgement is deliberate.
+- **Was:** `packages/api-client/src/rest.ts` was 124 hand-written lines duplicating Cart, Order, ComputedTotals and friends, kept true only by the conformance test. It existed because the api's DTOs were interfaces, so `@nestjs/swagger` emitted `{}` for every body and `openapi-typescript` would have produced nothing usable.
+- **Now:** the DTOs are classes with `@ApiProperty` (R-1, R-2), the api publishes 17 real schemas, and `src/generated/rest-api.ts` is generated from them (R-3a). `rest.ts` is deleted (R-3b).
+- **What is still by hand, on purpose:** the *names*. `src/index.ts` aliases selected schemas rather than re-exporting the whole document, because api-client is the storefront's entire view of the api and deciding what is public belongs there. A schema not named in that file is not part of the client surface. Renaming a schema on the api side breaks the build rather than silently changing what the storefront sees.
+- **Still owed:** nothing detects that the committed generated file has fallen behind the api. That is R-4.
 
 ### No customer auth — order reads go through admin endpoint
 - **Status:** scoped out (CLAUDE.md: real auth is the gateway's job, ADR-0007).
