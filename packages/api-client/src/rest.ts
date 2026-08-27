@@ -10,10 +10,11 @@
  * the api refactor its internal contracts without breaking the storefront
  * contract.
  *
- * Why mirrored instead of openapi-typescript: the api's DTOs are plain TS
- * interfaces, so the @nestjs/swagger output today has empty body schemas.
- * Promoting DTOs to classes with @ApiProperty is the right next step;
- * until then, manual mirroring is the honest move.
+ * Why still mirrored rather than generated: this is being retired, one
+ * module at a time. Cart now publishes real OpenAPI schemas (R-1), orders
+ * does not yet (R-2), and nothing generates from them until R-3a. Mirroring
+ * by hand stays the honest move only while the document is incomplete —
+ * once it is not, this file goes.
  */
 
 // ─── Cart ──────────────────────────────────────────────────────────────────

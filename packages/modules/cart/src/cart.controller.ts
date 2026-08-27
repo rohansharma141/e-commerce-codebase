@@ -9,16 +9,20 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentTenant, type TenantContext } from '@platform/shared/tenant-context';
-import type {
+// Imported as values, not types. `@ApiProperty` metadata only reaches the
+// OpenAPI document if the class survives to runtime, and a `import type` here
+// would erase it — leaving the operations documented with empty bodies again,
+// which is the state this replaced.
+import {
   AddItemDto,
   ApplyCouponDto,
   Cart,
   CartWithTotals,
   CreateCartResponse,
   SetItemQtyDto,
-} from '@platform/modules/cart/contracts';
+} from './cart.schema';
 import { CartService } from './cart.service';
 
 @ApiTags('Cart (storefront)')
@@ -29,6 +33,7 @@ export class CartController {
   @Post()
   @HttpCode(201)
   @ApiOperation({ summary: 'Create an empty cart' })
+  @ApiCreatedResponse({ type: CreateCartResponse })
   async create(@CurrentTenant() tenant: TenantContext): Promise<CreateCartResponse> {
     const c = await this.cart.create(tenant.tenantId);
     return { cartId: c.id };
@@ -36,6 +41,7 @@ export class CartController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Get cart by id with live totals' })
+  @ApiOkResponse({ type: CartWithTotals })
   get(
     @CurrentTenant() tenant: TenantContext,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
@@ -45,6 +51,7 @@ export class CartController {
 
   @Post(':id/items')
   @ApiOperation({ summary: 'Add a product line to the cart' })
+  @ApiCreatedResponse({ type: Cart })
   addItem(
     @CurrentTenant() tenant: TenantContext,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
@@ -60,6 +67,7 @@ export class CartController {
 
   @Patch(':id/items/:productId')
   @ApiOperation({ summary: 'Change line quantity — qty=0 removes the line' })
+  @ApiOkResponse({ type: Cart })
   setItemQty(
     @CurrentTenant() tenant: TenantContext,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
@@ -71,6 +79,7 @@ export class CartController {
 
   @Post(':id/coupon')
   @ApiOperation({ summary: 'Apply a coupon code to the cart' })
+  @ApiCreatedResponse({ type: Cart })
   applyCoupon(
     @CurrentTenant() tenant: TenantContext,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
@@ -81,6 +90,7 @@ export class CartController {
 
   @Delete(':id/coupon')
   @ApiOperation({ summary: 'Remove the applied coupon code' })
+  @ApiOkResponse({ type: Cart })
   removeCoupon(
     @CurrentTenant() tenant: TenantContext,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
