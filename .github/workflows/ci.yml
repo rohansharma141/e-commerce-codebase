@@ -55,6 +55,22 @@ jobs:
       - name: Start backing services
         run: docker compose up -d --wait postgres redis opensearch
 
+      # ─────────────────────────────────────────────────────────────────────
+      # The Kubernetes manifests still describe valid Kubernetes.
+      #
+      # They are written and deliberately not deployed (deploy/k8s/README.md),
+      # which means nothing else ever exercises them. Without this they would
+      # rot silently as API versions move, and "not deployed" would quietly
+      # become "would not apply" — an unverified claim sitting in the repo
+      # looking like a verified one.
+      #
+      # Strict mode rejects unknown fields, which is what catches a typo'd key
+      # that a permissive parser would accept and Kubernetes would ignore.
+      # ─────────────────────────────────────────────────────────────────────
+      - name: Validate Kubernetes manifests
+        run: |
+          docker run --rm -v "$PWD/deploy/k8s:/work" -w /work             ghcr.io/yannh/kubeconform:latest             -strict -summary -verbose -kubernetes-version 1.31.0 .
+
       - name: Lint, test, build
         env:
           TEST_DATABASE_URL: postgres://platform:platform@localhost:5432/platform

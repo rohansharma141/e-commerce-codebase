@@ -1,0 +1,49 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: storefront
+  namespace: commerce
+  labels:
+    app.kubernetes.io/name: storefront
+    app.kubernetes.io/part-of: commerce-platform
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: storefront
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+        # The api, delivering revalidation webhooks.
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: api
+      ports:
+        - protocol: TCP
+          port: 3001
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # DNS and the api. Nothing else.
+    #
+    # This is the architecture's central rule written where it cannot be argued
+    # with: the storefront reaches the platform only through the api's public
+    # surface. ESLint stops it importing across that line at build time; this
+    # stops it reaching a database at run time. No egress rule for Postgres,
+    # Redis or OpenSearch exists here, and that omission is the policy.
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: api
+      ports:
+        - protocol: TCP
+          port: 3000

@@ -1,0 +1,16 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api
+  namespace: commerce
+  labels:
+    app.kubernetes.io/name: api
+    app.kubernetes.io/part-of: commerce-platform
+spec:
+  # minAvailable rather than maxUnavailable: with the HPA able to take the
+  # deployment to 12, a percentage-based budget would silently permit far more
+  # simultaneous eviction at peak than at rest.
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: api

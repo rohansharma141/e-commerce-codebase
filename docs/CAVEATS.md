@@ -134,9 +134,12 @@ Every item has a **status**: *by design* (intentional, see linked ADR), *scoped 
 - **Status:** by design.
 - **ADR:** [0008](adr/0008-opentelemetry-designed-not-shipped.md). The trace topology, instrumentation plan, and OTLP exporter config are documented. Wiring it in is mechanical when there's a collector to point at.
 
-### Kubernetes manifests will be written, not deployed
-- **Status:** by design.
-- **What:** CLAUDE.md "out of scope" — write manifests, don't deploy. Docker compose is the genuinely-runnable artefact.
+### Kubernetes manifests written, not deployed
+- **Status:** by design, and now actually written.
+- **What:** [deploy/k8s/](../deploy/k8s/) — 16 resources across two bundles, `api/` standing alone for the API-only product. No cluster is provisioned; Docker Compose remains the genuinely-runnable artefact.
+- **Data stores are deliberately not in the cluster.** Postgres, Redis and OpenSearch are referenced as managed endpoints in a Secret. Running Postgres as a StatefulSet to make the manifests look complete would be the wrong lesson.
+- **Kept honest by:** a CI step validating every file against the real Kubernetes schemas in strict mode. Nothing else exercises them, so without it "not deployed" would quietly become "would not apply".
+- **Was previously a false claim:** README.md and PROJECT-BRIEF.md both said "manifests written" before any existed.
 
 ---
 

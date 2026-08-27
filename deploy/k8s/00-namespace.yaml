@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: commerce
+  labels:
+    app.kubernetes.io/part-of: commerce-platform
+    # Baseline is not enough for what these pods claim: both run as non-root
+    # with no privilege escalation, so the namespace is labelled to enforce it
+    # rather than to describe it. A pod that regresses is rejected at admission
+    # instead of running and being caught later.
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest

@@ -1,0 +1,39 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: storefront
+  namespace: commerce
+  labels:
+    app.kubernetes.io/name: storefront
+    app.kubernetes.io/part-of: commerce-platform
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # The storefront issues its Content-Security-Policy per request, because
+    # the policy carries a nonce and a build-time header cannot. The ingress
+    # must not add its own CSP or the two will fight and the stricter one wins
+    # by accident.
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        # A wildcard certificate, because tenants are subdomains and a new
+        # tenant must not require a certificate request. This is the DNS-01
+        # path — HTTP-01 cannot issue wildcards.
+        - "*.example.com"
+      secretName: storefront-wildcard-tls
+  rules:
+    # One rule, wildcard host. Tenant resolution happens inside the storefront
+    # from the Host header, so onboarding a tenant is a DNS record and a row in
+    # the branding table — not a manifest change. Per-tenant Ingress objects
+    # would make the platform's own multi-tenancy the cluster's problem.
+    - host: "*.example.com"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: storefront
+                port:
+                  name: http

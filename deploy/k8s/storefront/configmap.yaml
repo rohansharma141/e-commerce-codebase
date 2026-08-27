@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: storefront-config
+  namespace: commerce
+  labels:
+    app.kubernetes.io/name: storefront
+    app.kubernetes.io/part-of: commerce-platform
+data:
+  NODE_ENV: "production"
+  PORT: "3001"
+  # In-cluster, so the api's origin never reaches a browser. The storefront
+  # calls the api from the server only — writes go through server actions
+  # rather than browser CORS, which is why there is no public api hostname
+  # here to leak.
+  API_ORIGIN: "http://api.commerce.svc.cluster.local:3000"

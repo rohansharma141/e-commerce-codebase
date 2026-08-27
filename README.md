@@ -249,7 +249,7 @@ This is a portfolio piece, not a product. Out of scope (each documented in [docs
 - A real authentication module (today, `x-tenant-id` is trusted as a gateway responsibility — see [ADR-0007](docs/adr/0007-tenant-id-as-trust-gateway-responsibility.md))
 - An OpenTelemetry exporter ([ADR-0008](docs/adr/0008-opentelemetry-designed-not-shipped.md))
 - A microservices deployment ([ADR-0001](docs/adr/0001-modular-monolith-not-microservices.md))
-- A Kubernetes cluster (manifests written, not deployed)
+- A Kubernetes cluster — [manifests are written and schema-validated in CI](deploy/k8s/), no cluster is provisioned
 - Inventory / shipping / refunds / customer accounts
 - Webhook-based plugin loading ([ADR-0009](docs/adr/0009-hooks-as-typed-in-process-registry.md))
 

@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-config
+  namespace: commerce
+  labels:
+    app.kubernetes.io/name: api
+    app.kubernetes.io/part-of: commerce-platform
+data:
+  NODE_ENV: "production"
+  PORT: "3000"
+  LOG_LEVEL: "info"
+
+  # Where the api sends revalidation webhooks. This is the ONE piece of api
+  # config that knows the storefront exists, and it is why it lives in a
+  # ConfigMap rather than being baked in: an API-only customer deploys
+  # deploy/k8s/api/ with this key removed, and the dispatcher disables itself
+  # rather than failing. That is the sellable-separately rule expressed in
+  # configuration.
+  STOREFRONT_REVALIDATE_URL: "http://storefront.commerce.svc.cluster.local:3001/api/revalidate"
+
+  # Production values, unlike the demo compose file which uses 2 attempts and a
+  # 15s sweep so the dead-letter path is observable inside a minute.
+  STOREFRONT_WEBHOOK_MAX_ATTEMPTS: "6"
+  STOREFRONT_OUTBOX_SWEEP_MS: "60000"

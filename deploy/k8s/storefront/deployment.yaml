@@ -1,0 +1,111 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: storefront
+  namespace: commerce
+  labels:
+    app.kubernetes.io/name: storefront
+    app.kubernetes.io/component: frontend
+    app.kubernetes.io/part-of: commerce-platform
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: storefront
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: storefront
+        app.kubernetes.io/component: frontend
+        app.kubernetes.io/part-of: commerce-platform
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        # The image's own unprivileged user. Building as root and running as
+        # this user is what the Dockerfile already does.
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 30
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: storefront
+      containers:
+        - name: storefront
+          image: ghcr.io/rohansharma141/e-commerce-storefront:v0.1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3001
+          envFrom:
+            - configMapRef:
+                name: storefront-config
+            - secretRef:
+                name: storefront-secrets
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            # Next writes its data cache here at runtime. Getting this wrong is
+            # not loud: the container starts, serves pages, and every cache
+            # write fails with EACCES, so each request re-renders from scratch
+            # and the cache the revalidation webhooks exist to invalidate never
+            # exists. That exact failure happened once already, in Docker.
+            - name: next-cache
+              mountPath: /app/apps/storefront/.next/cache
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              memory: 1Gi
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+              # Tenants resolve from the hostname, so a bare request carries no
+              # tenant. This Host header makes the probe a real render rather
+              # than a redirect or a 400.
+              httpHeaders:
+                - name: Host
+                  value: t-fashion.example.com
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: t-fashion.example.com
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 2
+      volumes:
+        # emptyDir, not a PVC, and deliberately so. The cache is per-pod and
+        # disposable: a cold pod refills it from the api, and a shared volume
+        # would make two pods contend over a cache that Next expects to own.
+        # The cost of a cold pod is one upstream query per page, not a wrong
+        # page.
+        - name: next-cache
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
