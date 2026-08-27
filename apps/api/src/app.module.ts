@@ -20,6 +20,7 @@ import { OrdersModule } from '@platform/modules/orders/src';
 import { PricingModule } from '@platform/modules/pricing/src';
 import { SearchModule } from '@platform/modules/search/src';
 import { CapabilitiesModule } from './capabilities.module';
+import { graphqlCachePlugin } from './graphql-cache.plugin';
 import { DemoHooksModule } from './demo-hooks.module';
 import { HealthController } from './health.controller';
 import { StorefrontWebhookModule } from './storefront-webhook.module';
@@ -58,6 +59,7 @@ import { StorefrontWebhookModule } from './storefront-webhook.module';
       autoSchemaFile: join(process.cwd(), 'schema.gql'),
       sortSchema: true,
       playground: false,
+      plugins: [graphqlCachePlugin],
     }),
     CatalogModule,
     SearchModule,

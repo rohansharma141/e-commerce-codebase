@@ -52,16 +52,19 @@ Everything below is a longer treatment of how those rules are realised in code.
 
 ## Rendering split
 
-| Route | Intended render mode | Actual, as measured |
-|---|---|---|
-| `/`, `/c/[category]` | Cached RSC render, tagged so a catalog mutation invalidates only the affected listings | **Dynamic.** Rendered per request; the api is re-queried every time |
-| `/p/[id]` | Cached RSC render, tagged `product:<tenant>:<id>` | **Dynamic** |
-| `/cart` | `force-dynamic` | Dynamic, as intended — personal, cookie-driven, no SEO value |
-| `/orders/[id]` | `force-dynamic` | Dynamic, as intended |
+| Route | Render | Cached on | Dropped by |
+|---|---|---|---|
+| `/` | Dynamic render, cached reads | `browse:<t>`, `browse:<t>:all` | any product change, and tenant-wide changes |
+| `/c/[category]` | Dynamic render, cached reads | `browse:<t>`, `browse:<t>:category:<slug>` | a change in **that** category, and tenant-wide changes |
+| `/p/[id]` | Dynamic render, cached reads | `product:<t>:<id>`, `browse:<t>` | that product's own events |
+| `/cart` | `force-dynamic` | nothing | — personal, cookie-driven, no SEO value |
+| `/orders/[id]` | `force-dynamic` | nothing | — personal, no SEO |
 
-**The first two rows do not currently hold, and this table says so rather than repeating the intent.** `next build` marks every route `ƒ (Dynamic) server-rendered on demand`, and two identical consecutive requests for the same category page each produce their own `search.completed` in the api log. The cause is that every server read goes through `graphqlQuery`, which POSTs: Next.js's data cache stores GET responses, and `next: { tags, revalidate }` on a POST is accepted and ignored.
+The routes are dynamic — tenant resolution reads the hostname, which rules out static generation — but the *data* is cached and tagged, which is where ISR's benefit actually lives. Measured on the running stack: two identical requests for a category page produce one `search.completed` in the api log, and editing a product in `laptop` rebuilds `/c/laptop` while `/c/camera` serves from cache untouched. A tenant-wide event drops both, which is the control proving the second number is a warm cache rather than an absent one.
 
-So the tag vocabulary below is real and the api genuinely names which category listings a change affects — but no `revalidateTag` call has an observable effect yet, because there is nothing cached to invalidate. Making the reads cacheable is tracked in [CAVEATS.md](CAVEATS.md) and [BACKLOG.md](BACKLOG.md); until then, freshness comes from there being no cache at all, which is correct and slow rather than fast and stale.
+**This depends on the read path being a GET, and that is not a detail.** Next's data cache stores GET responses; it accepts `next: { tags, revalidate }` on a POST and silently ignores it. While these reads were POSTs nothing was cached, every route re-queried the api, and every `revalidateTag` call in the webhook route invalidated something that did not exist — with no warning, because an empty cache is never stale. The api needed no change to support this: the schema already answers queries over GET, given Apollo's `apollo-require-preflight` header.
+
+The api does now say its GET responses are storable. Apollo defaults every response to `cache-control: no-store`, which Next honours, so `graphql-cache.plugin.ts` replaces that with `private, max-age=0` for GET and — on every GraphQL response, cacheable or not — `Vary: x-tenant-id`. The tenant travels in a header, so `Vary` is what stops any cache keyed on the URL from serving one tenant's catalogue to another.
 
 The cache-tag vocabulary is defined in `src/lib/cache-tags.ts` and consumed by `/api/revalidate`.
 

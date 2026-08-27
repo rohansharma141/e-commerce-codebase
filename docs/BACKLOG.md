@@ -8,7 +8,7 @@ The granular work queue. [CLAUDE.md](../CLAUDE.md) holds the coarse build priori
 
 Each row states what "done" means as a single check. If the check can't be written down, the item isn't understood well enough to start.
 
-**Status: 22 of 29 rows done** (plus 8c-1 and 8c-2, which shipped before this file existed). What is left: one human task (8d-5, the walkthrough recording), four items in the R series, and H-3b/H-3c.
+**Status: 24 of 29 rows done** (plus 8c-1 and 8c-2, which shipped before this file existed). What is left: one human task (8d-5, the walkthrough recording) and the four items in the R series.
 
 **A note on how these got verified.** Several of these items were "done" by a check that could not have failed — a row count of `0 = 0`, an RLS proof against an empty table, a commit message describing an edit that never wrote. The lessons are recorded under *Verification discipline* in [CLAUDE.md](../CLAUDE.md) and are worth reading before ticking anything here.
 
@@ -87,8 +87,8 @@ Each is independent of the others and of the sequence above. All correspond to a
 | H-1 | ✅ ESLint `no-restricted-imports` banning `../../*/src/*`, plus fixing the one existing violation in the orders integration spec | lint fails on a deliberately added violation | S |
 | H-2 | ✅ Dead-letter sweep that re-queues exhausted outbox rows | an exhausted row is retried after the sweep | S |
 | H-3a | ✅ Category-scoped cache tags — vocabulary, and the api naming which category listings a change affects (including the one a moved product just left) | a product edit invalidates only its category's tags; an event without categories still falls back to the broad tag | M |
-| H-3b | Make the storefront's reads cacheable, so the tags in H-3a do something. Today every route is dynamic and `graphqlQuery` POSTs, which Next's data cache does not store | two identical requests for a category page produce one `search.completed` in the api log, not two | M |
-| H-3c | H-3's original check, runnable once H-3b lands | editing one category leaves other category caches warm | XS |
+| H-3b | ✅ Make the storefront's reads cacheable — reads moved to `GET /graphql`, and the api stopped answering `cache-control: no-store`, which Next honours | two identical requests for a category page produce one `search.completed` in the api log, not two | M |
+| H-3c | ✅ H-3's original check, runnable once H-3b lands | editing one category leaves other category caches warm | XS |
 | H-4 | ✅ `SEED_VIA_API=1` mode routing a small slice through the real HTTP write path | a broken `POST /admin/products` fails the seed | S |
 | H-5 | ✅ Deployment-guide note on rotating the checked-in dev revalidate secret | documented | XS |
 | H-7 | ✅ Theme has no page foreground colour, so a dark tenant renders unreadable body text — add `pageFgHsl` (found while screenshotting for 8d-4) | t-electronics is legible | S |

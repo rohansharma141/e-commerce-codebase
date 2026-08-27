@@ -4,14 +4,36 @@ import type { TypedDocumentNode } from '@graphql-typed-document-node/core';
 import { getTenantId } from './tenant';
 
 /**
- * Typed GraphQL fetch over Next.js's data cache.
+ * Typed GraphQL reads, cached and tagged.
  *
  * Why not urql for the cacheable read path: urql's fetchOptions is global
- * per client, so we can't thread per-query cache tags into it. The Next.js
- * data cache wants `fetch(url, { next: { tags, revalidate } })` per call.
- * Direct `fetch` is the idiomatic choice; we keep the urql client around for
- * any future client-side use (subscriptions, optimistic updates) but every
- * server-rendered read goes through this wrapper.
+ * per client, so we can't thread per-query cache tags into it. We keep the
+ * urql client around for any future client-side use (subscriptions,
+ * optimistic updates) but every server-rendered read goes through here.
+ *
+ * Reads go over GET, which is the whole reason any of this caches.
+ *
+ * This used to POST. Next's data cache only stores GET responses: it accepts
+ * `next: { tags, revalidate }` on a POST and ignores it, with no warning and
+ * no error. Every route stayed dynamic, every read reached the api, and every
+ * `revalidateTag` call in the webhook route invalidated nothing. The failure
+ * was invisible because an empty cache is never stale — the storefront was
+ * correct, and silently much slower than the architecture doc claimed.
+ *
+ * `unstable_cache` was tried first, since it caches a function's result rather
+ * than an HTTP response and so does not care about the method. It did not
+ * help: an uncacheable fetch inside it makes the surrounding entry
+ * uncacheable too, so the reads stayed uncached with the added cost of a
+ * hand-built cache key. Measured, not assumed — five consecutive requests for
+ * the same page produced five `search.completed` lines in the api log.
+ *
+ * GET needs no api change: the schema already serves queries over GET. Apollo
+ * blocks them unless the request proves it is not a simple cross-origin form
+ * post, hence `apollo-require-preflight`. The tenant stays in a header, which
+ * Next includes in the cache key — the isolation test in
+ * `api-graphql.spec.ts` is what holds that claim down, because a tenant
+ * leaking out of a shared cache entry would be the worst bug this codebase
+ * could have.
  *
  * Tag conventions used by the storefront:
  *
@@ -52,16 +74,19 @@ export async function graphqlQuery<TData, TVars>(
   options: QueryOptions = {},
 ): Promise<TData> {
   const tenantId = getTenantId();
-  const res = await fetch(`${API_ORIGIN}/graphql`, {
-    method: 'POST',
+  const params = new URLSearchParams({ query: print(document) });
+  if (variables && Object.keys(variables as object).length > 0) {
+    params.set('variables', JSON.stringify(variables));
+  }
+
+  const res = await fetch(`${API_ORIGIN}/graphql?${params.toString()}`, {
     headers: {
-      'content-type': 'application/json',
       'x-tenant-id': tenantId,
+      // Apollo Server refuses GET queries without evidence that the request
+      // was not a simple cross-origin form post. Without this the api answers
+      // 400 and every page fails to render.
+      'apollo-require-preflight': 'true',
     },
-    body: JSON.stringify({
-      query: print(document),
-      variables,
-    }),
     next: {
       tags: options.tags,
       revalidate: options.revalidate ?? 3600,
