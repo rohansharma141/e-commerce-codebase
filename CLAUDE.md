@@ -95,12 +95,13 @@ Back-office admin UI, CMS, MDM, job scheduler portal, omni-channel breadth, actu
 - `pnpm install` — install
 - `pnpm nx serve api` — run the api locally
 - `pnpm nx serve storefront` — run the storefront locally (against local api)
-- `pnpm nx codegen` — regenerate `packages/api-client/` from the live API schema
+- `pnpm codegen` — regenerate the GraphQL half of `packages/api-client/` from the saved schema
+- `pnpm nx run api-client:codegen-rest` — regenerate the REST half from the api's live `/docs-json` (api must be up)
 - `docker compose up` — full local stack (Postgres, Redis, OpenSearch, api, storefront)
 - `docker compose up api` — the api without the storefront; proves the api ships alone
 - `TEST_API_URL=http://localhost:3000 pnpm nx test storefront` — storefront↔API contract conformance
 - `pnpm nx test <module>` — test one module
-- `pnpm nx lint` — lint incl. boundary enforcement
+- `pnpm lint` — lint incl. boundary enforcement
 - `pnpm nx run-many -t build` — build all
 - `pnpm nx build api` / `pnpm nx build storefront` — build one deployable
 
