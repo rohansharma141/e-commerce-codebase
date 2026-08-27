@@ -3,11 +3,15 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "sourceRoot": "packages/api-client/src",
   "projectType": "library",
-  "tags": ["scope:api-client"],
+  "tags": [
+    "scope:api-client"
+  ],
   "targets": {
     "lint": {
       "executor": "@nx/eslint:lint",
-      "outputs": ["{options.outputFile}"]
+      "outputs": [
+        "{options.outputFile}"
+      ]
     },
     "codegen": {
       "executor": "nx:run-commands",
@@ -20,6 +24,13 @@
       "executor": "nx:run-commands",
       "options": {
         "command": "powershell -NoProfile -Command \"docker compose exec api cat //app/schema.gql | Set-Content -Encoding utf8 packages/api-client/schema.graphql\"",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "codegen-rest": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "openapi-typescript http://localhost:3000/docs-json -o packages/api-client/src/generated/rest-api.ts",
         "cwd": "{workspaceRoot}"
       }
     }
