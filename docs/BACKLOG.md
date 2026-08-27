@@ -8,7 +8,7 @@ The granular work queue. [CLAUDE.md](../CLAUDE.md) holds the coarse build priori
 
 Each row states what "done" means as a single check. If the check can't be written down, the item isn't understood well enough to start.
 
-**Status: 25 of 30 rows done** (plus 8c-1 and 8c-2, which shipped before this file existed). What is left: one human task (8d-5, the walkthrough recording) and four items in the R series.
+**Status: 26 of 30 rows done** (plus 8c-1 and 8c-2, which shipped before this file existed). What is left: one human task (8d-5, the walkthrough recording) and three items in the R series.
 
 **A note on how these got verified.** Several of these items were "done" by a check that could not have failed — a row count of `0 = 0`, an RLS proof against an empty table, a commit message describing an edit that never wrote. The lessons are recorded under *Verification discipline* in [CLAUDE.md](../CLAUDE.md) and are worth reading before ticking anything here.
 
@@ -107,7 +107,7 @@ The one genuinely large item in the backlog, split so no step is a rewrite. Toda
 | id | item | done when | size |
 |---|---|---|---|
 | R-1 | ✅ Cart: DTO classes with `@ApiProperty`, and the controller's six operations declaring their request and response types | `/docs-json` shows cart request/response schemas, not `{}` | S |
-| R-2 | Orders: the same, for the orders controller | `/docs-json` shows real order schemas | S |
+| R-2 | ✅ Orders: the same, for the orders controller | `/docs-json` shows real order schemas | S |
 | R-3a | `openapi-typescript` wired as an `api-client` target alongside `codegen`, output committed. Nothing imports it yet | running the target twice produces no diff | S |
 | R-3b | Storefront imports the generated types; hand-written `rest.ts` deleted | `pnpm nx build storefront` green with `rest.ts` gone | M |
 | R-4 | CI fails when the generated output drifts from what is committed | a hand-edit to the generated file fails CI | XS |

@@ -10,11 +10,11 @@
  * the api refactor its internal contracts without breaking the storefront
  * contract.
  *
- * Why still mirrored rather than generated: this is being retired, one
- * module at a time. Cart now publishes real OpenAPI schemas (R-1), orders
- * does not yet (R-2), and nothing generates from them until R-3a. Mirroring
- * by hand stays the honest move only while the document is incomplete —
- * once it is not, this file goes.
+ * Why still mirrored rather than generated: this is being retired, one step
+ * at a time. Cart (R-1) and orders (R-2) now publish real OpenAPI schemas, so
+ * the document finally describes every shape below. What is missing is the
+ * generator itself (R-3a) and the storefront switching onto its output
+ * (R-3b). At that point this file goes.
  */
 
 // ─── Cart ──────────────────────────────────────────────────────────────────
