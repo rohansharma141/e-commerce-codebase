@@ -119,6 +119,36 @@ jobs:
           docker compose logs api --tail=120
           exit 1
 
+      # ─────────────────────────────────────────────────────────────────────
+      # The committed REST types still match the api that produced them.
+      #
+      # src/generated/rest-api.ts is generated from /docs-json and committed,
+      # so the storefront builds without the api running. That convenience is
+      # also the hazard: change a DTO, forget to regenerate, and every other
+      # check here still passes while the storefront compiles against a
+      # surface the api no longer serves. Nothing else notices — the
+      # conformance suite asserts on responses, not on whether the checked-in
+      # types describe them.
+      #
+      # It runs here rather than in its own job because the api is already up,
+      # so a live document costs nothing.
+      #
+      # Verified by committing a hand-edit (`couponCode: string | null` ->
+      # `string`) on a branch and watching this step fail on a real runner,
+      # rather than by reading it and assuming.
+      # ─────────────────────────────────────────────────────────────────────
+      - name: REST types match the api
+        run: |
+          pnpm nx run api-client:codegen-rest
+          if ! git diff --exit-code --stat packages/api-client/src/generated/rest-api.ts; then
+            echo
+            echo "The committed REST types are stale. Regenerate and commit:"
+            echo "  pnpm nx run api-client:codegen-rest   (with the api running)"
+            echo
+            git diff -- packages/api-client/src/generated/rest-api.ts
+            exit 1
+          fi
+
       - name: Seed
         run: pnpm seed
 

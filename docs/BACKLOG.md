@@ -8,7 +8,7 @@ The granular work queue. [CLAUDE.md](../CLAUDE.md) holds the coarse build priori
 
 Each row states what "done" means as a single check. If the check can't be written down, the item isn't understood well enough to start.
 
-**Status: 28 of 30 rows done** (plus 8c-1 and 8c-2, which shipped before this file existed). What is left: one human task (8d-5, the walkthrough recording) and R-4, the generator drift check.
+**Status: 29 of 30 rows done** (plus 8c-1 and 8c-2, which shipped before this file existed). What is left: one human task — 8d-5, the walkthrough recording.
 
 **A note on how these got verified.** Several of these items were "done" by a check that could not have failed — a row count of `0 = 0`, an RLS proof against an empty table, a commit message describing an edit that never wrote. The lessons are recorded under *Verification discipline* in [CLAUDE.md](../CLAUDE.md) and are worth reading before ticking anything here.
 
@@ -98,7 +98,7 @@ Each is independent of the others and of the sequence above. All correspond to a
 
 ## R — retire the hand-mirrored REST types
 
-The one genuinely large item in the backlog, split so no step is a rewrite. `packages/api-client/src/rest.ts` was 124 hand-written lines kept honest only by the contract-conformance test; it is now deleted, and only the drift check remains.
+The one genuinely large item in the backlog, split so no step is a rewrite. `packages/api-client/src/rest.ts` was 124 hand-written lines kept honest only by the contract-conformance test. It is deleted; the types are generated from the api's own OpenAPI document and CI fails if the committed copy falls behind. **Series complete.**
 
 **Decided before starting, because it is the kind of thing that gets decided badly at 11pm:** the decorated classes live in each module's `src/`, implementing the matching `contracts/` interface. They do **not** go in `contracts/`. Those packages have zero dependencies today, and `@ApiProperty` would put `@nestjs/swagger` inside the public contract — the thing a consumer imports would then require our web framework. Implementing the interface means the class cannot drift from the contract without a type error, which is the property that actually matters. [capabilities.module.ts](../apps/api/src/capabilities.module.ts) is the existing example.
 
@@ -110,7 +110,7 @@ The one genuinely large item in the backlog, split so no step is a rewrite. `pac
 | R-2 | ✅ Orders: the same, for the orders controller | `/docs-json` shows real order schemas | S |
 | R-3a | ✅ `openapi-typescript` wired as an `api-client` target alongside `codegen`, output committed. Nothing imports it yet | running the target twice produces no diff | S |
 | R-3b | ✅ Storefront imports the generated types; hand-written `rest.ts` deleted | `pnpm nx build storefront` green with `rest.ts` gone | M |
-| R-4 | CI fails when the generated output drifts from what is committed | a hand-edit to the generated file fails CI | XS |
+| R-4 | ✅ CI fails when the generated output drifts from what is committed | a hand-edit to the generated file fails CI | XS |
 
 R-1 and R-2 are independent and can go in either order; both must land before R-3a, which needs real schemas to generate from. R-4 hangs off the conformance job, which already boots the api — that is where a regenerate-and-diff step gets a live `/docs-json` for free.
 

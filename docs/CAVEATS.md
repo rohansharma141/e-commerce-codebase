@@ -34,7 +34,7 @@ Every item has a **status**: *by design* (intentional, see linked ADR), *scoped 
 - **Was:** `packages/api-client/src/rest.ts` was 124 hand-written lines duplicating Cart, Order, ComputedTotals and friends, kept true only by the conformance test. It existed because the api's DTOs were interfaces, so `@nestjs/swagger` emitted `{}` for every body and `openapi-typescript` would have produced nothing usable.
 - **Now:** the DTOs are classes with `@ApiProperty` (R-1, R-2), the api publishes 17 real schemas, and `src/generated/rest-api.ts` is generated from them (R-3a). `rest.ts` is deleted (R-3b).
 - **What is still by hand, on purpose:** the *names*. `src/index.ts` aliases selected schemas rather than re-exporting the whole document, because api-client is the storefront's entire view of the api and deciding what is public belongs there. A schema not named in that file is not part of the client surface. Renaming a schema on the api side breaks the build rather than silently changing what the storefront sees.
-- **Still owed:** nothing detects that the committed generated file has fallen behind the api. That is R-4.
+- **Drift is caught:** the conformance job regenerates against the live api and fails if the committed file differs (R-4). Proved by committing a hand-edit on a branch and watching that step fail on a real runner.
 
 ### No customer auth — order reads go through admin endpoint
 - **Status:** scoped out (CLAUDE.md: real auth is the gateway's job, ADR-0007).
