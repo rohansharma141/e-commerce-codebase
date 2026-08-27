@@ -1,6 +1,6 @@
 # Project brief — e-commerce-codebase
 
-*A self-contained context document. Written to be handed to an assistant that has **no access to the repository** — everything needed to reason about the project is stated inline. Current as of 2026-08-26, commit `82f72ea`. 44 commits on `main`, CI green.*
+*A self-contained context document. Written to be handed to an assistant that has **no access to the repository** — everything needed to reason about the project is stated inline. Current as of 2026-08-27, commit `3a0eaf9`. 59 commits on `main`, working tree clean, CI green, tagged `v0.1.0`.*
 
 ---
 
@@ -12,33 +12,25 @@ It is a **portfolio piece**, not a commercial product. Its purpose is to demonst
 
 That framing drives every trade-off. The guiding principle is **depth over breadth**: one hero feature that genuinely sings, on a clean architectural spine, with a sharp decision record, beats ten half-built modules. The biggest project risk is scope swallowing the demonstration.
 
-**Packaging: two deliverables, sold separately.** The API alone is a complete product. API + storefront is the bundled option. This is an architectural constraint, not marketing — it is enforced in code by lint rules (details in §5).
+**Packaging: two deliverables, sold separately.** The API alone is a complete product. API + storefront is the bundled option. This is an architectural constraint, not marketing — it is enforced in three independent places (§5).
 
-**The hero feature** is faceted search-at-scale over tenant-defined custom attributes: ~99,000 seeded products across three tenants, sub-20ms faceted queries, physically isolated per-tenant search indices. If time is ever squeezed, the hero is protected above everything else.
+**The hero feature** is faceted search-at-scale over tenant-defined custom attributes: 99,000 seeded products across three tenants, physically isolated per-tenant search indices. Measured on the running stack: **13–22 ms** warm for a filtered, facetted query against a 33,000-document index, and **~320 ms** for the first query after an index write. Both numbers are stated because quoting only the warm one would be the flattering half. If time is ever squeezed, the hero is protected above everything else.
 
 ---
 
-## 2. Tech stack (brief)
+## 2. Tech stack
 
-**Backend — `apps/api`**
-- Node.js 22 or newer, TypeScript 5.5 (strict mode, no `any` without a justifying comment)
-- NestJS 10 — REST for admin/system, GraphQL (Apollo Server 4) for the storefront read edge
-- Drizzle ORM over `postgres-js`, kept behind per-module repositories so the ORM is swappable
-- zod for env validation, pino for structured logging, helmet + `@nestjs/throttler` for security, `@nestjs/swagger` for REST docs
-
-**Storefront — `apps/storefront`**
-- Next.js 14.2 (App Router), React 18, TypeScript
-- Tailwind CSS + shadcn-style primitives (hand-rolled on `@radix-ui/react-slot`, `class-variance-authority`, `clsx`, `tailwind-merge`, `lucide-react`)
-- urql + GraphQL Codegen (client-preset) for typed operations; server-side reads go through a thin `fetch` wrapper so Next.js cache tags can be attached per query
-
-**Data stores — chosen per bounded context, never "two DBs to show off"**
-- PostgreSQL 16 — orders, money, tenancy, pricing, audit (ACID + row-level security)
-- OpenSearch 2.15 — faceted search and browse (one index per tenant)
-- Redis 7 — carts and sessions (tenant-prefixed keys)
-- Catalog custom attributes live in Postgres JSONB
-
-**Tooling**
-- pnpm 9.12 + Nx 20 monorepo (23 projects), Jest, ESLint with Nx module-boundary enforcement, GitHub Actions CI (lint + test + build; `nx affected` on PRs), Docker Compose for the local stack
+| Layer | Choice |
+|---|---|
+| Backend | Node.js 22+, TypeScript 5.5 strict, NestJS 10 |
+| Storefront | Next.js 14 App Router, React, Tailwind, shadcn/ui |
+| Transactional store | PostgreSQL 16 (Drizzle + postgres-js, behind module repositories) |
+| Search | OpenSearch 2.15, one index per tenant |
+| Cart / sessions | Redis 7 |
+| API surfaces | GraphQL (storefront reads) + REST (admin/system), both public |
+| Monorepo | pnpm 10.34 + Nx (25 projects) |
+| Local stack | Docker Compose — the genuinely runnable artifact |
+| Deployment | Kubernetes manifests written and schema-validated in CI; no cluster provisioned |
 
 ---
 
@@ -46,164 +38,142 @@ That framing drives every trade-off. The guiding principle is **depth over bread
 
 ```
 apps/
-  api/                  the backend deployable (NestJS)
-  storefront/           the Next.js deployable (ships separately)
-  seed/                 CLI that bulk-loads 99k products + prices + promotions
-
+  api/          the backend monolith (independent deployable)
+  storefront/   Next.js storefront (independent deployable)
+  seed/         the data seeder
 packages/
-  api-client/           generated GraphQL types + hand-mirrored REST types.
-                        The ONLY package the storefront may import from.
-  shared/               config, database, event-bus, hooks, observability,
-                        opensearch, redis, security, tenant-context
-                        (backend-only; no domain logic)
-  modules/
-    catalog/            products + tenant-defined typed attributes
-    search/             OpenSearch indexer + GraphQL Query.search  ← hero
-    pricing/            prices, tax, promotions, totals, per-tenant config
-    branding/           per-tenant storefront theme (own schema)
-    cart/               Redis-backed cart
-    orders/             checkout, snapshot integrity, idempotency
-
-docs/                   ARCHITECTURE, DECISIONS, CAVEATS, BACKLOG,
-                        STOREFRONT, RUNBOOK, HANDOVER, LOOM-SCRIPT,
-                        adr/0001-0013
-docker/                 Postgres init (creates the non-superuser app role)
+  modules/<name>/contracts/   PUBLIC interface, DTOs, event types — zero dependencies
+  modules/<name>/src/         PRIVATE implementation
+  shared/                     event-bus, tenant-context, db, config, security,
+                              observability, hooks, opensearch, redis
+  api-client/                 generated GraphQL + REST types; the ONLY package
+                              the storefront may import from
+deploy/k8s/     16 manifests in two bundles: api/ stands alone, storefront/ adds to it
+docs/           ARCHITECTURE, DECISIONS, RUNBOOK, STOREFRONT, CAVEATS, BACKLOG,
+                LOOM-SCRIPT, HANDOVER, and 13 ADRs
 ```
 
-Every domain module is split into **`contracts/` (public)** and **`src/` (private)**. A module may import another module's `contracts/`, never its `src/`.
+Six domain modules: `catalog`, `search`, `pricing`, `orders`, `cart`, `branding`.
 
 ---
 
-## 4. What is already built
+## 4. What is built
 
-All seven steps of the planned build priority are complete, as is step 8 apart from a recorded walkthrough and a handful of hardening items. The sequenced queue lives in `docs/BACKLOG.md`: 19 of its 27 rows are done, plus two items that predate the file.
+### The API (build priorities 1–6, complete)
 
-### Steps 1–6 — the API (complete)
+- **Foundation** — monorepo, NestJS, Compose, CI, in-process event bus, tenant plumbing via `AsyncLocalStorage`.
+- **Catalog + custom attributes** — tenant-defined, typed, validated at write time. Stored as Postgres JSONB.
+- **Multi-tenancy** — `tenant_id` on every row, Postgres row-level security with `FORCE` on a non-superuser role, 12 policies, plus an isolation suite that runs as the non-superuser (running it as superuser would pass vacuously — RLS never engages).
+- **Search** — per-tenant OpenSearch indices; attribute definitions drive the mapping, so a new attribute is a new mapped field rather than a migration.
+- **Pricing, cart, orders** — integer minor units throughout, best-single promotion stacking, tax on the discounted base, immutable order snapshots at checkout, idempotent checkout keyed on a client-supplied header.
+- **Cross-cutting** — helmet, per-tenant rate limiting, typed in-process hook registry, audit log, structured logging.
 
-| Area | What exists |
-|---|---|
-| **Foundation** | pnpm + Nx monorepo, NestJS app, Docker Compose stack, GitHub Actions CI, in-process event bus, tenant plumbing via AsyncLocalStorage |
-| **Catalog** | Products plus tenant-defined typed attribute definitions (string/number/boolean/date/enum), validated at write time against that tenant's own schema |
-| **Multi-tenancy** | `tenant_id` on every row; Postgres row-level security with `FORCE` on `catalog.*`, `pricing.*`, `orders.*`, `audit.*`; the app's `platform` role is deliberately non-superuser and non-`BYPASSRLS` so RLS actually bites; `app.tenant_id` set per request on a reserved pooled connection |
-| **Search (hero)** | One OpenSearch index per tenant (`products-<tenant>`); a client handle that is bound to a single index by construction, so there is no cross-tenant API surface at all; GraphQL `Query.search` with faceted aggregation over custom attributes, text match, sort (relevance/price/name), autocomplete via `match_phrase_prefix`, true total counts, and per-query latency reporting. Filtering is generic rather than bespoke: one `AttributeFilter` type with `eq` / `in` / `gte` / `lte` covers any tenant-defined attribute, which is how price-range and in-stock filters work without the API knowing what "price" or "in stock" mean |
-| **Pricing** | Prices, per-tenant tax config, promotion engine with best-single stacking, all money as integer cents with banker's rounding |
-| **Cart** | Redis-backed, tenant-prefixed keys (`t:<tenant>:cart:<id>`), snapshots SKU and name at add-time |
-| **Orders** | Transactional checkout — `Idempotency-Key` support, conditional promotion consumption under concurrency, full price/promo/tax snapshot written into the order so historical records never drift when live config changes |
-| **Self-description** | `Query.capabilities` and `GET /system/capabilities` (one implementation, two transports) report per tenant: currency and its minor-unit exponent (every money value in the API is an integer in minor units, so a consumer assuming 2 decimals is wrong for JPY), locale, tax display mode and rate, and a keyed feature map with honest `false` entries for customer accounts, multi-currency, i18n, inventory, shipping and payments |
-| **Branding** | `modules/branding/` owns per-tenant theme in its own schema, extracted out of pricing in four reversible steps with `Query.theme` byte-identical throughout |
-| **Delivery** | Storefront revalidation goes through a transactional outbox: exponential-backoff retry, then a bounded dead-letter sweep that re-drives exhausted rows three times before leaving them for good |
-| **Cross-cutting** | Helmet, per-tenant rate limiting, an audit log of every successful mutation under `/admin/*` and `/storefront/checkout`, request-id propagation end to end, `/health` + `/ready` (probes all three stores), Swagger UI at `/docs`, a Postman collection, a typed hook registry for extension points |
+### The storefront (build priority 7, complete)
 
-**Seeded demo data:** three tenants — `t-fashion`, `t-electronics`, `t-books` — roughly 33,000 products each, written to both Postgres (canonical) and the tenant's OpenSearch index (queryable projection), along with six attribute definitions, 33,000 prices, and sample promotions per tenant. Measured search latency from the seed CLI's own benchmark: p50 ≈ 5ms, p95 ≈ 12ms, p99 ≈ 26ms over 200 random queries per tenant.
+Catalog browse, faceted search UI, product detail, cart and checkout, order confirmation, per-tenant theming across three visually distinct tenants, security headers with a per-request CSP nonce, and event-driven cache revalidation.
 
-### Step 7 — the storefront (complete, plus extras)
+### Consolidation (build priority 8, complete except one human task)
 
-A Next.js 14 App Router app on port 3001, deployable separately from the API.
+This was the largest phase and the one that changed the project's character. Its rule: *a claim in a doc, README, or ADR is part of the product; where a doc and the code disagree, the code is the contract and the doc is the bug.*
 
-- **Tenant resolution from the hostname.** `t-fashion.localhost:3001` in dev, `t-fashion.example.com` in prod. Middleware parses the subdomain and injects `x-tenant-id` into the request headers; bare `localhost` redirects to the default dev tenant; reserved subdomains like `www` are rejected. The storefront code never hardcodes a tenant name.
-- **Catalog browse** — home and category pages with a faceted sidebar driven by the hero search, free-text search bar, sort, price-range form, in-stock toggle, grid/list view switching, and server-rendered pagination. All state lives in the URL and every control is a link or a plain form, so browsing and filtering work with client-side JavaScript disabled.
-- **Rendering split** — browse, category, and product pages are server-rendered through the Next.js data cache with tags plus a one-hour fallback, so they behave as ISR and are rebuilt by events rather than on a timer. Cart and order pages are explicitly dynamic: they're personal and have no SEO value.
-- **Autocomplete** — a debounced suggestions endpoint backed by the search module's prefix-matching mode.
-- **Product detail** — custom attributes, price, stock state, breadcrumbs, a "more like this" rail pinned on category or brand, and add-to-cart.
-- **Cart and checkout** — cart cookie per tenant, quantity edits, coupon apply/remove, live totals, checkout, order confirmation page.
-- **Event-driven ISR revalidation** — catalog mutations emit domain events; the API dispatches a webhook to the storefront's `/api/revalidate`; the storefront maps the event onto Next.js cache tags (`browse:<tenant>`, `product:<tenant>:<id>`, `theme:<tenant>`) and rebuilds the affected pages within seconds. The payload is deliberately *event-shaped*, not tag-shaped — the API never learns the storefront's cache topology.
-- **Per-tenant theming** — brand name, colors, and typography load from the API per request via a `Query.theme` resolver and apply as CSS variables. One codebase, no per-tenant forks.
-- **Security headers** — `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `nosniff` and a restrictive Permissions-Policy from the Next config, plus a per-request CSP issued by middleware. The CSP carries a fresh nonce per request, which Next stamps onto the inline scripts it emits for the RSC payload and hydration; a build-time header can't express that, which is why the two are deliberately split across the two files.
-- **Tests** — a URL-contract unit suite, and a conformance suite that issues every operation the storefront uses against a live API and checks the responses against the shapes it relies on, including exact key sets for the hand-mirrored REST types. The lint boundary proves nothing was imported across the line; this proves the public surface actually delivers what the storefront reads.
-- **Documentation** — a storefront architecture doc, three additional ADRs, and a recording script for a 2–3 minute walkthrough.
+- **Credibility pass** — the seed writes real catalog rows (the README's RLS proof had been counting an empty table), storefront Dockerfile and Compose service, production CSP, contract-conformance tests, LICENSE.
+- **CI that actually verifies** — backing services in CI so the integration suites stopped skipping silently; they had rotted undetected for several commits behind a green pipeline. Pricing domain events; `search.product.indexed` so cache invalidation follows the read model rather than racing it; a transactional webhook outbox with exponential backoff and a bounded dead-letter sweep.
+- **API as product** — `Query.capabilities` and `GET /system/capabilities`: the API reports its own currency, minor-unit exponent, tax display, locales and feature map per tenant. The storefront reads them instead of hardcoding `$`, `en-US` and two decimals — proved by switching a tenant to JPY and watching prices re-render unscaled. Per-tenant locale. `branding` extracted into its own module in four reversible steps with `Query.theme` byte-identical throughout.
+- **Hardening** — boundary enforcement extended to spec files; dead-letter sweep; a `SEED_VIA_API=1` mode routing a slice through the real HTTP write path so a broken endpoint fails the seed; theme foreground colour; Node 24 support; category-scoped cache invalidation; a genuinely cached storefront read path.
+- **Retiring the hand-mirrored types** — the storefront's REST types were 124 hand-written lines kept true only by a conformance test, because the API's DTOs were interfaces and its OpenAPI document described every body as `{}`. Now the DTOs are decorated classes, the document has 17 real schemas, the client types are generated from it, the hand-written file is deleted, and CI fails if the committed copy drifts.
+- **Kubernetes manifests** — 16 resources, two bundles, validated against real Kubernetes schemas in strict mode on every push. Deliberately not deployed.
 
 ---
 
 ## 5. The rules that must not be broken
 
-These are enforced, not aspirational. Any proposed change should be checked against them.
+1. **Never import another module's `src/`** — only its `contracts/`. Enforced by ESLint boundaries and by a `no-restricted-imports` rule catching relative-path evasion. A violation is a build failure.
+2. **No cross-module SQL joins, ever.** Each module owns its tables in its own Postgres schema. Modules talk via contracts and events.
+3. **Events are network-strict** — plain serializable objects carrying everything the consumer needs; consumers are idempotent because the bus will redeliver.
+4. **Multi-tenancy is in every module from line one** — `tenant_id` on every row, RLS as the enforcement backstop rather than app-layer `WHERE` clauses alone.
+5. **Modular monolith, not microservices.** Do not add a broker between modules, split services, or build distribution machinery. Extraction is documented, not built.
+6. **Storefront ↔ API independence.** The storefront imports only from `packages/api-client` and talks to the API only over its public schema. No in-process calls, no shared state, no DB access. Every capability must remain reachable through the public API alone — if the storefront needs something, extend the API rather than putting logic in the frontend.
 
-1. **Never import another module's `src/`** — only its `contracts/`. ESLint's module-boundary rule fails the build on violation.
-2. **No cross-module SQL joins, ever.** Each module owns its own Postgres schema. Modules communicate through contracts and events.
-3. **Events are network-strict** — plain serializable objects carrying everything the consumer needs, cloned on dispatch, consumers idempotent because the bus may redeliver. They are written as if they already cross a network, because one day they will.
-4. **Multi-tenancy in every module from line one.** `tenant_id` on every row, RLS as the enforcement backstop rather than app-layer `WHERE` clauses, tenant resolved once at the edge and threaded via AsyncLocalStorage.
-5. **Modular monolith, not microservices.** Do not add a message broker between modules, split services, or build distribution machinery. The in-process event bus is the correct answer at this scale. Extraction is *documented* (which module splits first, and why), not built.
-6. **Storefront ↔ API independence.** The storefront imports only from `packages/api-client` — never a domain module, never a shared backend lib. It talks to the API exclusively over the public GraphQL/REST surface: no in-process calls, no shared memory, no direct database access. **Every capability must remain reachable through the public API alone.** If something is tempting to "just put in the frontend for now," the correct fix is to extend the API.
-
-The reasoning behind each of these is recorded in `docs/DECISIONS.md` and twelve ADRs, so decisions can be interrogated individually rather than taken on faith.
+Rule 6 is enforced three times over: ESLint boundaries at build time, a Compose graph with no API→storefront edge, and a Kubernetes NetworkPolicy whose storefront egress permits DNS and the API and nothing else.
 
 ---
 
-## 6. Deliberately not built
+## 6. The verification discipline
 
-Documented as "designed, not built" where relevant — each has a written rationale:
+This is the project's distinguishing characteristic and the thing most worth understanding before proposing changes. **A green check is not treated as evidence until it has been seen to fail.** Every rule below was paid for by a bug that got through a passing check.
 
-- **Microservices.** A composable API surface does not require a distributed implementation; the consumer cannot tell the difference. Building a real fleet would burn the budget on service mesh, saga orchestration, and eventual-consistency debugging — which demonstrates ops skill, not the architecture skill being showcased. The senior signal here is deliberate non-distribution plus a credible extraction plan.
-- **Kubernetes deployment.** Manifests written, cluster not provisioned. Docker Compose is the genuinely-runnable artifact.
-- **OpenTelemetry export.** Trace topology and instrumentation plan documented; wiring is mechanical once there's a collector to point at.
-- **A conformance facade for a foreign REST contract.** Recorded in ADR 0013. A third deployable (`apps/icm-compat`) would translate Intershop's Commerce Management REST contract onto this platform's GraphQL edge, so that a commerce frontend this project did not write could boot against the API unmodified. The purpose is validation, not compatibility: it would turn "every capability is reachable through the public API alone" from an assertion into something a foreign consumer can falsify, since a lint rule only proves nobody imported across the boundary, not that the surface is sufficient. No claim of vendor interoperability follows from it, and no third-party source would enter the repository. Deliberately gated behind the gap list in §7.
-- **Real authentication.** `x-tenant-id` is trusted at face value today. In production a JWT-validating gateway sits in front, extracts the tenant from validated claims, and injects the header — the API itself stays unchanged. Direct internet exposure is demo-only.
-- **Back-office admin UI, CMS, MDM, job scheduler portal, omni-channel breadth.** The API has its own admin REST surface; a UI on top of it adds no architectural signal.
-- **Inventory, shipping, refunds, customer accounts.** Breadth, not depth.
+- **A check that can pass vacuously is not a check.** The README's RLS proof returned `0 / 0 / 0` against an empty table and read as a pass. A backfill migration reported "row counts match" as `0 = 0` because RLS hid the source rows from it.
+- **Migrations must be verified on a cold database.** The migration ledger means a developer machine never re-runs the failing path. A concurrency race on `CREATE EXTENSION` and a backfill reading a since-dropped column were both invisible locally and fatal on first boot.
+- **Execute documented commands; do not re-read them.** A README verification flow turned out to be unrunnable as written. Two commands in the project's own instruction file had never worked at all.
+- **A commit message is a claim about the diff.** One commit described a fix that never landed, because the script making the edit aborted before writing.
+- **Local success says little about CI or a cold clone.** A warm Docker cache hid a six-minute build; an installed toolchain hid an `engines` mismatch that made a fresh clone impossible on a current Node.
+- **Prefer demonstrating over asserting.** "A broken endpoint fails the seed" was proved by breaking the endpoint and showing exit 0 versus exit 1.
 
----
+Recent examples of the discipline catching something:
 
-## 7. Known gaps and current work items
-
-*The sequenced queue lives in `docs/BACKLOG.md`: individually shippable increments, each with a stated verification, none longer than about two hours.*
-
-Honest list. Nothing here is hidden in the repo — most is already tracked in `docs/CAVEATS.md`.
-
-Work is organised as step 8, "make every claim the repo makes hold". 8a through 8c are complete, 8d all but the recorded walkthrough, and the hardening list is half done.
-
-**Closed so far**
-- The seed writes `catalog.products` and attribute definitions, so the README's RLS proof compares 0 unbound against 33,000 bound rather than an empty table against itself. `SEED_VIA_API=1` additionally routes a 25-product slice per tenant through the real HTTP endpoints, so a broken `POST /admin/products` fails the seed instead of going unnoticed.
-- Both deployables have Docker images and a compose service; production CSP issues a per-request nonce, so a production build actually hydrates.
-- The storefront has tests: a URL-contract unit suite and a conformance suite that issues every operation it uses against a live API, asserting exact key sets for the hand-mirrored REST types.
-- CI stands up Postgres, Redis and OpenSearch from the repo's own compose file and runs the integration suites, with a second job that seeds an api and runs conformance. It is green.
-- Cache invalidation keys off `search.product.indexed`, published only once the index write is readable, rather than racing the indexer.
-- Webhook delivery goes through a transactional outbox with backoff and a bounded dead-letter sweep.
-- The api describes itself over both GraphQL and REST; the storefront formats money from what it reports, proven by switching a tenant to JPY and to de-DE and watching it re-render with no storefront change.
-- `modules/branding/` extracted from pricing; the pricing column is dropped.
-- The module boundary is enforced in spec files too, and by relative path as well as by alias.
-- The README's tour was run from a cold clone and all seven findings fixed.
-- Node 24 works. The whole pnpm 9 line crashed in nx's postinstall on it; pnpm 10 fixes it, and a CI job installs and builds on Node 24 every push.
-
-**Still open**
-- **No customer auth.** Order confirmation reads through the admin endpoint, so anyone holding an order UUID can fetch it within that tenant. Fine for a demo, not for production. Scoped out; needs its own decision record.
-- **Rate limiting keys on tenant id, not IP**, so during the trust-by-header window a caller impersonating a tenant can throttle that tenant's real traffic. Per-IP limits belong at the gateway.
-- **Capability features describe the deployment, not the tenant.** The per-tenant half (currency, locale, tax) is real; the feature map is a constant. Costs nothing until a capability actually varies per tenant, and the list-of-keys shape was chosen so it can.
-- **Browse cache tags are coarse** — one `browse:<tenant>` tag, so any product change invalidates every browse render for that tenant. Invisible at demo volumes. (H-3)
-- **The REST types in `api-client` are hand-mirrored.** The conformance suite catches structural drift, including exact key sets, but not a field that became optional. Retiring the mirror via `@ApiProperty` DTOs plus `openapi-typescript` is the R-series in the backlog.
-- **Price is denormalised into the search index.** Canonical price is `pricing.prices`; the index copy converges within about a second via events. Checkout never reads the copy — totals are computed from the canonical row inside the transaction.
-- **Exhausted webhooks are queryable but not escalated.** After three sweep re-queues a row stays a dead letter with its last error. Alerting on `WHERE exhausted` is the fix when there is an operator to alert.
-
-**Remaining presentation work**
-- The 2–3 minute walkthrough (`docs/LOOM-SCRIPT.md`) is written but unrecorded. That is the only 8d item left, and it is a human task.
+| Check | What the negative control revealed |
+|---|---|
+| Node 24 install | pnpm 10 skips dependency build scripts by default — the install exited 0 having never run the script that used to crash. The allowlist also has to be in `pnpm-workspace.yaml`; in `package.json` it is silently ignored. |
+| Category-scoped cache tags | The tags were correct and inert: every storefront route was dynamic and the reads were POSTs, which Next's data cache does not store. No `revalidateTag` call had ever done anything. |
+| Generated-types drift check | Passed a hand-edit locally, because regenerating overwrites the edit before the diff runs. Only a run on a real CI runner, with the drift committed, showed it working. |
+| Kubernetes manifests | `kubectl` cannot fetch a schema without a cluster and fails identically on valid and invalid input — a check that cannot discriminate. Replaced with containerised `kubeconform`. |
 
 ---
 
-## 8. How to run it
+## 7. Deliberately not built
 
-Prerequisites: Docker, **Node 22 or newer** (24 is covered by CI), pnpm 10.34 via corepack.
+Each is a decision with a written rationale, not an omission.
 
-```bash
-pnpm install
-docker compose up --build -d   # Postgres, Redis, OpenSearch, api, storefront
-                               # first build ~6 min (two images); later starts are seconds
-pnpm seed                      # ~30s: 99k products, prices, promotions, 3 tenants
-SEED_VIA_API=1 pnpm seed       # optional: routes a slice through the real HTTP write path
-```
-
-The storefront is already running in compose on port 3001; `pnpm nx serve storefront` is only for hot reload, and needs the container stopped first.
-
-- API at `http://localhost:3000` — `/health`, `/ready`, `/docs` (Swagger), `/graphql`
-- Storefront at `http://t-fashion.localhost:3001/` (also `t-electronics`, `t-books`). Modern browsers resolve `*.localhost` natively; no hosts-file edits needed.
-- **Every tenant-scoped API call needs an `x-tenant-id` header.** Missing it is a deliberate 400 — the middleware is fail-closed.
-- All money in the API is integer cents. `$199.99` is `19999`. Never floats.
-
-Useful commands: `pnpm nx run-many -t lint` (includes boundary enforcement), `pnpm nx run-many -t test` (integration tests skip unless the `TEST_*_URL` env vars point at the running stack), `pnpm nx build api`, `pnpm nx build storefront`, `pnpm codegen` (regenerates the typed API client from the live schema).
+- **Microservices.** A composable API surface does not require a distributed implementation, and the consumer cannot tell. Building the fleet would spend the budget on service mesh and saga plumbing — ops skill, not the architecture skill being demonstrated. Deliberate non-distribution is the senior signal.
+- **A message broker between modules.** The in-process bus is correct here. Events are written as if they already cross a network, so extraction stays possible.
+- **Back-office admin UI, CMS, MDM, job scheduler portal, omni-channel breadth.** The API has its own admin REST surface.
+- **A provisioned Kubernetes cluster.** Manifests are written and validated; nothing is deployed.
+- **OpenTelemetry.** Designed, with instrumentation points chosen in an ADR. Not wired.
+- **Customer authentication.** Scoped out; needs its own ADR before any work starts.
+- **An ICM conformance facade** (ADR-0013). Gated behind the current backlog by its own decision record.
 
 ---
 
-## 9. How to help with this project
+## 8. Known gaps, stated honestly
+
+Five open entries in the caveats register:
+
+1. **No customer auth.** Order reads go through an admin endpoint, so any browser holding an order UUID can fetch that order within its tenant. Fine for a demo; not acceptable for production. This is the largest functional gap.
+2. **Tenant id is the trust boundary.** The API trusts the `x-tenant-id` header; real authentication is the gateway's job (ADR-0007).
+3. **Rate limiting is per tenant, not per IP**, so during the trust-by-header window a caller impersonating a tenant can throttle that tenant's real traffic.
+4. **Cached-read tenant isolation rests on `Vary` and the tenant header.** Every tenant asks the same GraphQL question at a byte-identical URL; the `x-tenant-id` header in Next's cache key and `Vary: x-tenant-id` on every response are what separate them. A regression here would serve one tenant another tenant's catalogue and would look like a working, fast site. Worth re-checking after any change to caching or the read path.
+5. **The dev revalidate secret is checked into Compose.** Rotation is documented and was verified by performing it.
+
+Also true and worth knowing: the capability feature map describes the deployment rather than the tenant (the currency, locale and tax half is genuinely per-tenant); the integration suites drop the catalog, pricing and orders schemas, so a green suite followed by an empty storefront is both working as designed.
+
+---
+
+## 9. Current state and what remains
+
+- **`main` = `3a0eaf9`**, 59 commits, clean, CI green, `v0.1.0` tagged.
+- **CI** runs three jobs on every push: lint/build/test with real Postgres, Redis and OpenSearch containers plus Kubernetes manifest validation; storefront↔API contract conformance against a seeded API; and an install-and-build on Node 24 with the side-effects cache disabled.
+- **Backlog: 29 of 30 rows done.** The only open row is recording a 2–3 minute walkthrough video — a human task.
+- Suggested-but-unbuilt from the most recent audit: delete a stale duplicate of the instruction file (`docs/CLAUDE-v2.md`, a 90-line copy contradicting the live 120-line one); write a production deployment guide, which the new manifests now give something concrete to explain; and mark a historical findings table in the backlog as closed so it stops reading as open work.
+
+---
+
+## 10. Open questions worth thinking about
+
+These are genuinely undecided, and are the most useful things to discuss.
+
+1. **Is the differentiation thin enough to matter?** The honest competitive position is "open-source and self-hostable like WooCommerce, architecturally capable and natively multi-tenant like commercetools." Medusa is very close to that square — Node/TS, modular monolith, headless, Postgres — and its only real gap is that it is multi-*store* rather than multi-*tenant*, a gap its ecosystem is drifting to close. For a portfolio piece this thinness is acceptable, because the goal is demonstration. Should it stay acceptable, or should the project narrow to a specific vertical or operator workflow on top of multi-tenancy?
+2. **What is the strongest next demonstration?** The hero is search-at-scale on custom attributes. Candidates for a second: customer auth done properly with an ADR; a real gateway in front of the tenant-header trust boundary; or making the extraction path concrete by actually pulling one module out behind an HTTP boundary and measuring what breaks.
+3. **How much does the missing walkthrough cost?** Everything else in the demonstration is complete. The recording is the artifact a non-technical stakeholder actually consumes, and it does not exist.
+4. **Is the caveats register an asset or a liability in front of a buyer?** It is unusually candid — five open gaps, each with impact and fix. The bet is that visible honesty reads as seniority to a CTO. That bet has never been tested on a real audience.
+5. **Does the verification discipline read as rigour or as overhead?** It is the most distinctive thing about how this codebase was built, and it is currently visible only in commit messages, a section of the instruction file, and the caveats register. It may deserve to be a first-class part of the pitch rather than an implementation detail.
+
+---
+
+## 11. How to help with this project
 
 - Default to the choice that keeps modules decoupled, the API self-sufficient, and the hero feature strong.
-- If a request implies the storefront knowing something the API doesn't expose, say so — the fix is to extend the API, never to smuggle logic into the frontend.
-- If a request implies building something from §6, flag it against scope before proceeding rather than quietly building it.
-- Suggestions that add distribution machinery (brokers, service splits, K8s deployment) run against a deliberate, documented decision. Argue with the decision explicitly if you disagree; don't route around it.
+- If a request implies the storefront knowing something the API does not expose, say so — the fix is to extend the API, never to smuggle logic into the frontend.
+- If a request implies building something from §7, flag it against scope before proceeding rather than quietly building it.
+- Suggestions that add distribution machinery (brokers, service splits, a provisioned cluster) run against a deliberate, documented decision. Argue with the decision explicitly if you disagree; do not route around it.
+- When proposing a change, propose how it would be *checked* — and specifically, what the check would print if the change did nothing. That question is the project's house style and has caught more defects than any other single habit.
+- Work is sized so that stopping is always cheap: one backlog item, one commit, one stated verification. Anything that needs the word "and" between deliverables is two items.
