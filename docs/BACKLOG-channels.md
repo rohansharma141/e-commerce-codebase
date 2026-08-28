@@ -1,6 +1,6 @@
 # Channels slice — build plan
 
-Work breakdown for [ADR-0014](../adr/0014-channel-as-sales-channel.md) and [CHANNEL-MODEL](../design/CHANNEL-MODEL.md).
+Work breakdown for [ADR-0014](../adr/0014-channel-as-sales-channel.md) and [CHANNEL-MODEL](../design/CHANNEL-MODEL.md). Start at [CHANNELS-OVERVIEW](../design/CHANNELS-OVERVIEW.md) for what this delivers and why.
 
 House rules applied: one item, one commit, one stated verification. Anything needing the word "and" between deliverables is two items. Every verification states **what it prints if the change did nothing** — a check that cannot fail is not a check.
 

@@ -190,6 +190,7 @@ House rule: state what the check prints if the change did nothing.
 
 ## Links
 
+- [docs/design/CHANNELS-OVERVIEW.md](../design/CHANNELS-OVERVIEW.md) — what the slice delivers, and the decision register
 - [docs/design/CHANNEL-MODEL.md](../design/CHANNEL-MODEL.md) — the model, mechanics, and back-office shape
 - [docs/BACKLOG-channels.md](../BACKLOG-channels.md) — the build sequence and gates G-1..G-3
 - [apps/api/src/capabilities.module.ts](../../apps/api/src/capabilities.module.ts) — the surface §7 evolves; the `taxDisplay` hardcode §11 removes

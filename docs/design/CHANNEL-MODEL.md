@@ -1,6 +1,6 @@
 # Channel model and back-office shell — design note
 
-Companion to [ADR-0014](../adr/0014-channel-as-sales-channel.md). The ADR decides *what a channel is*; this note works out the model, the mechanics, and the shape of the back office that surfaces it.
+Companion to [ADR-0014](../adr/0014-channel-as-sales-channel.md). The ADR decides *what a channel is*; this note works out the model, the mechanics, and the shape of the back office that surfaces it. For what the slice delivers and why — start at [CHANNELS-OVERVIEW](CHANNELS-OVERVIEW.md).
 
 ## 1. Entities
 

@@ -165,7 +165,21 @@ The remaining twelve entries are marked *by design*, *resolved* or *closed* — 
 
 ---
 
-## 10. Open questions worth thinking about
+## 10. In flight: the channels slice
+
+Branch `channels`, designed and not yet built. It is the first slice aimed at **commerce depth** rather than consolidation — the deliberate turn toward what Intershop and commercetools provide, with an operator-facing back office as the artefact that surfaces it.
+
+A tenant today is a single market: one currency, one locale, one tax configuration, one implicit storefront. The slice makes a tenant a business selling into several — sales channels with their own currency, locales, country, timezone and tax, inheriting from tenant defaults — plus an admin console to configure them, an API that reports each channel's resolved configuration, and authentication as a prerequisite because a console without a login is not defensible.
+
+Roughly 9–11.5 weeks excluding auth. Three decision gates are closed; nothing blocks the first item.
+
+Read [docs/design/CHANNELS-OVERVIEW.md](design/CHANNELS-OVERVIEW.md) first — it carries the functionality, the full decision register with reasons, the honest limits, and the non-goals. [ADR-0014](adr/0014-channel-as-sales-channel.md) holds the arguments, [CHANNEL-MODEL](design/CHANNEL-MODEL.md) the mechanics, [BACKLOG-channels](BACKLOG-channels.md) the sequence.
+
+Two limits worth carrying into any discussion of it: a channel holds **one** currency, so this is not multi-currency; and locales drive **formatting, not translation**, because the catalog has no locale dimension.
+
+---
+
+## 11. Open questions worth thinking about
 
 These are genuinely undecided, and are the most useful things to discuss.
 
@@ -177,7 +191,7 @@ These are genuinely undecided, and are the most useful things to discuss.
 
 ---
 
-## 11. How to help with this project
+## 12. How to help with this project
 
 - Default to the choice that keeps modules decoupled, the API self-sufficient, and the hero feature strong.
 - If a request implies the storefront knowing something the API does not expose, say so — the fix is to extend the API, never to smuggle logic into the frontend.
