@@ -39,22 +39,37 @@ import type { NextFunction, Request, Response } from 'express';
  * signs up with an unlucky name. The prefix puts tenant ids one level down,
  * where they cannot be mistaken for route names.
  *
- * ── Not yet: the channel segment ──────────────────────────────────────────
+ * ── The channel segment (C-2b) ───────────────────────────────────────────
  *
- * ADR-0014 §2's full grammar is `/api/{tenant}/{channelKey}/graphql`. That
- * segment is deliberately NOT routed here: channels do not exist until Phase B,
- * so a channel path would resolve against nothing and accept any key. It lands
- * in Phase C alongside channel resolution (C-2b), where it can be asserted the
- * same way this one is.
+ *   GET|POST /api/{tenant}/{channelKey}/graphql   an explicit channel
+ *   GET|POST /api/{tenant}/graphql                the tenant's default
+ *
+ * The segment is **omitted, not sentinelled**, for the default. ADR-0014 §4
+ * argues against reserving the literal `default` as a channel key because an
+ * operator may legitimately want it; an optional segment removes the reserved
+ * word entirely, so "unspecified" is structural rather than a magic value.
+ *
+ * It carries the **key**, not the id — §4 makes `key` immutable precisely
+ * because it appears in URLs, and putting a UUID here would make that
+ * reasoning false and the logs unreadable.
+ *
+ * This middleware only asserts the segment against the header. Actually
+ * resolving the channel — and returning 404 for an unknown, archived or
+ * cross-tenant one — is `ChannelScopeMiddleware` (C-12), which runs later and
+ * has the tenant-bound database connection this one does not.
  */
 
 /** Same shape the tenant middleware validates, so the two cannot disagree. */
 const TENANT_ID_RE = /^[a-zA-Z0-9._-]{1,64}$/;
 
-/** `/api/{tenant}/graphql`, with an optional trailing slash. */
+/** `/api/{tenant}/graphql` — the tenant's default channel. */
 const SCOPED_PATH_RE = /^\/api\/([^/?#]+)\/graphql\/?$/;
 
+/** `/api/{tenant}/{channelKey}/graphql` — an explicit channel (C-2b). */
+const CHANNEL_SCOPED_PATH_RE = /^\/api\/([^/?#]+)\/([^/?#]+)\/graphql\/?$/;
+
 const TENANT_HEADER = 'x-tenant-id';
+const CHANNEL_HEADER = 'x-channel-id';
 
 /**
  * Replies with the same envelope Nest produces, by hand.
@@ -73,10 +88,51 @@ export function scopedGraphqlMiddleware() {
     // `req.url` carries the query string; match on the path alone so
     // `?query=…` (the GET read path) still routes.
     const [path, query] = splitUrl(req.url);
-    const match = SCOPED_PATH_RE.exec(path);
+
+    // Four segments before /graphql means a channel was named; three means the
+    // tenant's default. The two forms are distinguished by length alone, which
+    // is why a channel keyed `graphql` is unambiguous rather than a collision:
+    // /api/t/graphql is three segments and means the default, while
+    // /api/t/graphql/graphql is four and names that channel.
+    const channelMatch = CHANNEL_SCOPED_PATH_RE.exec(path);
+    const match = channelMatch ?? SCOPED_PATH_RE.exec(path);
     if (!match) {
       next();
       return;
+    }
+
+    if (channelMatch) {
+      const urlChannel = channelMatch[2] as string;
+      const chanHeaderVal = req.headers[CHANNEL_HEADER];
+      const headerChannel = Array.isArray(chanHeaderVal) ? chanHeaderVal[0] : chanHeaderVal;
+
+      // Same rule as the tenant: the header is the trust input and the URL is
+      // asserted against it. A URL segment that could establish channel scope
+      // on its own would let a crafted path read a market the gateway did not
+      // grant — and "prefer the header" would turn that mismatch into an
+      // exploit rather than an error.
+      //
+      // A missing channel header alongside a channel URL is rejected too. It is
+      // not "unspecified": the caller asked for a specific channel, and serving
+      // the default instead would answer a question nobody asked.
+      if (typeof headerChannel !== 'string' || headerChannel.trim().length === 0) {
+        badRequest(
+          res,
+          `the URL names channel "${urlChannel}" but no ${CHANNEL_HEADER} header was ` +
+            `sent. The header is the trust input; the URL cannot establish scope on ` +
+            `its own. Omit the channel segment to use the tenant default.`,
+        );
+        return;
+      }
+      if (headerChannel.trim() !== urlChannel) {
+        badRequest(
+          res,
+          `scope mismatch: URL names channel "${urlChannel}" but ${CHANNEL_HEADER} ` +
+            `names "${headerChannel.trim()}". The header is the trust input; the URL ` +
+            `must agree with it.`,
+        );
+        return;
+      }
     }
 
     const urlTenant = match[1] as string;

@@ -163,14 +163,22 @@ For any tenant in `pricing.tenant_config` without a channel: `tenant_defaults` f
 
 ## Phase C — resolution and propagation
 
-**C-12 — Channel on the request context** *(depends on C-11a for a falsifiable check)*
-Resolution in tenant-context middleware, `AsyncLocalStorage`, `404` on unknown/archived/cross-tenant, default fallback with the expiry recorded in CAVEATS.
-*Verification:* **two channels with different currencies** return different responses. One channel passes even if resolution is hardcoded to the default. Separately: an unknown channel returns `404`, not the default.
+**C-12 — Channel on the request context** ✅ *(the resolution branch is verified; the HTTP path is not)*
+`ChannelScopeMiddleware` resolves `x-channel-id` and binds the channel onto the existing tenant context — one `AsyncLocalStorage`, a field on the context, not a parallel mechanism.
 
-**C-2b — The channel segment of the URL grammar** *(split out of C-2, 2026-08-28)*
-`/api/{tenant}/{channelKey}/graphql`. The segment is omitted, not sentinelled, for the tenant default — §4 argues against reserving the literal `default` as a key, and an optional segment removes the reserved word entirely. It carries the `key`, not the id. Asserted against `x-channel-id` exactly as the tenant segment is against `x-tenant-id`; mismatch is `400`, unknown/archived/cross-tenant is `404` and never a silent fallback.
-*Depends on C-12* for resolution. Deferred out of Phase A because until channels exist the segment would accept any key and resolve against nothing.
-*Verification:* two channels of one tenant with different currencies return different bodies through the URL-keyed proxy already in `scoped-graphql.integration.spec.ts`. One channel would pass even if the segment were ignored entirely, so C-11a's two-channel `t-fashion` is what makes this falsifiable. Plus: header names channel A, URL names B → `400`, asserted both ways round.
+*Where it lives, and why not in `tenant.middleware.ts`:* a boundary constraint. `scope:shared` may only depend on `scope:shared`, so the shared tenant middleware cannot reach the channels contracts — and it could not do the work anyway, because resolution needs the tenant-bound connection that `TenantBindingMiddleware` establishes afterwards. So the context carries `channelId`/`channelKey` as plain strings (the only shape shared may name) and the channels module fills them in third. `bindChannel` is the single supported mutation point.
+
+*The header carries the **key**, not the UUID.* ADR-0014 §4 defines `id` as "what other modules store" and `key` as "what humans and integrations use", and a request header is an integration surface. `x-tenant-id` already sets the precedent — it carries `t-fashion`, not a surrogate. The header name is the ADR's.
+
+*Verification — RUN, and made to fail.* The branch that matters is **absent versus unknown**, and conflating them is the failure this design is arranged against, so it is tested directly rather than inferred from an HTTP round trip. Mutating the middleware to fall back silently instead of throwing failed 2 tests, including one asserting `next()` was *not* called — a middleware that threw and continued would serve the request unscoped, which is the fallback it just refused. 115 channels tests pass.
+
+**Not covered by anything that has run:** that `findByKey` genuinely excludes archived and cross-tenant rows. The fake assumes it does; the real check is in `channels.integration.spec.ts`, unrun.
+
+**C-2b — The channel segment of the URL grammar** ⚠️ *written, unrun*
+`/api/{tenant}/{channelKey}/graphql` alongside `/api/{tenant}/graphql`. The two forms are distinguished by segment count alone, which is why a channel keyed `graphql` is unambiguous rather than a collision — `/api/t/graphql` is the default, `/api/t/graphql/graphql` names that channel. No `default` sentinel is reserved.
+
+The segment is asserted against `x-channel-id` exactly as the tenant segment is against `x-tenant-id`, mismatch is `400` both ways round, and **a channel URL with no channel header is also `400`** — the caller named a channel, and serving the default instead would answer a question nobody asked. Resolution and the `404` stay in C-12's middleware, which runs later and has the database connection this one does not.
+*Verification:* written into `scoped-graphql.integration.spec.ts`; needs a live api.
 
 **C-13 — Events published**
 `channels.created`, `channels.updated`, `channels.archived`, `channels.tenant-defaults.updated` — module-prefixed like every existing event. Network-strict.

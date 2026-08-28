@@ -16,7 +16,7 @@ import { TenantContextModule, TenantMiddleware } from '@platform/shared/tenant-c
 import { BrandingModule } from '@platform/modules/branding/src';
 import { CartModule } from '@platform/modules/cart/src';
 import { CatalogModule } from '@platform/modules/catalog/src';
-import { ChannelsModule } from '@platform/modules/channels/src';
+import { ChannelScopeMiddleware, ChannelsModule } from '@platform/modules/channels/src';
 import { OrdersModule } from '@platform/modules/orders/src';
 import { PricingModule } from '@platform/modules/pricing/src';
 import { SearchModule } from '@platform/modules/search/src';
@@ -81,8 +81,13 @@ export class AppModule implements NestModule {
   // tenant context. /docs is the Swagger UI; it must load without a header
   // (you set the header *inside* the UI via Authorize).
   configure(consumer: MiddlewareConsumer): void {
+    // ChannelScopeMiddleware runs third, and the order is load-bearing:
+    // resolving a channel needs the tenant-bound connection that
+    // TenantBindingMiddleware establishes, and it writes into the context
+    // TenantMiddleware created. It is a no-op when no x-channel-id is sent, so
+    // requests that name no channel cost no extra query.
     consumer
-      .apply(TenantMiddleware, TenantBindingMiddleware)
+      .apply(TenantMiddleware, TenantBindingMiddleware, ChannelScopeMiddleware)
       .exclude('health', 'ready', 'docs', 'docs/(.*)', 'docs-json', 'docs-yaml')
       .forRoutes('*');
   }

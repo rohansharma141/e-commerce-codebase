@@ -140,6 +140,67 @@ describeLive('URL-scoped GraphQL', () => {
     });
   });
 
+  /**
+   * The channel segment (C-2b).
+   *
+   * ⚠️ These have never been executed — they were added alongside code written
+   * without a database. `t-fashion` seeds `uk` and `de` (C-11a), which is what
+   * makes the resolution assertions falsifiable: a single-channel tenant passes
+   * even if resolution is hardcoded to the default.
+   */
+  describe('channel segment', () => {
+    const withChannel = async (
+      tenant: string,
+      urlChannel: string,
+      headerChannel: string | undefined,
+    ): Promise<{ status: number; body: GraphQLBody }> => {
+      const headers: Record<string, string> = {
+        'content-type': 'application/json',
+        'x-tenant-id': tenant,
+      };
+      if (headerChannel !== undefined) headers['x-channel-id'] = headerChannel;
+      const res = await fetch(`${API_URL}/api/${tenant}/${urlChannel}/graphql`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ query: QUERY }),
+      });
+      const text = await res.text();
+      return { status: res.status, body: (text ? JSON.parse(text) : {}) as GraphQLBody };
+    };
+
+    it('resolves a channel-scoped read', async () => {
+      const { status, body } = await withChannel('t-fashion', 'uk', 'uk');
+      expect(status).toBe(200);
+      expect(body.errors).toBeUndefined();
+    });
+
+    it('rejects a channel URL with no channel header', async () => {
+      // Not "unspecified": the caller named a channel, and serving the default
+      // instead would answer a question nobody asked.
+      const { status } = await withChannel('t-fashion', 'uk', undefined);
+      expect(status).toBe(400);
+    });
+
+    it('rejects a URL/header channel mismatch, both ways round', async () => {
+      expect((await withChannel('t-fashion', 'uk', 'de')).status).toBe(400);
+      expect((await withChannel('t-fashion', 'de', 'uk')).status).toBe(400);
+    });
+
+    it('404s an unknown channel rather than falling back to the default', async () => {
+      // A fallback here means a typo serves another market's prices and looks
+      // like it worked.
+      const { status } = await withChannel('t-fashion', 'nope', 'nope');
+      expect(status).toBe(404);
+    });
+
+    it('the three-segment form still means the tenant default', async () => {
+      // `/api/{tenant}/graphql` is unambiguous against the four-segment form by
+      // length alone, which is why no `default` sentinel is reserved.
+      const { status } = await post('/api/t-fashion/graphql', 't-fashion');
+      expect(status).toBe(200);
+    });
+  });
+
   describe('the URL never establishes identity', () => {
     it('rejects a header/URL mismatch', async () => {
       const { status } = await post('/api/t-books/graphql', 't-fashion');
