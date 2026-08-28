@@ -1,7 +1,9 @@
 # ADR-0007: Tenant id as trust — gateway responsibility
 
-**Status:** Accepted, with caveats
+**Status:** Accepted, with caveats — amended by [ADR-0015](0015-operator-authentication-at-the-api-edge.md)
 **Date:** 2026-05-31
+
+> **Amended 2026-08-28.** The posture below is unchanged: the api trusts a tenant resolved at the edge. What has changed is that the edge now exists. [ADR-0015](0015-operator-authentication-at-the-api-edge.md) implements the four gateway behaviours specified here, and argues explicitly with the *"Build a full JWT auth slice now"* alternative rejected below — the back office is a new artifact that inverts its cost/benefit. Caveats 2–4 still stand.
 
 ## Context
 
