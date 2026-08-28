@@ -94,6 +94,15 @@ interface ListEndpoint {
 }
 
 const LIST_ENDPOINTS: readonly ListEndpoint[] = [
+  // Added by C-10. This is C-10's stated verification: a new endpoint must
+  // satisfy the conventions rather than the conventions being restated for it.
+  //
+  // It needs at least two rows, which is why it could only be added once
+  // C-11a's seed wrote channel fixtures — and it is `t-fashion` specifically
+  // that has two, since every other tenant seeds one. A single-channel tenant
+  // would make the pagination assertions unfalsifiable here for the same
+  // reason it makes channel resolution unfalsifiable in C-12.
+  { path: '/admin/channels', idOf: (i) => String((i['config'] as Record<string, unknown>)['key']) },
   { path: '/admin/products', idOf: (i) => String(i['id']) },
   { path: '/admin/orders', idOf: (i) => String(i['id']) },
   { path: '/admin/prices', idOf: (i) => String(i['productId']) },

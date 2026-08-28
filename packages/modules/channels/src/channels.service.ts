@@ -57,6 +57,10 @@ export interface ChannelStore {
   findDefault(tenantId: string): Promise<ChannelConfig>;
   listActive(tenantId: string): Promise<readonly ChannelConfig[]>;
   list(tenantId: string): Promise<readonly ResolvedChannel[]>;
+  listPage(
+    tenantId: string,
+    opts?: { limit?: number; cursor?: string },
+  ): Promise<{ items: readonly ResolvedChannel[]; nextCursor: string | null }>;
   get(tenantId: string, channelId: string): Promise<ResolvedChannel | null>;
   getRaw(tenantId: string, channelId: string): Promise<Channel | null>;
   countActive(tenantId: string): Promise<number>;
@@ -98,12 +102,30 @@ export class ChannelsService implements IChannelsQuery, ChannelsAdmin {
     return this.store.list(tenantId);
   }
 
+  listPage(
+    tenantId: string,
+    opts: { limit?: number; cursor?: string } = {},
+  ): Promise<{ items: readonly ResolvedChannel[]; nextCursor: string | null }> {
+    return this.store.listPage(tenantId, opts);
+  }
+
   get(tenantId: string, channelId: string): Promise<ResolvedChannel | null> {
     return this.store.get(tenantId, channelId);
   }
 
   getTenantDefaults(tenantId: string): Promise<TenantDefaults> {
     return this.requireDefaults(tenantId);
+  }
+
+  /**
+   * The stored version, for an `ETag` on a read.
+   *
+   * `ResolvedChannel` deliberately does not carry it: version belongs to the
+   * stored row, and putting it on the resolved config would invite a client to
+   * treat a resolved view as something it can write back.
+   */
+  async getRawVersion(tenantId: string, channelId: string): Promise<number | null> {
+    return (await this.store.getRaw(tenantId, channelId))?.version ?? null;
   }
 
   // ── writes ──────────────────────────────────────────────────────────────

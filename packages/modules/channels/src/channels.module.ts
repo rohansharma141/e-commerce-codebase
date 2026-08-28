@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { Inject, Logger, Module, type OnModuleInit } from '@nestjs/common';
 import { DatabaseModule, MIGRATION_RUNNER, type MigrationRunner } from '@platform/shared/database';
 import { ChannelsRepository } from './channels.repository';
+import { ChannelsController } from './channels.controller';
 import { ChannelsService } from './channels.service';
 
 export const CHANNELS_SCHEMA_NAME = 'channels';
@@ -33,6 +34,7 @@ function migrationsDir(): string {
  */
 @Module({
   imports: [DatabaseModule],
+  controllers: [ChannelsController],
   providers: [ChannelsRepository, ChannelsService],
   exports: [ChannelsService],
 })

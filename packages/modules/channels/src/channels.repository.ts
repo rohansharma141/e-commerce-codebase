@@ -1,6 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, eq, sql } from 'drizzle-orm';
-import { TENANT_DRIZZLE, type TenantDrizzleAccessor } from '@platform/shared/database';
+import { and, asc, eq, gt, sql } from 'drizzle-orm';
+import {
+  TENANT_DRIZZLE,
+  clampLimit,
+  decodeCursor,
+  toPage,
+  type TenantDrizzleAccessor,
+} from '@platform/shared/database';
 import {
   resolveChannelConfig,
   type Channel,
@@ -253,6 +259,42 @@ export class ChannelsRepository {
       .orderBy(asc(channels.key));
     const defaults = await this.requireDefaults(tenantId);
     return rows.map((r) => resolveChannelConfig(toChannel(r), defaults));
+  }
+
+  /**
+   * The admin list, paged on `key`.
+   *
+   * `key` rather than `id` because `channels_tenant_key_unique` makes it a
+   * total order within a tenant, and an operator scanning markets wants them
+   * alphabetical rather than in UUID order — the same reasoning as
+   * attribute-definitions in C-1.
+   */
+  async listPage(
+    tenantId: string,
+    opts: { limit?: number; cursor?: string } = {},
+  ): Promise<{ items: readonly ResolvedChannel[]; nextCursor: string | null }> {
+    const cap = clampLimit(opts.limit);
+    const keyset = opts.cursor ? decodeCursor(opts.cursor, 1) : undefined;
+    const where = keyset
+      ? and(eq(channels.tenantId, tenantId), gt(channels.key, keyset[0] as string))
+      : eq(channels.tenantId, tenantId);
+
+    const rows = await this.db
+      .select()
+      .from(channels)
+      .where(where)
+      .orderBy(asc(channels.key))
+      .limit(cap + 1);
+
+    const page = toPage(rows, cap, (row) => [row.key]);
+    if (page.items.length === 0) return { items: [], nextCursor: page.nextCursor };
+
+    // Defaults are fetched once for the page, not once per row.
+    const defaults = await this.requireDefaults(tenantId);
+    return {
+      items: page.items.map((r) => resolveChannelConfig(toChannel(r), defaults)),
+      nextCursor: page.nextCursor,
+    };
   }
 
   async get(tenantId: string, channelId: string): Promise<ResolvedChannel | null> {

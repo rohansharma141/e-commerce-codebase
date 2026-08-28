@@ -21,6 +21,7 @@ import {
   type GeneratedProduct,
 } from './pricing-seed';
 import { seedCatalogForTenant } from './catalog-seed';
+import { seedChannelsForTenant } from './channels-seed';
 import { seedViaApi } from './api-seed';
 
 /**
@@ -252,6 +253,20 @@ async function main(): Promise<void> {
       console.log(
         `  ${summary.tenantId.padEnd(15)} ${summary.currency} tax=${(summary.taxRateBps / 100).toFixed(2)}%  ` +
           `prices=${summary.pricesUpserted.toLocaleString()}  promos=${summary.promotionsCreated}`,
+      );
+    }
+
+    console.log('');
+    console.log('channels: writing tenant defaults and channel fixtures to Postgres');
+    for (const fixture of fixtures) {
+      // Re-bind app.tenant_id rather than relying on seedPricingForTenant
+      // having left it set on this connection. RLS's WITH CHECK rejects every
+      // insert without it, and "the previous function happened to leave the
+      // right setting bound" is not a contract.
+      await sqlClient`SELECT set_config('app.tenant_id', ${fixture.tenantId}, false)`;
+      const summary = await seedChannelsForTenant(fixture.tenantId, sqlClient);
+      console.log(
+        `  ${summary.tenantId.padEnd(15)} channels=${summary.channels}  default=${summary.defaultKey}`,
       );
     }
   } finally {

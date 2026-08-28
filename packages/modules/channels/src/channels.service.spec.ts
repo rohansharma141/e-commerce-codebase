@@ -112,6 +112,9 @@ class FakeStore implements ChannelStore {
   async list(): Promise<readonly ResolvedChannel[]> {
     return this.rows.map((r) => this.resolved(r));
   }
+  async listPage(): Promise<{ items: readonly ResolvedChannel[]; nextCursor: string | null }> {
+    return { items: this.rows.map((r) => this.resolved(r)), nextCursor: null };
+  }
   async get(_t: string, id: string): Promise<ResolvedChannel | null> {
     const c = this.rows.find((r) => r.id === id);
     return c ? this.resolved(c) : null;

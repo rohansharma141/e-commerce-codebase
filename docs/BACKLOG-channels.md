@@ -135,17 +135,29 @@ Each rejection asserts `store.writes` is empty, not merely that an error was thr
 `version` on write, `409` on mismatch, `ETag`/`If-Match` on REST, required input on GraphQL mutations.
 *Verification:* two writes with the same expected version; the second returns `409`. Without version checking, both succeed and the first change is lost silently.
 
-**C-10 — CRUD endpoints**
-REST admin + GraphQL, following C-1 conventions.
-*Verification:* the C-1 conventions spec passes against the new endpoints.
+**C-10 — Admin CRUD endpoints** ⚠️ *written; the pure parts verified, the HTTP path not*
+`GET/POST /admin/channels`, `GET/PATCH /admin/channels/:id`, `POST /admin/channels/:id/archive`, `POST /admin/channels/:id/promote-default`, `GET/PATCH /admin/tenant-defaults`. Cursor-paginated on `key`, the standard error envelope, `PATCH` merging with explicit-null meaning inherit, `If-Match` carrying the version and `409` returning `currentVersion`. `@ApiProperty` classes so `/docs-json` shows real schemas.
+
+*Verification:* `/admin/channels` is now a row in `admin-conventions.integration.spec.ts`, which is C-10's stated check — a new endpoint satisfies the conventions rather than the conventions being restated for it. **That spec needs a live api and has not been run.**
+
+Two pieces of controller logic are not delegation, and both *are* verified by tests that run, because both are pure and both are the kind of thing that silently half-works:
+- **`If-Match` is required.** Mutating it to default silently to `0` failed the test. Treating an absent precondition as "no precondition" is how optimistic concurrency quietly stops applying to the one client that forgot it — the client that overwrites someone else's edit. Note TypeScript itself refuses the naive removal: the throw is what narrows `string | undefined`.
+- **`inherited` is converted from a `Set` to an array at the boundary.** `JSON.stringify(new Set())` is `{}`, so without this the back office receives `"inherited": {}` and cannot tell an inherited field from an overridden one — they look identical in `config`. Mutating it away failed three tests, one of which asserts on the serialised form rather than the object, since the bug only appears after `stringify`.
+
+*Deliberately not built:* the GraphQL half. Nothing consumes a channel query until the storefront does, and an unused public surface is a maintenance cost with no consumer. It lands with **C-19**, where it has one.
+
+**C-11a — Seed writes channel fixtures** ✅ *written; runs only with a database*
+`t-fashion` gets **two** channels — `uk` (inherits everything) and `de` (EUR/`de-DE`/DE/`Europe/Berlin`, overriding everything). `t-electronics` and `t-books` get one US channel each. Tenant defaults carry real values per tenant.
+
+The two-channel tenant is the point: ADR-0014's negative control is *"two channels with different currencies; assert responses differ"*, and one channel per tenant passes even if resolution is hardcoded to the default. It is also what lets `/admin/channels` be a row in the conventions spec at all, since that needs two rows to paginate. `uk` inheriting and `de` overriding means one fixture exercises both directions of the coalesce.
+
+`taxDisplay` is seeded `net` for every tenant on purpose: C-29 taught the engine `gross`, but until C-30 removes the `EXCLUSIVE` hardcode from capabilities, a `gross` fixture would advertise a presentation the API does not report. A fixture that lies is worse than a fixture that is dull.
 
 **C-11 — Safety backfill** *(S)*
 For any tenant in `pricing.tenant_config` without a channel: `tenant_defaults` from its stored currency, locale and tax rate, plus one inheriting default channel. Stated defaults for the fields with no source (`tax_display = 'net'`, `supported_locales = [locale]`, `country = 'US'`, `timezone = 'UTC'`), commented as defaulted rather than copied. This exists so a database that skipped a re-seed still boots — it preserves nothing of value.
 *Verification:* run on a **cold** database as the **non-superuser** with rows visible. Assert a **non-zero** tenant count and exactly one default each. A previous backfill in this project reported `0 = 0` as success because RLS hid the source rows — assert non-zero explicitly, not equality.
 
-**C-11a — Seed writes channel fixtures** *(S)*
-`t-fashion` gets two channels — `uk` (GBP/`en-GB`/GB/`Europe/London`) and `de` (EUR/`de-DE`/DE/`Europe/Berlin`); `t-electronics` and `t-books` get one US channel each. Real values, no derivation.
-*Verification:* after a re-seed, `t-fashion` resolves two channels whose capabilities differ in currency **and** locale. With one channel per tenant — today's fixtures — every downstream channel check passes even if resolution is hardcoded to the default, so this item is what makes C-12 and C-19 falsifiable.
+
 
 ---
 
