@@ -90,9 +90,24 @@ Two bugs the tests were written to catch, both of which a thinner suite would ha
 Persistence for `channels.channels` and `channels.tenant_defaults`, returning `ResolvedChannel` via C-6's `resolveChannelConfig`.
 *Verification:* a channel with all nulls resolves to tenant defaults; overriding one field changes only that field. Both directions asserted — with the coalesce inverted, the override test still passes and only the inherit test fails.
 
-**C-8 — Invariants**
-Default must be active and cannot be archived; at least one active channel per tenant; `key` immutable once past `draft`; promotion of a new default in one transaction.
-*Verification:* each invariant has a test that attempts the violation and asserts rejection. Promotion additionally runs **two concurrent promotions** and asserts one wins cleanly rather than an intermittent constraint violation.
+**C-8a — Invariant rules** ✅ *(pure; no database)*
+The rules as pure predicates in `contracts/invariants.ts`: `key` immutable once past `draft`, `currencyCode` frozen once transacted, the default must be active and cannot be archived, a tenant keeps at least one active channel, key format, a supported-currency allowlist, and a status transition table. Violations are **returned, all of them, not thrown one at a time** — the back office edits a whole channel in one form, so first-error-wins turns one round trip into four.
+
+*Shipped 2026-08-28.* Separated from persistence so each rule is tested by attempting the violation rather than inferred from a repository that happens not to allow it.
+
+*Verification — the suite was made to fail before it was trusted.* 74 tests passed on first write, which is exactly when to distrust them, so two mutations were run:
+- **Neutering `validateChannelUpdate`** (early return) failed exactly the 9 `rejects` tests and left the other 65 green — the rejection tests are load-bearing, and scoped to the function mutated.
+- **Inverting the key-immutability condition** failed *both* `rejects a rename once past draft` **and** `allows a rename while still draft`. That is the point of pairing them: a validator that refuses everything passes a suite of only-rejections.
+
+*Two rules that were derived, not copied from the design, and are flagged as such:*
+- **Nothing returns to `draft`.** Not stated anywhere, but without it `key` immutability is circumventable — archive, re-draft, rename, re-activate — and every URL, integration and cache tag pointing at the old key silently resolves elsewhere. A rule that exists only to protect a stated rule.
+- **`archived → active` is allowed.** Also unstated. Permitted because a market can reopen and forbidding it makes a mis-archive unrecoverable; safe because the key is already frozen by then. Flagging it because it is a product decision made in code — say so if it should be otherwise.
+
+The supported-currency allowlist is the write-time validation C-6 deferred here: `minorUnitsFor` cannot tell a typo from a real currency, and after the first order `currencyCode` freezes, so the mistake becomes permanent.
+
+**C-8b — Invariants enforced in the repository** *(needs a database)*
+Wire C-8a's predicates into the repository, plus the DDL guarantees that must not fail open: `unique (tenant_id, key)` and `unique (tenant_id) where is_default`.
+*Verification:* promotion runs **two concurrent promotions** and asserts one wins cleanly rather than an intermittent constraint violation. An application-only guarantee of "exactly one default" is not a guarantee, so the partial unique index is asserted directly by attempting a second default insert.
 
 **C-9 — Optimistic concurrency**
 `version` on write, `409` on mismatch, `ETag`/`If-Match` on REST, required input on GraphQL mutations.
