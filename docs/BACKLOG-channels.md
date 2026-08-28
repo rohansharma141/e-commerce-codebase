@@ -113,9 +113,9 @@ Periodic full reload; bounded staleness. The reload binds `app.system_worker` (t
 
 ## Phase D — API surface
 
-**C-18 — Capabilities moves to `channels` and becomes channel-aware**
-Channel-scoped fields added; tenant-level fields kept as `@deprecated` aliases resolving the default channel.
-*Verification:* deprecated and new fields return the same value for the default channel; a **second tenant with a different currency** makes a constant-wired alias diverge. Codegen drift check fails if the committed client copy is stale.
+**C-18 — Capabilities becomes channel-aware**
+Stays in the composition root (ADR §7): it also reports `apiVersion` and the deployment feature map, which no domain module should own. What changes is its source — it composes from the `channels` contract instead of reading pricing config directly. Channel-scoped fields added; tenant-level fields kept as `@deprecated` aliases resolving the default channel.
+*Verification:* deprecated and new fields agree for the default channel, and **t-fashion's two channels** (GBP and EUR, via C-11a) make a constant-wired alias diverge — a single-channel tenant passes even if the alias ignores the channel entirely. Codegen drift check fails if the committed client copy is stale.
 
 **C-19 — Storefront migrated to channel-scoped reads**
 Scoped URL, both headers, channel-scoped capability fields.
