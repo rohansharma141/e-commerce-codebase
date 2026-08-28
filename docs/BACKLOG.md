@@ -1,5 +1,7 @@
 # Build sequence
 
+The channels slice (ADR-0014) runs on the `channels` branch with its own sequence in [BACKLOG-channels.md](BACKLOG-channels.md); it folds in here when it ships.
+
 The granular work queue. [CLAUDE.md](../CLAUDE.md) holds the coarse build priority; this holds the individual increments it decomposes into.
 
 **Sizing rule: one item, one commit, one verification.** If describing an item needs the word "and" between deliverables, it is two items. Sizes are XS (< 30 min), S (30–60 min), M (60–120 min). Nothing larger exists here on purpose — anything that would be gets split before it is started, not while it is being built.

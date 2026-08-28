@@ -17,5 +17,6 @@ Load-bearing decisions, each documented to be interrogable on its own. A reviewe
 | [0011](0011-server-actions-not-cors.md) | Cart and checkout mutate via Next.js server actions, not browser→api CORS | Accepted |
 | [0012](0012-subdomain-tenant-resolution.md) | Storefront resolves tenant from subdomain | Accepted |
 | [0013](0013-icm-conformance-and-compat-facade.md) | ICM REST conformance and the `apps/icm-compat` facade | Accepted (designed, not built) |
+| [0014](0014-channel-as-sales-channel.md) | Channel means sales channel; supply is a separate concept | Accepted |
 
 ADR format follows [Michael Nygard's template](https://github.com/joelparkerhenderson/architecture-decision-record/blob/main/locales/en/templates/decision-record-template-by-michael-nygard/index.md). Each is 100–250 lines, lives forever (decisions never get deleted — only superseded with a new ADR), and links to concrete code paths and tests.
