@@ -4,6 +4,19 @@ Work breakdown for [ADR-0014](../adr/0014-channel-as-sales-channel.md) and [CHAN
 
 House rules applied: one item, one commit, one stated verification. Anything needing the word "and" between deliverables is two items. Every verification states **what it prints if the change did nothing** — a check that cannot fail is not a check.
 
+> ### ⚠️ Unverified work on this branch
+>
+> **C-5 and C-7 were written without a database available**, at the user's explicit direction after the trade-off was raised. They compile, lint, and are wired into the api — and **nothing else about them is known**. The integration spec that would check them exists and is gated on `TEST_DATABASE_URL`, so it currently **skips** (19 tests) rather than passing; a green run today says nothing about this code.
+>
+> Nothing built after them should be trusted to rest on them until this is cleared. To clear it:
+>
+> ```
+> docker compose down -v && docker compose up -d          # cold, per CLAUDE.md
+> TEST_DATABASE_URL=postgres://platform:platform@localhost:5432/platform >   pnpm nx test channels-src --skipNxCache
+> ```
+>
+> Migrations especially: this project has been bitten twice by migrations that were fine on a warm machine and fatal on first boot, because the ledger means a developer never re-runs the failing path.
+
 Sizing: BACKLOG.md's rule applies — XS/S/M only, anything larger is split **before it is started**. Phase A is sized now; each later phase gets sized and split when it is next up, not before. Items are numbered by arrival and sequenced by phase, so C-28+ appearing mid-list is deliberate.
 
 ---
@@ -67,9 +80,9 @@ Extract checkout's `idempotency-key` handling — currently private to `checkout
 
 ## Phase B — the channels module
 
-**C-5 — Schema and migrations**
-`channels.tenant_defaults` and `channels.channels`, RLS on `tenant_id`, `unique (tenant_id, key)`, partial `unique (tenant_id) where is_default`.
-*Verification:* run on a **cold** database as the **non-superuser** role. Assert two channels in one tenant are both visible (negative control against accidentally adding a channel RLS policy), and that a second default insert fails.
+**C-5 — Schema and migrations** ⚠️ *written, UNVERIFIED*
+`channels.tenant_defaults` and `channels.channels`, RLS on `tenant_id` with the `app.system_worker` clause, `unique (tenant_id, key)`, partial `unique (tenant_id) where is_default`, a key-format CHECK mirroring the contracts regex, and status/tax CHECK constraints. Module wired into the api so migrations run at boot.
+*Verification — written, NOT RUN:* `channels.integration.spec.ts` covers all of it. Run on a **cold** database as the **non-superuser** role. Two channels in one tenant are both visible (the negative control against someone later adding a channel RLS policy), a second default insert fails, the same key is allowed under two tenants, and a URL-breaking key is rejected. Every isolation assertion is paired with a **non-zero** assertion on the same connection, because a policy that hides everything passes an isolation test that only checks what is absent.
 
 **C-6 — Contracts** ✅
 `Channel` (stored, nullable = inherit), `ChannelConfig` (resolved), `ResolvedChannel` (config + which fields were inherited), `IChannelsQuery` / `ChannelsAdmin`, event types, and two pure functions: `resolveChannelConfig` and `minorUnitsFor`.
@@ -86,9 +99,11 @@ Two bugs the tests were written to catch, both of which a thinner suite would ha
 
 `minorUnitsFor` derives from `Intl` rather than a table, which gets the three-decimal Gulf currencies (KWD, BHD) right — the ones hand-kept tables miss. Its known limit is pinned rather than left to be found: a well-formed but unassigned code (`XYZ`) silently yields 2, because Intl reports the CLDR default instead of failing. Catching a typo'd currency is write-time validation's job (**C-8**), not this function's. `capabilities.module.ts` still holds a five-entry table with a fallback of 2; it becomes redundant at C-18.
 
-**C-7 — Repository** *(reduced: resolution moved to C-6)*
-Persistence for `channels.channels` and `channels.tenant_defaults`, returning `ResolvedChannel` via C-6's `resolveChannelConfig`.
-*Verification:* a channel with all nulls resolves to tenant defaults; overriding one field changes only that field. Both directions asserted — with the coalesce inverted, the override test still passes and only the inherit test fails.
+**C-7 — Repository** ⚠️ *written, UNVERIFIED* *(reduced: resolution moved to C-6)*
+Persistence for both tables, resolving through C-6's pure `resolveChannelConfig` rather than reimplementing the coalesce. Includes optimistic concurrency (`version`, `VersionConflictError` carrying the current version so a client can re-read), `PATCH` merge semantics at the SQL level (an omitted field is not named in the UPDATE; an explicit null is), and `promoteDefault` as a single transaction with the unset strictly before the set.
+*Verification — written, NOT RUN:* inherit and override asserted in both directions; unknown, archived and cross-tenant keys all resolve to null and never to the default; a stale version is rejected; two concurrent promotions leave exactly one default rather than an intermittent constraint violation.
+
+**Still outstanding for C-7, and not attempted:** the invariant predicates from C-8a are *not yet called* by this repository — that remains C-8b. The repository will currently accept a rename past `draft` and a currency change after transacting. That is the documented split, not an oversight, but it means the repository is not safe to expose through C-10's endpoints until C-8b lands.
 
 **C-8a — Invariant rules** ✅ *(pure; no database)*
 The rules as pure predicates in `contracts/invariants.ts`: `key` immutable once past `draft`, `currencyCode` frozen once transacted, the default must be active and cannot be archived, a tenant keeps at least one active channel, key format, a supported-currency allowlist, and a status transition table. Violations are **returned, all of them, not thrown one at a time** — the back office edits a whole channel in one form, so first-error-wins turns one round trip into four.

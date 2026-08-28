@@ -16,6 +16,7 @@ import { TenantContextModule, TenantMiddleware } from '@platform/shared/tenant-c
 import { BrandingModule } from '@platform/modules/branding/src';
 import { CartModule } from '@platform/modules/cart/src';
 import { CatalogModule } from '@platform/modules/catalog/src';
+import { ChannelsModule } from '@platform/modules/channels/src';
 import { OrdersModule } from '@platform/modules/orders/src';
 import { PricingModule } from '@platform/modules/pricing/src';
 import { SearchModule } from '@platform/modules/search/src';
@@ -62,6 +63,7 @@ import { StorefrontWebhookModule } from './storefront-webhook.module';
       plugins: [graphqlCachePlugin],
     }),
     CatalogModule,
+    ChannelsModule,
     SearchModule,
     PricingModule,
     BrandingModule,
