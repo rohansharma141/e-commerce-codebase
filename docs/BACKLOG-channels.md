@@ -71,13 +71,24 @@ Extract checkout's `idempotency-key` handling — currently private to `checkout
 `channels.tenant_defaults` and `channels.channels`, RLS on `tenant_id`, `unique (tenant_id, key)`, partial `unique (tenant_id) where is_default`.
 *Verification:* run on a **cold** database as the **non-superuser** role. Assert two channels in one tenant are both visible (negative control against accidentally adding a channel RLS policy), and that a second default insert fails.
 
-**C-6 — Contracts**
-`Channel` (stored, nullable = inherit), `ChannelConfig` (resolved), `ChannelService`, event types.
-*Verification:* boundary lint — a deliberate import of `channels/src` from another module fails the build.
+**C-6 — Contracts** ✅
+`Channel` (stored, nullable = inherit), `ChannelConfig` (resolved), `ResolvedChannel` (config + which fields were inherited), `IChannelsQuery` / `ChannelsAdmin`, event types, and two pure functions: `resolveChannelConfig` and `minorUnitsFor`.
 
-**C-7 — Repository and resolution of inherited config**
-Coalesce of channel over tenant defaults.
-*Verification:* a channel with all nulls resolves to tenant defaults; overriding one field changes only that field. With coalesce inverted, the override test still passes and the inherit test fails — so both directions are asserted.
+*Shipped 2026-08-28.* Both packages created, because the stated boundary check needs a real target: without `channels/src` existing, an import of it fails as "module not found" and the check passes for the wrong reason. `src/` is an empty scaffold plus the specs, matching `money-ops.spec.ts` — pure logic in `contracts/`, its tests in `src/`.
+
+*Verification:* the violation was added, not imagined — `pricing/src` importing `@platform/modules/channels/src` fails lint with *"A project tagged with type:src can only depend on libs tagged with scope:shared, type:contracts"*, then reverted. Plus 26 unit tests on the pure logic, and 27 projects green on lint + build + test.
+
+*Scope moved, deliberately:* the coalesce that C-7 was to deliver is here instead, as a pure dependency-free function. Inheritance is resolved in three places (repository C-7, consuming read-models C-14, back office C-24); three implementations is how a tenant ends up with a currency that depends on which endpoint you ask. It also makes C-6 verifiable behaviourally rather than "it compiles" — and needs no database, which is why it could be built with Docker down. **C-7 is reduced to the repository.**
+
+Two bugs the tests were written to catch, both of which a thinner suite would have missed:
+- `channel.taxRateBps || defaults.taxRateBps` silently turns a tax-free market (0) into 8.75%. Only an explicit null check is correct.
+- Minor units must derive from the **resolved** currency, not the tenant default, or a JPY channel under a USD tenant renders every price a hundredfold too small.
+
+`minorUnitsFor` derives from `Intl` rather than a table, which gets the three-decimal Gulf currencies (KWD, BHD) right — the ones hand-kept tables miss. Its known limit is pinned rather than left to be found: a well-formed but unassigned code (`XYZ`) silently yields 2, because Intl reports the CLDR default instead of failing. Catching a typo'd currency is write-time validation's job (**C-8**), not this function's. `capabilities.module.ts` still holds a five-entry table with a fallback of 2; it becomes redundant at C-18.
+
+**C-7 — Repository** *(reduced: resolution moved to C-6)*
+Persistence for `channels.channels` and `channels.tenant_defaults`, returning `ResolvedChannel` via C-6's `resolveChannelConfig`.
+*Verification:* a channel with all nulls resolves to tenant defaults; overriding one field changes only that field. Both directions asserted — with the coalesce inverted, the override test still passes and only the inherit test fails.
 
 **C-8 — Invariants**
 Default must be active and cannot be archived; at least one active channel per tenant; `key` immutable once past `draft`; promotion of a new default in one transaction.

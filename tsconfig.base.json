@@ -31,6 +31,8 @@
       "@platform/shared/opensearch": ["packages/shared/opensearch/src/index.ts"],
       "@platform/modules/branding/contracts": ["packages/modules/branding/contracts/src/index.ts"],
       "@platform/modules/branding/src": ["packages/modules/branding/src/index.ts"],
+      "@platform/modules/channels/contracts": ["packages/modules/channels/contracts/src/index.ts"],
+      "@platform/modules/channels/src": ["packages/modules/channels/src/index.ts"],
       "@platform/modules/catalog/contracts": ["packages/modules/catalog/contracts/src/index.ts"],
       "@platform/modules/catalog/src": ["packages/modules/catalog/src/catalog.module.ts"],
       "@platform/modules/search/contracts": ["packages/modules/search/contracts/src/index.ts"],
