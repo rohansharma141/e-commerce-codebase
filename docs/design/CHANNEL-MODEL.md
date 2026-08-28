@@ -209,18 +209,33 @@ Keep **one index per tenant**, filtering by channel when catalogue scope arrives
 
 ---
 
-## 9. Migration
+## 9. Migration and fixtures
 
-1. Create schema, both tables, RLS policies, indexes including the partial unique on default.
-2. Backfill `tenant_defaults` from each tenant's current currency / locale / tax values.
-3. Backfill one channel per tenant: all config fields `null` (inherit), `status = 'active'`, `is_default = true`. Derive `key` from the tenant's country or locale — not the literal `'default'`, which is a plausible key an operator may later want and carries no market meaning.
-4. Add nullable `channel_id` to `orders` and `cart`; backfill to the tenant default; tighten to not-null once the write path always sets it.
+**The existing tenant data is fixtures we generate, so it is re-seeded rather than migrated.** There are three tenants, all `USD` / `en-US`, all produced by `apps/seed`. Deriving country from a locale subtag and flagging an un-derivable timezone for operator review would be careful data-preservation machinery applied to rows we can regenerate at will — the wrong instinct, and it was in an earlier draft of this note (G-3).
 
-**Country and timezone have no source in existing data.** Derive where the locale permits (`en-GB` → `GB` / `Europe/London`); otherwise write a documented default and flag the row for operator review. Do not invent silently — a wrong timezone shifts promotion windows and a wrong country shifts tax.
+### The seed owns channel fixtures
 
-**Two more fields have no source at all.** `pricing.tenant_config` carries exactly `currency`, `locale` and `tax_rate_bps` — there is no stored `tax_display` (capabilities hardcodes `EXCLUSIVE`) and no `supported_locales` (capabilities derives `[locale]`, deliberately refusing to advertise tags the platform cannot format). The backfill writes `tax_display = 'net'` — the engine's actual behaviour today — and `supported_locales = [locale]`, and the migration comment says these were defaulted, not copied.
+The seed writes `tenant_defaults` and channels directly, with real values and no derivation. It also stops seeding three identical markets, because the identical ones cannot test the thing this slice adds:
 
-The backfill is the risky step and the project has a scar here: a previous backfill reported "row counts match" as `0 = 0` because RLS hid the source rows. Run as the non-superuser role, assert a **non-zero** tenant count with exactly one default each, and verify on a cold database — the migration ledger means a developer machine never re-runs the failing path, which is how the `CREATE EXTENSION` race stayed invisible locally.
+| Tenant | Channels |
+|---|---|
+| `t-fashion` | **two** — `uk` (GBP, `en-GB`, GB, `Europe/London`) and `de` (EUR, `de-DE`, DE, `Europe/Berlin`) |
+| `t-electronics` | one — `us` (USD, `en-US`, US, `America/New_York`) |
+| `t-books` | one — `us` (USD, `en-US`, US, `America/New_York`) |
+
+The two-channel tenant is not decoration. The ADR's negative control for channel resolution is *"two channels with different currencies; assert responses differ — one channel passes even if resolution is hardcoded to the default."* With three single-channel tenants that check cannot fail. `t-fashion` is what makes it a check, and it exercises a different currency, locale, country and timezone in one fixture.
+
+### Migration steps
+
+1. Both tables, RLS policies (including the `app.system_worker` clause §4 needs), indexes including the partial unique on default. The Postgres schema itself is created by the shared migrator, not here.
+2. A **safety backfill**: for any tenant in `pricing.tenant_config` without a channel, create one — `status = 'active'`, `is_default = true`, config fields `null` (inherit), and `tenant_defaults` from that tenant's stored `currency`, `locale` and `tax_rate_bps`, with stated defaults for the rest. This exists so a database that skipped a re-seed still boots, not to preserve anything of value.
+3. Add nullable `channel_id` to `orders` and `cart`; backfill to the tenant default; tighten to not-null once the write path always sets it.
+
+**Fields with no source, defaulted rather than derived.** `pricing.tenant_config` carries exactly `currency`, `locale` and `tax_rate_bps`. There is no stored `tax_display` (capabilities hardcodes `EXCLUSIVE`), no `supported_locales` (capabilities derives `[locale]`, deliberately refusing to advertise tags the platform cannot format), and no `country` or `timezone`. The safety backfill writes `tax_display = 'net'` — the engine's actual behaviour today — `supported_locales = [locale]`, `country = 'US'` and `timezone = 'UTC'`, and the migration comment says these were defaulted, not copied. Anyone who cares about the values re-seeds.
+
+**Upgrading an existing stack.** The migration ledger does not re-run, so a developer holding an existing volume needs `docker compose down -v` and a re-seed when this lands — otherwise their tenants have channels from the safety backfill rather than the fixtures above, and the two-channel tenant will not exist. That is already this project's documented practice for anything with a migration in it; it belongs in the branch notes so it is not discovered.
+
+**The backfill is still the risky step** and the project has a scar here: a previous backfill reported "row counts match" as `0 = 0` because RLS hid the source rows. Run it as the non-superuser role, assert a **non-zero** tenant count with exactly one default each, and verify on a cold database — the ledger means a developer machine never re-runs the failing path, which is how the `CREATE EXTENSION` race stayed invisible locally.
 
 ---
 

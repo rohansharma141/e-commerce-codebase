@@ -8,15 +8,17 @@ Sizing: BACKLOG.md's rule applies — XS/S/M only, anything larger is split **be
 
 ---
 
-## Decision gates — resolve before C-1
+## Decision gates — all closed 2026-08-28
 
 | Gate | Question | Blocks |
 |---|---|---|
 | ~~**G-1**~~ | ~~Authentication: prerequisite slice, or gate with a written expiry?~~ **Closed 2026-08-28: prerequisite slice, minimum scope** — the four gateway behaviours ADR-0007 specifies, one operator role, IdP left as configuration. Needs ADR-0015 before C-20. | ~~C-20~~ |
 | ~~**G-2**~~ | ~~URL scoping shape?~~ **Closed 2026-08-28:** `/api/{tenant}/{channelKey}/graphql`, segment omitted for the tenant default, `/api` reserved because tenant ids may be `admin`. Reads only — admin and system stay header-only. | ~~C-2~~ |
-| **G-3** | Country/timezone for existing tenants where locale does not determine them — operator input, or documented default plus review flag? | C-11 |
+| ~~**G-3**~~ | ~~Country/timezone for existing tenants?~~ **Closed 2026-08-28: neither.** The tenants are fixtures we generate, so the seed writes real values and the migration keeps only a trivial safety backfill. No derivation, no review flag. | ~~C-11~~ |
 
-G-1 was the only one that could change the slice's size, and it did: an auth slice (~1–1.5 weeks) now precedes Phase E. G-2 and G-3 are shape, not scope.
+G-1 was the only one that could change the slice's size, and it did: an auth slice (~1–1.5 weeks) now precedes Phase E. G-2 settled a grammar. G-3 dissolved on inspection — it was careful data-preservation machinery for rows we generate ourselves.
+
+Nothing now blocks C-1.
 
 ---
 
@@ -72,15 +74,19 @@ Default must be active and cannot be archived; at least one active channel per t
 REST admin + GraphQL, following C-1 conventions.
 *Verification:* the C-1 conventions spec passes against the new endpoints.
 
-**C-11 — Migration and backfill**
-`tenant_defaults` from current tenant config; one inheriting channel per tenant, key derived from country or locale; country/timezone per G-3.
-*Verification:* run as the **non-superuser** with rows visible. Assert a **non-zero** tenant count and exactly one default each. A previous backfill in this project reported `0 = 0` as success because RLS hid the source rows — assert non-zero explicitly, not equality.
+**C-11 — Safety backfill** *(S)*
+For any tenant in `pricing.tenant_config` without a channel: `tenant_defaults` from its stored currency, locale and tax rate, plus one inheriting default channel. Stated defaults for the fields with no source (`tax_display = 'net'`, `supported_locales = [locale]`, `country = 'US'`, `timezone = 'UTC'`), commented as defaulted rather than copied. This exists so a database that skipped a re-seed still boots — it preserves nothing of value.
+*Verification:* run on a **cold** database as the **non-superuser** with rows visible. Assert a **non-zero** tenant count and exactly one default each. A previous backfill in this project reported `0 = 0` as success because RLS hid the source rows — assert non-zero explicitly, not equality.
+
+**C-11a — Seed writes channel fixtures** *(S)*
+`t-fashion` gets two channels — `uk` (GBP/`en-GB`/GB/`Europe/London`) and `de` (EUR/`de-DE`/DE/`Europe/Berlin`); `t-electronics` and `t-books` get one US channel each. Real values, no derivation.
+*Verification:* after a re-seed, `t-fashion` resolves two channels whose capabilities differ in currency **and** locale. With one channel per tenant — today's fixtures — every downstream channel check passes even if resolution is hardcoded to the default, so this item is what makes C-12 and C-19 falsifiable.
 
 ---
 
 ## Phase C — resolution and propagation
 
-**C-12 — Channel on the request context**
+**C-12 — Channel on the request context** *(depends on C-11a for a falsifiable check)*
 Resolution in tenant-context middleware, `AsyncLocalStorage`, `404` on unknown/archived/cross-tenant, default fallback with the expiry recorded in CAVEATS.
 *Verification:* **two channels with different currencies** return different responses. One channel passes even if resolution is hardcoded to the default. Separately: an unknown channel returns `404`, not the default.
 
