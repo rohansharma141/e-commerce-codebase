@@ -142,7 +142,15 @@ The back office that surfaces channels is the artefact that makes authentication
 
 It also closes two current gaps: audit entries gain an actor, and operator-scoped channel permissions become expressible. High-blast-radius configuration changes with no attributable actor are close to unauditable.
 
-**Preferred: auth is a prerequisite slice.** If schedule forbids, a gate in front of the back office is acceptable **only with a written expiry** in CAVEATS naming the milestone at which it is removed.
+**Decided (G-1, 2026-08-28): authentication is a prerequisite slice, scoped to the minimum that is not a lie.**
+
+The scope is what [0007](0007-tenant-id-as-trust-gateway-responsibility.md) already specifies the gateway does and nothing more: authenticate an operator, resolve the authorised tenant from the claim, inject `x-tenant-id`, and strip any the client sent. That fourth step does not exist today, so the ADR currently describes a topology the repository does not have — with or without a back office.
+
+Deliberately **out** of that slice: permission matrices, user-management screens, password flows, SSO federation. One operator role. The identity provider stays configuration, the same way the Kubernetes manifests leave the cluster to the deployment — what gets built is the seam, and the seam is exercised rather than described.
+
+Two reasons this is a prerequisite rather than a gate. An admin console reached without identity reads as a toy to exactly the audience this project addresses, and the Kubernetes manifests already expose the console through an Ingress. And an undated gate becomes permanent — the argument §8 makes about the missing-channel fallback applies with more force to an unauthenticated console.
+
+The auth slice gets its own ADR (0015) covering the implementation choices this one does not settle: dev issuer versus a real IdP, session mechanism, and where the gateway runs. That ADR is a prerequisite for C-20, not for C-1.
 
 ---
 

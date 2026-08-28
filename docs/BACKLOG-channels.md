@@ -12,11 +12,11 @@ Sizing: BACKLOG.md's rule applies — XS/S/M only, anything larger is split **be
 
 | Gate | Question | Blocks |
 |---|---|---|
-| **G-1** | Authentication: prerequisite slice, or gate with a written expiry in CAVEATS? | C-20 onward (back office) |
+| ~~**G-1**~~ | ~~Authentication: prerequisite slice, or gate with a written expiry?~~ **Closed 2026-08-28: prerequisite slice, minimum scope** — the four gateway behaviours ADR-0007 specifies, one operator role, IdP left as configuration. Needs ADR-0015 before C-20. | ~~C-20~~ |
 | **G-2** | URL scoping shape: `/api/{tenant}/{channel}/…` or an alternative path grammar? | C-2 |
 | **G-3** | Country/timezone for existing tenants where locale does not determine them — operator input, or documented default plus review flag? | C-11 |
 
-G-1 is the only one that can change the slice's size. G-2 and G-3 are shape, not scope.
+G-1 was the only one that could change the slice's size, and it did: an auth slice (~1–1.5 weeks) now precedes Phase E. G-2 and G-3 are shape, not scope.
 
 ---
 
@@ -117,7 +117,7 @@ Scoped URL, both headers, channel-scoped capability fields.
 
 ---
 
-## Phase E — back office *(gated on G-1)*
+## Phase E — back office *(preceded by the auth slice, ADR-0015)*
 
 **C-20 — App skeleton**
 `apps/back-office/`, Vite + React, api-client-only imports, boundary lint, Dockerfile, Compose service, CI job, NetworkPolicy.
@@ -179,7 +179,7 @@ Phase A before B: URL scoping is cheaper before channels multiply the URLs, and 
 
 C-15 before C-19: the storefront should not depend on a read-model whose staleness is unclosed.
 
-Phase E is the only part G-1 can move. If auth becomes a prerequisite, it inserts before C-20 as its own slice with its own ADR — not as an item here.
+Phase E is preceded by the auth slice, which is its own ADR (0015) and its own sequence — not items here. It lands before C-20 because the console must not exist without a login.
 
 Phase G touches pricing, not channels plumbing, so it can run any time after Phase B — except C-30, which needs C-10 (channel `PATCH` exists).
 
