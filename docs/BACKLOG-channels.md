@@ -8,7 +8,9 @@ House rules applied: one item, one commit, one stated verification. Anything nee
 >
 > **C-5 and C-7 were written without a database available**, at the user's explicit direction after the trade-off was raised. They compile, lint, and are wired into the api — and **nothing else about them is known**. The integration spec that would check them exists and is gated on `TEST_DATABASE_URL`, so it currently **skips** (19 tests) rather than passing; a green run today says nothing about this code.
 >
-> Nothing built after them should be trusted to rest on them until this is cleared. To clear it:
+> **C-8b's guards are separately verified** and do not share this uncertainty — they run against an in-memory store precisely so they do not. What is unverified is the SQL underneath: whether it persists what the guards permitted, whether RLS scopes it, and whether concurrent promotion serialises.
+>
+> Nothing else built after these should be trusted to rest on them until this is cleared. To clear it:
 >
 > ```
 > docker compose down -v && docker compose up -d          # cold, per CLAUDE.md
@@ -120,9 +122,14 @@ The rules as pure predicates in `contracts/invariants.ts`: `key` immutable once 
 
 The supported-currency allowlist is the write-time validation C-6 deferred here: `minorUnitsFor` cannot tell a typo from a real currency, and after the first order `currencyCode` freezes, so the mistake becomes permanent.
 
-**C-8b — Invariants enforced in the repository** *(needs a database)*
-Wire C-8a's predicates into the repository, plus the DDL guarantees that must not fail open: `unique (tenant_id, key)` and `unique (tenant_id) where is_default`.
-*Verification:* promotion runs **two concurrent promotions** and asserts one wins cleanly rather than an intermittent constraint violation. An application-only guarantee of "exactly one default" is not a guarantee, so the partial unique index is asserted directly by attempting a second default insert.
+**C-8b — Invariants enforced, in a service above the repository** ✅ *(the guards are verified; the SQL beneath them is not)*
+C-8a's predicates are composed in `ChannelsService`, not in the repository. The repository owns SQL and nothing else; the service is the only place rules and persistence meet, which is what stops a rule applying on one path and not another — the failure where a channel created through the admin API is validated and one created by the seed is not. It also owns the failure-to-HTTP mapping, because that is a property of the operation rather than of storage: violations → `400` listing **all** of them, version conflict → `409` carrying `currentVersion`, missing → `404`.
+
+*Verification — RUN, and made to fail.* The service depends on a `ChannelStore` port rather than on `ChannelsRepository` directly, so the guards are testable against an in-memory fake. That seam matters more than usual here: the repository's SQL has never touched a database, and without it these guards would inherit that uncertainty instead of being independently known-good. Disabling the guards failed exactly **11 tests** — every `rejects` case — while every `allows` case and the 409 mapping stayed green.
+
+Each rejection asserts `store.writes` is empty, not merely that an error was thrown. A service that threw *after* persisting would pass a test that only checked the throw.
+
+**Still outstanding, and needs a database:** the DDL guarantees that must not fail open — `unique (tenant_id, key)` and the partial `unique (tenant_id) where is_default` — plus the two-concurrent-promotions race. Those are written in `channels.integration.spec.ts` and have never run. An application-only guarantee of "exactly one default" is not a guarantee, so the index has to be asserted directly rather than inferred from the service refusing.
 
 **C-9 — Optimistic concurrency**
 `version` on write, `409` on mismatch, `ETag`/`If-Match` on REST, required input on GraphQL mutations.

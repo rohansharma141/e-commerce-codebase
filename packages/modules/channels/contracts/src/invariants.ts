@@ -1,4 +1,9 @@
-import type { Channel, ChannelStatus, UpdateChannelDto } from './channel.dto';
+import type {
+  Channel,
+  ChannelStatus,
+  CreateChannelDto,
+  UpdateChannelDto,
+} from './channel.dto';
 import { CHANNEL_STATUSES } from './channel.dto';
 
 /**
@@ -224,6 +229,45 @@ export function validateChannelUpdate(
   }
 
   return violations;
+}
+
+/**
+ * Validate a create.
+ *
+ * Expressed as an update against a synthetic empty draft rather than as a
+ * second rule set. A create is exactly "an update to a channel that does not
+ * exist yet": the key is mutable because the status is `draft`, the currency is
+ * free because nothing has transacted, and the format and allowlist checks are
+ * the same ones. Writing them twice is how the two drift and a rule ends up
+ * enforced on edit but not on create — which is the worse direction, because
+ * the bad value is already stored by the time anyone notices.
+ */
+export function validateChannelCreate(
+  tenantId: string,
+  dto: CreateChannelDto,
+  ctx: ChannelUpdateContext,
+): readonly ChannelViolation[] {
+  const blank: Channel = {
+    id: '',
+    tenantId,
+    key: '',
+    name: '',
+    status: 'draft',
+    isDefault: false,
+    hasTransacted: false,
+    version: 0,
+    currencyCode: null,
+    defaultLocale: null,
+    supportedLocales: null,
+    country: null,
+    timezone: null,
+    taxDisplay: null,
+    taxRateBps: null,
+    externalRef: null,
+    createdAt: '',
+    updatedAt: '',
+  };
+  return validateChannelUpdate(blank, { ...dto, key: dto.key }, ctx);
 }
 
 /**
