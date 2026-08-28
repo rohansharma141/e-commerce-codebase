@@ -10,7 +10,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { CurrentTenant, type TenantContext } from '@platform/shared/tenant-context';
 import type {
   CreateProductDto,
@@ -18,6 +18,7 @@ import type {
   Product,
   UpdateProductDto,
 } from '@platform/modules/catalog/contracts';
+import { ProductListResponse } from '../catalog.schema';
 import { ProductsService } from './products.service';
 
 @ApiTags('Catalog (admin)')
@@ -36,15 +37,21 @@ export class ProductsController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List products (paginated)' })
+  @ApiOperation({ summary: 'List products (by id, cursor-paginated)' })
+  @ApiQuery({ name: 'limit', required: false, example: 50, description: 'Defaults to 50, max 100.' })
+  @ApiQuery({
+    name: 'cursor',
+    required: false,
+    description: 'Opaque token from a previous response\'s nextCursor. Do not parse it.',
+  })
+  @ApiOkResponse({ type: ProductListResponse })
   list(
     @CurrentTenant() tenant: TenantContext,
     @Query('limit') limit?: string,
     @Query('cursor') cursor?: string,
   ): Promise<ListProductsResult> {
-    const parsedLimit = limit ? Number.parseInt(limit, 10) : undefined;
     return this.service.list(tenant.tenantId, {
-      limit: Number.isFinite(parsedLimit) ? parsedLimit : undefined,
+      limit: limit === undefined ? undefined : Number.parseInt(limit, 10),
       cursor,
     });
   }

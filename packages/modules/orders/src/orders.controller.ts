@@ -67,15 +67,22 @@ export class OrdersController {
   }
 
   @Get('admin/orders')
-  @ApiOperation({ summary: 'List recent orders' })
-  @ApiQuery({ name: 'limit', required: false, example: 20, description: 'Defaults to 20.' })
+  @ApiOperation({ summary: 'List recent orders (newest first, cursor-paginated)' })
+  @ApiQuery({ name: 'limit', required: false, example: 20, description: 'Defaults to 50, max 100.' })
+  @ApiQuery({
+    name: 'cursor',
+    required: false,
+    description: 'Opaque token from a previous response\'s nextCursor. Do not parse it.',
+  })
   @ApiOkResponse({ type: OrderListResponse })
   async list(
     @CurrentTenant() tenant: TenantContext,
     @Query('limit') limit?: string,
+    @Query('cursor') cursor?: string,
   ): Promise<OrderListResponse> {
     return this.orders.list(tenant.tenantId, {
-      limit: limit ? Math.max(1, Number.parseInt(limit, 10) || 20) : 20,
+      limit: limit === undefined ? undefined : Number.parseInt(limit, 10),
+      cursor,
     });
   }
 

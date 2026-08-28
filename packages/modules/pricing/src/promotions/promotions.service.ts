@@ -54,8 +54,11 @@ export class PromotionsService {
     return promotion;
   }
 
-  async list(tenantId: string): Promise<readonly Promotion[]> {
-    return this.repo.listByTenant(tenantId);
+  async list(
+    tenantId: string,
+    opts: { limit?: number; cursor?: string } = {},
+  ): Promise<{ items: readonly Promotion[]; nextCursor: string | null }> {
+    return this.repo.listPage(tenantId, opts);
   }
 
   async update(tenantId: string, id: string, dto: UpdatePromotionDto): Promise<Promotion> {

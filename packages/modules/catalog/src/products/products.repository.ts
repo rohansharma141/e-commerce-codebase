@@ -1,6 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, eq, gt } from 'drizzle-orm';
-import { TENANT_DRIZZLE, type TenantDrizzleAccessor } from '@platform/shared/database';
+import {
+  TENANT_DRIZZLE,
+  clampLimit,
+  decodeCursor,
+  toPage,
+  type TenantDrizzleAccessor,
+} from '@platform/shared/database';
 import type { Product, ProductAttributes } from '@platform/modules/catalog/contracts';
 import { products, type ProductRow } from '../db/schema';
 
@@ -61,13 +67,23 @@ export class ProductsRepository {
     return row ? toDomain(row) : null;
   }
 
+  /**
+   * Paged by an opaque keyset cursor on `id`.
+   *
+   * This endpoint had working cursor pagination before C-1 and was the shape
+   * the other four adopted. What changed here is only the token encoding: it
+   * used to return the last row's raw uuid, and now returns the same value
+   * through the shared codec, so all five admin lists issue interchangeable,
+   * opaque tokens. The request and response field names are untouched.
+   */
   async list(
     tenantId: string,
-    opts: { limit: number; cursor?: string },
+    opts: { limit?: number; cursor?: string },
   ): Promise<{ items: readonly Product[]; nextCursor: string | null }> {
-    const cap = Math.min(Math.max(opts.limit, 1), 100);
-    const where = opts.cursor
-      ? and(eq(products.tenantId, tenantId), gt(products.id, opts.cursor))
+    const cap = clampLimit(opts.limit);
+    const keyset = opts.cursor ? decodeCursor(opts.cursor, 1) : undefined;
+    const where = keyset
+      ? and(eq(products.tenantId, tenantId), gt(products.id, keyset[0] as string))
       : eq(products.tenantId, tenantId);
 
     const rows = await this.db
@@ -77,12 +93,8 @@ export class ProductsRepository {
       .orderBy(asc(products.id))
       .limit(cap + 1);
 
-    const hasMore = rows.length > cap;
-    const slice = hasMore ? rows.slice(0, cap) : rows;
-    const items = slice.map(toDomain);
-    const lastItem = items.length > 0 ? items[items.length - 1] : undefined;
-    const nextCursor = hasMore && lastItem ? lastItem.id : null;
-    return { items, nextCursor };
+    const page = toPage(rows, cap, (row) => [row.id]);
+    return { items: page.items.map(toDomain), nextCursor: page.nextCursor };
   }
 
   async update(tenantId: string, id: string, patch: ProductPatch): Promise<Product | null> {

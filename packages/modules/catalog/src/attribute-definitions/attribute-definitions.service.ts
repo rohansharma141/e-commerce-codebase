@@ -68,7 +68,10 @@ export class AttributeDefinitionsService {
     return created;
   }
 
-  list(tenantId: string): Promise<readonly AttributeDefinition[]> {
-    return this.repo.listByTenant(tenantId);
+  list(
+    tenantId: string,
+    opts: { limit?: number; cursor?: string } = {},
+  ): Promise<{ items: readonly AttributeDefinition[]; nextCursor: string | null }> {
+    return this.repo.listPage(tenantId, opts);
   }
 }

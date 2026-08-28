@@ -82,8 +82,10 @@ export class ProductsService {
   }
 
   async list(tenantId: string, query: ListProductsQuery): Promise<ListProductsResult> {
+    // No `?? 20` here any more: the default page size is one of the admin
+    // conventions, and clampLimit owns it so all five lists agree on 50.
     return this.repo.list(tenantId, {
-      limit: query.limit ?? 20,
+      limit: query.limit,
       cursor: query.cursor,
     });
   }

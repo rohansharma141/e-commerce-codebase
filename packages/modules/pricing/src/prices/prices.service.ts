@@ -40,7 +40,10 @@ export class PricesService {
     return price;
   }
 
-  async list(tenantId: string, limit?: number): Promise<readonly Price[]> {
-    return this.repo.findByTenant(tenantId, limit ?? 50);
+  async list(
+    tenantId: string,
+    opts: { limit?: number; cursor?: string } = {},
+  ): Promise<{ items: readonly Price[]; nextCursor: string | null }> {
+    return this.repo.listPage(tenantId, opts);
   }
 }

@@ -1,6 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq } from 'drizzle-orm';
-import { TENANT_DRIZZLE, type TenantDrizzleAccessor } from '@platform/shared/database';
+import { and, desc, eq, sql } from 'drizzle-orm';
+import {
+  TENANT_DRIZZLE,
+  clampLimit,
+  decodeCursor,
+  toPage,
+  type TenantDrizzleAccessor,
+} from '@platform/shared/database';
 import type {
   Order,
   OrderLine,
@@ -59,24 +65,56 @@ export class OrdersRepository {
     return toDomain(orderRow, lineRows, snapRows[0] ?? null);
   }
 
+  /**
+   * Newest first, paged by an opaque keyset cursor.
+   *
+   * The sort key is the pair `(created_at, id)`, not `created_at` alone.
+   * `created_at` is not unique — two orders placed in the same millisecond tie,
+   * and a tie under a single-column keyset silently drops every row that
+   * shares the boundary timestamp. `id` breaks the tie, so the order is total.
+   *
+   * The row-comparison predicate `(created_at, id) < (?, ?)` is what makes
+   * that cheap: it maps onto the `(tenant_id, created_at DESC)` index rather
+   * than degrading into an OR of two range scans.
+   */
   async list(
     tenantId: string,
-    opts: { limit: number },
-  ): Promise<{ items: readonly Order[] }> {
-    const cap = Math.min(Math.max(opts.limit, 1), 100);
+    opts: { limit?: number; cursor?: string },
+  ): Promise<{ items: readonly Order[]; nextCursor: string | null }> {
+    const cap = clampLimit(opts.limit);
+    const keyset = opts.cursor ? decodeCursor(opts.cursor, 2) : undefined;
+    // The bind parameters are ISO strings with explicit casts, not `new Date`.
+    // A Date placed inside a raw `sql` fragment carries no column type for
+    // drizzle to infer from, so postgres-js receives an object it cannot
+    // serialise and throws `ERR_INVALID_ARG_TYPE` at bind time — a 500, not a
+    // wrong answer. The casts are what tell Postgres the row-comparison is
+    // (timestamptz, uuid).
+    const where = keyset
+      ? and(
+          eq(orders.tenantId, tenantId),
+          sql`(${orders.createdAt}, ${orders.id}) < (${keyset[0]}::timestamptz, ${keyset[1]}::uuid)`,
+        )
+      : eq(orders.tenantId, tenantId);
+
     const orderRows = await this.db
       .select()
       .from(orders)
-      .where(eq(orders.tenantId, tenantId))
-      .orderBy(desc(orders.createdAt))
-      .limit(cap);
+      .where(where)
+      .orderBy(desc(orders.createdAt), desc(orders.id))
+      .limit(cap + 1);
+
+    const page = toPage(orderRows, cap, (row) => [
+      row.createdAt.toISOString(),
+      row.id,
+    ]);
+
     // N+1 friendly enough for the demo list; switch to a JOIN/aggregate when needed.
     const items: Order[] = [];
-    for (const o of orderRows) {
+    for (const o of page.items) {
       const fetched = await this.findById(tenantId, o.id);
       if (fetched) items.push(fetched);
     }
-    return { items };
+    return { items, nextCursor: page.nextCursor };
   }
 }
 

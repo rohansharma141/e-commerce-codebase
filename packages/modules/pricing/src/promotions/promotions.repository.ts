@@ -1,6 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, sql } from 'drizzle-orm';
-import { TENANT_DRIZZLE, type TenantDrizzleAccessor } from '@platform/shared/database';
+import { and, desc, eq, sql } from 'drizzle-orm';
+import {
+  TENANT_DRIZZLE,
+  clampLimit,
+  decodeCursor,
+  toPage,
+  type TenantDrizzleAccessor,
+} from '@platform/shared/database';
 import type {
   IPromotionsQuery,
   Promotion,
@@ -63,6 +69,44 @@ export class PromotionsRepository implements IPromotionsQuery {
       .from(promotions)
       .where(eq(promotions.tenantId, tenantId));
     return rows.map(toDomain);
+  }
+
+  /**
+   * Newest first, paged by an opaque keyset cursor on `(created_at, id)`.
+   *
+   * `created_at` alone is not a total order — two promotions created in the
+   * same millisecond tie, and a tie under a single-column keyset drops every
+   * row sharing the boundary. `id` breaks it.
+   *
+   * Kept separate from `listByTenant`, which returns everything: this is the
+   * admin list, that one is not paginated and its caller wants the full set.
+   */
+  async listPage(
+    tenantId: string,
+    opts: { limit?: number; cursor?: string } = {},
+  ): Promise<{ items: readonly Promotion[]; nextCursor: string | null }> {
+    const cap = clampLimit(opts.limit);
+    const keyset = opts.cursor ? decodeCursor(opts.cursor, 2) : undefined;
+    // ISO strings with explicit casts, not `new Date` — a Date inside a raw
+    // `sql` fragment has no column type to infer from, so postgres-js cannot
+    // serialise it and throws at bind time. See the same note in
+    // orders.repository.ts.
+    const where = keyset
+      ? and(
+          eq(promotions.tenantId, tenantId),
+          sql`(${promotions.createdAt}, ${promotions.id}) < (${keyset[0]}::timestamptz, ${keyset[1]}::uuid)`,
+        )
+      : eq(promotions.tenantId, tenantId);
+
+    const rows = await this.db
+      .select()
+      .from(promotions)
+      .where(where)
+      .orderBy(desc(promotions.createdAt), desc(promotions.id))
+      .limit(cap + 1);
+
+    const page = toPage(rows, cap, (row) => [row.createdAt.toISOString(), row.id]);
+    return { items: page.items.map(toDomain), nextCursor: page.nextCursor };
   }
 
   async listActiveCandidates(tenantId: string): Promise<readonly Promotion[]> {

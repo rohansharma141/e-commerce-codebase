@@ -45,7 +45,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List this tenant's attribute definitions */
+        /** List this tenant's attribute definitions (by code, cursor-paginated) */
         get: operations["AttributeDefinitionsController_list"];
         put?: never;
         /** Define a tenant-scoped typed attribute */
@@ -63,7 +63,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List products (paginated) */
+        /** List products (by id, cursor-paginated) */
         get: operations["ProductsController_list"];
         put?: never;
         /** Create product (writes to catalog.products + indexes to OpenSearch) */
@@ -118,7 +118,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List prices */
+        /** List prices (ordered by productId, cursor-paginated) */
         get: operations["PricesController_list"];
         put?: never;
         /** Upsert unit price for a product (in cents) */
@@ -136,7 +136,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List promotions */
+        /** List promotions (newest first, cursor-paginated) */
         get: operations["PromotionsController_list"];
         put?: never;
         /** Create a promotion (coupon-code or automatic) */
@@ -274,7 +274,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List recent orders */
+        /** List recent orders (newest first, cursor-paginated) */
         get: operations["OrdersController_list"];
         put?: never;
         post?: never;
@@ -325,6 +325,140 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AttributeDefinition: {
+            /** Format: uuid */
+            id: string;
+            /** @example t-fashion */
+            tenantId: string;
+            /**
+             * @description Tenant-scoped identifier, matching /^[a-z][a-z0-9_]*$/ and unique per tenant.
+             * @example color
+             */
+            code: string;
+            /** @enum {string} */
+            type: "string" | "number" | "boolean" | "enum" | "date";
+            /** @description Whether a product may carry several values for this attribute. */
+            multiValue: boolean;
+            /**
+             * @description Validation rules, shaped by `type`: string:{maxLength?} | number:{min?,max?} | enum:{allowedValues} | boolean:{} | date:{}.
+             * @example {
+             *       "allowedValues": [
+             *         "black",
+             *         "white",
+             *         "red"
+             *       ]
+             *     }
+             */
+            config: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            createdAt: string;
+        };
+        AttributeDefinitionListResponse: {
+            items: components["schemas"]["AttributeDefinition"][];
+            /** @description Opaque token for the next page, or null on the last page. Pass it back as ?cursor=. Do not parse it — the sort key is `code`. */
+            nextCursor: string | null;
+        };
+        Product: {
+            /** Format: uuid */
+            id: string;
+            /** @example t-fashion */
+            tenantId: string;
+            /** @example T-FASHION-0000286 */
+            sku: string;
+            /** @example Vesper Oxford Shirt */
+            name: string;
+            /**
+             * @description Tenant-defined attribute values, keyed by attribute code. The keys are whatever this tenant has defined, so the schema is open by design rather than by omission.
+             * @example {
+             *       "color": "blue",
+             *       "size": "M",
+             *       "in_stock": true
+             *     }
+             */
+            attributes: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        ProductListResponse: {
+            items: components["schemas"]["Product"][];
+            /** @description Opaque token for the next page, or null on the last page. Pass it back as ?cursor=. Do not parse it — the sort key is `id`. */
+            nextCursor: string | null;
+        };
+        Price: {
+            /** @example t-fashion */
+            tenantId: string;
+            /** Format: uuid */
+            productId: string;
+            /**
+             * @description Minor units. Never a decimal.
+             * @example 14394
+             */
+            unitPriceCents: number;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        PriceListResponse: {
+            items: components["schemas"]["Price"][];
+            /** @description Opaque token for the next page, or null on the last page. Pass it back as ?cursor=. Do not parse it — prices are keyed on (tenantId, productId) with no id column, so the sort key is productId. */
+            nextCursor: string | null;
+        };
+        PromotionCondition: {
+            /** @enum {string} */
+            type: "always" | "cart-total-min" | "contains-product";
+            /**
+             * @description Shape depends on type: always:{} | cart-total-min:{minCents} | contains-product:{productId}
+             * @example {
+             *       "minCents": 5000
+             *     }
+             */
+            value: {
+                [key: string]: unknown;
+            };
+        };
+        PromotionAction: {
+            /** @enum {string} */
+            type: "percent" | "fixed";
+            /**
+             * @description Basis points when type is `percent`, minor units when `fixed`.
+             * @example 1000
+             */
+            value: number;
+        };
+        Promotion: {
+            /** Format: uuid */
+            id: string;
+            /** @example t-fashion */
+            tenantId: string;
+            /** @enum {string} */
+            kind: "coupon-code" | "automatic";
+            /**
+             * @description Null for automatic promotions, which need no code to apply.
+             * @example WELCOME10
+             */
+            code: string | null;
+            condition: components["schemas"]["PromotionCondition"];
+            action: components["schemas"]["PromotionAction"];
+            /** Format: date-time */
+            expiresAt: string | null;
+            /** @description Null means unlimited. */
+            maxUses: number | null;
+            /** @example 0 */
+            usesCount: number;
+            active: boolean;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        PromotionListResponse: {
+            items: components["schemas"]["Promotion"][];
+            /** @description Opaque token for the next page, or null on the last page. Pass it back as ?cursor=. Do not parse it — the sort key is the (createdAt, id) pair. */
+            nextCursor: string | null;
+        };
         CreateCartResponse: {
             /** Format: uuid */
             cartId: string;
@@ -580,6 +714,8 @@ export interface components {
         };
         OrderListResponse: {
             items: components["schemas"]["Order"][];
+            /** @description Opaque token for the next page, or null on the last page. Pass it back as ?cursor=. Do not parse it — it encodes the sort key, which here is the (createdAt, id) pair. */
+            nextCursor: string | null;
         };
         CapabilityFeature: {
             /** @example promotions.coupon */
@@ -668,7 +804,12 @@ export interface operations {
     };
     AttributeDefinitionsController_list: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Defaults to 50, max 100. */
+                limit?: string;
+                /** @description Opaque token from a previous response's nextCursor. Do not parse it. */
+                cursor?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -679,7 +820,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["AttributeDefinitionListResponse"];
+                };
             };
         };
     };
@@ -702,9 +845,11 @@ export interface operations {
     };
     ProductsController_list: {
         parameters: {
-            query: {
-                limit: string;
-                cursor: string;
+            query?: {
+                /** @description Defaults to 50, max 100. */
+                limit?: string;
+                /** @description Opaque token from a previous response's nextCursor. Do not parse it. */
+                cursor?: string;
             };
             header?: never;
             path?: never;
@@ -716,7 +861,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ProductListResponse"];
+                };
             };
         };
     };
@@ -830,8 +977,11 @@ export interface operations {
     };
     PricesController_list: {
         parameters: {
-            query: {
-                limit: string;
+            query?: {
+                /** @description Defaults to 50, max 100. */
+                limit?: string;
+                /** @description Opaque token from a previous response's nextCursor. Do not parse it. */
+                cursor?: string;
             };
             header?: never;
             path?: never;
@@ -843,7 +993,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PriceListResponse"];
+                };
             };
         };
     };
@@ -866,7 +1018,12 @@ export interface operations {
     };
     PromotionsController_list: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Defaults to 50, max 100. */
+                limit?: string;
+                /** @description Opaque token from a previous response's nextCursor. Do not parse it. */
+                cursor?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -877,7 +1034,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PromotionListResponse"];
+                };
             };
         };
     };
@@ -1093,8 +1252,10 @@ export interface operations {
     OrdersController_list: {
         parameters: {
             query?: {
-                /** @description Defaults to 20. */
+                /** @description Defaults to 50, max 100. */
                 limit?: string;
+                /** @description Opaque token from a previous response's nextCursor. Do not parse it. */
+                cursor?: string;
             };
             header?: never;
             path?: never;

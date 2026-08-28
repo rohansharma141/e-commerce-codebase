@@ -127,6 +127,14 @@ export class Order implements Contract.Order {
 export class OrderListResponse {
   @ApiProperty({ type: () => [Order] })
   readonly items!: readonly Order[];
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'Opaque token for the next page, or null on the last page. Pass it back as ?cursor=. Do not parse it — it encodes the sort key, which here is the (createdAt, id) pair.',
+  })
+  readonly nextCursor!: string | null;
 }
 
 export class CheckoutDto implements Contract.CheckoutDto {

@@ -168,10 +168,31 @@ jobs:
       - name: Seed
         run: pnpm seed
 
+      # ─────────────────────────────────────────────────────────────────────
+      # Admin API conventions (C-1).
+      #
+      # Here rather than in the lint/test job for two reasons: it asserts on
+      # the HTTP surface, so it needs a running api, and it needs one with
+      # seeded rows to page through. The lint/test job deliberately leaves
+      # TEST_API_URL unset, so this file skips there.
+      #
+      # --skipNxCache because nx caches `test` on file inputs and env vars are
+      # not part of the key: a cached run of `api:test` from a job without
+      # TEST_API_URL would replay as a pass with this suite never executing.
+      #
+      # Budget note: this costs 79 requests and conformance below adds ~20,
+      # against a 200/min per-tenant throttle. Both target t-fashion, which is
+      # the only seeded tenant with enough rows in every table to paginate.
+      # ─────────────────────────────────────────────────────────────────────
+      - name: Admin API conventions
+        env:
+          TEST_API_URL: http://localhost:3000
+        run: pnpm nx test api --skipNxCache
+
       - name: Contract conformance
         env:
           TEST_API_URL: http://localhost:3000
-        run: pnpm nx test storefront
+        run: pnpm nx test storefront --skipNxCache
 
       - name: Build the storefront image
         run: docker compose build storefront

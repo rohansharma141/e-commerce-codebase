@@ -1,6 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, inArray, sql } from 'drizzle-orm';
-import { TENANT_DRIZZLE, type TenantDrizzleAccessor } from '@platform/shared/database';
+import { and, asc, eq, gt, inArray, sql } from 'drizzle-orm';
+import {
+  TENANT_DRIZZLE,
+  clampLimit,
+  decodeCursor,
+  toPage,
+  type TenantDrizzleAccessor,
+} from '@platform/shared/database';
 import type { IPricesQuery, Price } from '@platform/modules/pricing/contracts';
 import { prices, type PriceRow } from '../db/schema';
 
@@ -45,13 +51,36 @@ export class PricesRepository implements IPricesQuery {
     return items.length;
   }
 
-  async findByTenant(tenantId: string, limit = 50): Promise<readonly Price[]> {
+  /**
+   * Paged by `product_id`, which is the only stable choice here: `pricing.prices`
+   * is keyed on `(tenant_id, product_id)` and has no `id` column, and its
+   * `updated_at` is hopelessly non-unique — the seeded data holds 99,004 rows
+   * across 103 distinct timestamps, so a timestamp keyset would skip roughly
+   * 960 rows at every page boundary.
+   *
+   * This replaces an unordered `findByTenant`. Without an ORDER BY, "the first
+   * 50 prices" was not a stable set between two identical calls, which is also
+   * why cursoring could not have been bolted on without fixing the order first.
+   */
+  async listPage(
+    tenantId: string,
+    opts: { limit?: number; cursor?: string } = {},
+  ): Promise<{ items: readonly Price[]; nextCursor: string | null }> {
+    const cap = clampLimit(opts.limit);
+    const keyset = opts.cursor ? decodeCursor(opts.cursor, 1) : undefined;
+    const where = keyset
+      ? and(eq(prices.tenantId, tenantId), gt(prices.productId, keyset[0] as string))
+      : eq(prices.tenantId, tenantId);
+
     const rows = await this.db
       .select()
       .from(prices)
-      .where(eq(prices.tenantId, tenantId))
-      .limit(Math.min(limit, 500));
-    return rows.map(toDomain);
+      .where(where)
+      .orderBy(asc(prices.productId))
+      .limit(cap + 1);
+
+    const page = toPage(rows, cap, (row) => [row.productId]);
+    return { items: page.items.map(toDomain), nextCursor: page.nextCursor };
   }
 
   async findByProductIds(
