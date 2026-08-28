@@ -6,6 +6,7 @@ import { Logger as PinoLogger } from 'nestjs-pino';
 import { APP_CONFIG, type AppConfig } from '@platform/shared/config';
 import { helmetMiddleware } from '@platform/shared/security';
 import { AppModule } from './app.module';
+import { scopedGraphqlMiddleware } from './scoped-graphql.middleware';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
@@ -15,6 +16,10 @@ async function bootstrap(): Promise<void> {
   // GraphQL's landing page at /graphql injects inline scripts; a stricter CSP
   // would land alongside the production gateway. See packages/shared/security.
   app.use(helmetMiddleware());
+  // Must precede the Nest router: it rewrites /api/{tenant}/graphql onto the
+  // single existing /graphql handler, and rejects a URL whose tenant disagrees
+  // with the header before anything downstream has resolved a tenant.
+  app.use(scopedGraphqlMiddleware());
   // whitelist:false is required so GraphQL @Args inputs (validated by the
   // GraphQL schema, not class-validator decorators) aren't silently stripped
   // to {}. Catalog REST DTOs don't depend on strict whitelisting today; when

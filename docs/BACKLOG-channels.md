@@ -41,13 +41,19 @@ Scope grew slightly and deliberately: `/admin/products` was folded in too (share
 
 Delivered: [`docs/design/ADMIN-API.md`](design/ADMIN-API.md), the shared cursor codec in `packages/shared/database/src/cursor.ts` (19 unit tests), five migrated list endpoints, `@ApiProperty` classes for catalog and pricing (17 → 27 OpenAPI schemas), regenerated REST client, and a CI step running the suite against the live seeded api.
 
-**C-2 — URL scoping for cacheable reads** *(M)*
-`/api/{tenant}/{channelKey}/graphql` and `/api/{tenant}/graphql` alongside the existing `/graphql`, which keeps working. No sentinel: an omitted segment means the tenant default. **Non-goal, stated so nobody "completes" the pattern later:** `/admin/*` and `/system/*` do not take scope segments — admin manages channels and is tenant-scoped only, and a uniform external grammar, if ever wanted, is a gateway rewrite rather than an api change.
-*Verification:* two requests to the scoped URL for different tenants return different bodies through a caching proxy in front — without scoping the second returns the first's body. Plus a tenant literally named `admin` resolves through `/api/admin/graphql` rather than hitting the admin surface; on a bare `/{tenant}/…` grammar that request 404s or, worse, routes.
+**C-2 + C-3 — URL scoping for cacheable reads, and the trust assertion** ✅ *(M)*
+`/api/{tenant}/graphql` alongside the existing `/graphql`, which keeps working. Tenant resolves from `x-tenant-id` only; the URL segment is asserted to match; a mismatch is `400`. **Non-goal, stated so nobody "completes" the pattern later:** `/admin/*` and `/system/*` do not take scope segments — admin manages channels and is tenant-scoped only, and a uniform external grammar, if ever wanted, is a gateway rewrite rather than an api change.
 
-**C-3 — Header is the trust input; URL is asserted** *(S)*
-Resolve tenant from `x-tenant-id` only; assert the URL segment matches; reject mismatch with `400`.
-*Verification:* header tenant A, URL tenant B. Anything but `400` means the assertion is not wired. Also assert the reverse ordering (URL A, header B) rejects, so the check does not pass by comparing a value to itself.
+*Shipped 2026-08-28 as one commit, and the merge was not a convenience.* Routing the path in C-2 and asserting it in C-3 would have left a window in which `/api/{victim}/graphql` served whatever the caller's header asked for. Same reasoning that reordered 8c-3: no intermediate state may violate a non-negotiable.
+
+*Split, recorded:* the `{channelKey}` segment is **not** routed yet. Channels do not exist until Phase B, so a channel path would resolve against nothing and accept any key — a route wired to nothing, which A1 established we do not build. It lands as **C-2b in Phase C**, beside C-12, where it can be asserted the way the tenant segment now is.
+
+*Verification, run red first:* 8 of 14 failed against the unmodified api. Two matter most:
+
+- **The bug is real, not hypothetical.** `THE BUG: on the unscoped path, one tenant is served the other from cache` **passed before the fix** — an in-process proxy keying on URL alone (a CDN ignoring `Vary` over a custom header) served `t-books` the `t-fashion` body through the shipped `/graphql`. `THE FIX` then failed, the scoped path not existing. Both green now, and the bug assertion is deliberately kept: if it ever stops holding, the demonstration has lost its contrast.
+- A tenant literally named `admin` resolves through `/api/admin/graphql` rather than reaching the admin surface — which is why `/api` is a reserved prefix.
+
+GET is covered explicitly, including that the scoped path still reaches `graphql-cache.plugin.ts` and emits the same `cache-control` and `vary` as the unscoped one. A scoped path working only for POST would carry scope on exactly the requests no cache keys, and would have silently undone H-3b.
 
 **C-4 — `Vary` extended and guard spec updated** *(S)*
 `Vary: x-tenant-id, x-channel-id`; `api-graphql.spec.ts` extended to fail if either header stops being sent or the method reverts to POST.
@@ -100,6 +106,11 @@ For any tenant in `pricing.tenant_config` without a channel: `tenant_defaults` f
 **C-12 — Channel on the request context** *(depends on C-11a for a falsifiable check)*
 Resolution in tenant-context middleware, `AsyncLocalStorage`, `404` on unknown/archived/cross-tenant, default fallback with the expiry recorded in CAVEATS.
 *Verification:* **two channels with different currencies** return different responses. One channel passes even if resolution is hardcoded to the default. Separately: an unknown channel returns `404`, not the default.
+
+**C-2b — The channel segment of the URL grammar** *(split out of C-2, 2026-08-28)*
+`/api/{tenant}/{channelKey}/graphql`. The segment is omitted, not sentinelled, for the tenant default — §4 argues against reserving the literal `default` as a key, and an optional segment removes the reserved word entirely. It carries the `key`, not the id. Asserted against `x-channel-id` exactly as the tenant segment is against `x-tenant-id`; mismatch is `400`, unknown/archived/cross-tenant is `404` and never a silent fallback.
+*Depends on C-12* for resolution. Deferred out of Phase A because until channels exist the segment would accept any key and resolve against nothing.
+*Verification:* two channels of one tenant with different currencies return different bodies through the URL-keyed proxy already in `scoped-graphql.integration.spec.ts`. One channel would pass even if the segment were ignored entirely, so C-11a's two-channel `t-fashion` is what makes this falsifiable. Plus: header names channel A, URL names B → `400`, asserted both ways round.
 
 **C-13 — Events published**
 `channels.created`, `channels.updated`, `channels.archived`, `channels.tenant-defaults.updated` — module-prefixed like every existing event. Network-strict.
