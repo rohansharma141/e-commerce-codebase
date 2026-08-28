@@ -212,9 +212,20 @@ ARCHITECTURE, RUNBOOK, README updated. Every documented command executed, not re
 
 The work A1 surfaced: `tax_display` must be real before it is editable. The engine computes net-only today and capabilities hardcodes `EXCLUSIVE`; making the field a channel control without the engine work would let an operator select gross and silently serve net.
 
-**C-29 — Tax-inclusive computation in the pricing engine**
-`totals-calculator` and `money-ops` learn gross mode: derive base and tax out of a tax-inclusive price under ADR-0005's rounding, golden tests for both modes side by side.
-*Verification:* golden tests pin the gross decompositions; net mode's outputs are asserted byte-identical to today's. If the engine ignored the mode, gross cases equal net cases and fail.
+**C-29 — Tax-inclusive computation in the pricing engine** ✅
+`money-ops` gains `taxIncludedIn`; `computeTotals` takes an optional `taxMode`, defaulting to `net`. Built out of sequence (before Phase B) because it is pure arithmetic and needs no database.
+
+*Shipped 2026-08-28.* The maths: `tax = gross × bps / (10000 + bps)`, not `mulBps`. Reaching for `mulBps` overstates tax by the rate itself — 20% *of* £120 is £24, but the VAT *inside* £120 is £20 — and the receipt still adds up, so nothing downstream notices. Net is derived as `gross − tax` rather than rounded separately, making `net + tax === gross` true by construction; rounding both halves independently loses or invents a cent on roughly half of all amounts, and that cent reaches a customer.
+
+The banker's-rounding core was extracted so `mulBps` and `taxIncludedIn` share one implementation. Two copies of a rounding policy is how a platform computes tax one way when adding it and another when extracting it, visible only at the aggregate. ADR-0005's sentinel tests were run immediately after the refactor and still pass, so `mulBps` is unchanged.
+
+*Verification — three ways, each made to fail:*
+- **Golden cases assert both modes side by side on identical input.** A gross-only suite passes against an engine that silently computes net.
+- **Making the engine ignore `taxMode`** failed exactly the 5 golden cases and both gross invariants; net tests stayed green.
+- **Swapping `taxIncludedIn` for `mulBps`** in the gross branch failed 6 — the specific bug the function exists to prevent.
+- Two of my own golden values were wrong (computed half-up, not half-even) and the tests caught them. They are now kept as labelled `.5`-tie sentinels, the only cases that can tell the two rounding policies apart.
+
+*Design decision:* `taxMode` is an **input only** — deliberately not a field on `ComputedTotals`. `capabilities.taxDisplay` is already where "how to read this tenant's prices" lives and the storefront already fetches it; repeating it on every cart and order response would be a second source for one fact, and the two would eventually disagree. This also kept C-29 entirely engine-internal: no HTTP DTO changed, so no OpenAPI regeneration is owed and R-4 stays green. `CartTotals implements ComputedTotals` is what surfaced the question — the contract coupling working as designed.
 
 **C-30 — `tax_display` editable per channel; the hardcode removed**
 Capabilities reports the stored value instead of the `EXCLUSIVE` constant; channel `PATCH` accepts it; order snapshots record the mode they were charged under.
@@ -223,7 +234,7 @@ Capabilities reports the stored value instead of the `EXCLUSIVE` constant; chann
 **C-31 — Storefront renders gross/net from capabilities**
 *Verification:* the same product on two channels — one gross, one net — renders different price presentation. One channel would pass even with hardcoded rendering; two is the control.
 
-Strictly C-29 → C-30 → C-31: the control becomes editable only after the engine honours it.
+Strictly C-29 → C-30 → C-31: the control becomes editable only after the engine honours it. C-29 is done; C-30 needs C-10 (channel `PATCH` exists) and a database.
 
 ---
 
