@@ -74,13 +74,26 @@ Enforced in the database:
 - `unique (tenant_id, key)` — keys unique per tenant, not globally.
 - `unique (tenant_id) where is_default` — exactly one default per tenant. The default is what unspecified requests fall back to; an application-only guarantee fails open.
 
-Enforced in the repository, each with a test:
+Enforced in the repository, each with a test. The rules themselves live as pure predicates in [`channels/contracts/src/invariants.ts`](../../packages/modules/channels/contracts/src/invariants.ts) (**built, C-8a**) so each can be tested by attempting the violation rather than inferred from a repository that happens not to allow it; wiring them to persistence is C-8b.
 
 - The default channel must be `active` and **cannot be archived**; archiving requires promoting another first.
 - **At least one active channel per tenant.** Nothing in DDL guarantees one exists; a tenant with zero resolves no requests, and the failure surfaces at request time rather than at the operation that caused it.
-- `key` immutable once `status != 'draft'`.
-- `currency_code` immutable once `has_transacted`.
+- `key` immutable once `status != 'draft'`, and must match `^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$` — keys travel in URL paths, so nothing that needs percent-encoding, no uppercase, no leading or trailing hyphen. 64 is the same ceiling tenant ids use, so neither half of a scoped path can surprise the other.
+- `currency_code` immutable once `has_transacted`, and validated at write time against a **supported-currency allowlist**. The allowlist is not redundant with the exponent lookup: `Intl` reports the CLDR default of 2 decimals for any well-formed code it does not recognise, so a typo is indistinguishable from a real currency — and after the first order the mistake freezes permanently.
 - **Promoting a default is two writes** (unset old, set new) racing the partial unique index. One transaction, deterministic order, plus a test running two promotions concurrently — otherwise the failure is an intermittent constraint violation in production and nowhere else.
+
+#### Status transitions
+
+|  | → `draft` | → `active` | → `archived` |
+|---|---|---|---|
+| **`draft`** | — | ✅ | ✅ |
+| **`active`** | ❌ | — | ✅ |
+| **`archived`** | ❌ | ✅ | — |
+
+**Two of these were derived while building C-8a rather than stated in this design, and are flagged as such because they are product decisions that were made in code:**
+
+- **Nothing returns to `draft`.** Without it, `key` immutability is trivially circumventable — archive, re-draft, rename, re-activate — and every URL, integration and cache tag pointing at the old key silently resolves to a different market. A rule whose only job is protecting a rule stated above.
+- **`archived → active` is permitted.** A market can reopen, and forbidding it makes a mis-archive unrecoverable. Safe precisely because the key is already frozen by then.
 
 RLS: `tenant_id` only. No channel policy — see the ADR.
 
@@ -106,6 +119,10 @@ Both mechanisms, doing different jobs:
 Resolving from the URL would let a crafted path override the gateway's binding. "Prefer the header" is equally wrong — silently picking a winner turns a mismatch into an exploit rather than an error.
 
 Resolution runs in the existing tenant-context middleware and rides the same `AsyncLocalStorage` — a field on the existing context, not a parallel mechanism.
+
+**Implementation status.** The **tenant** half shipped in C-2/C-3: `/api/{tenant}/graphql` routes, the header is the only trust input, and a URL/header mismatch is a `400` asserted in both directions. Those two backlog rows landed as one commit deliberately — routing the path without the assertion would have opened a window in which `/api/{victim}/graphql` served whatever the caller's header asked for.
+
+The **channel** segment is not routed yet (**C-2b**, Phase C). Until channels exist it would accept any key and resolve against nothing, which is a route wired to nothing. It lands beside C-12, asserted the same way the tenant segment now is.
 
 Unknown, archived, or cross-tenant channel → `404`. Missing channel → tenant default, **with a stated expiry**; once the storefront sends scope on every call, it becomes required.
 

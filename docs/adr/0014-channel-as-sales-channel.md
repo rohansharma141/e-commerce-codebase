@@ -150,6 +150,10 @@ One rate per channel cannot express per-product tax classes, destination-based U
 
 `tax_display` (gross/net) is **not** presentation, and this slice commits to making it real rather than trimming it. The pricing engine today computes net-only — subtotal, discount, tax added on top — and `capabilities` hardcodes `EXCLUSIVE` with a comment stating that is how the engine works. A per-channel `tax_display` therefore requires the engine to learn tax-inclusive computation (deriving base and tax out of a gross price, with its own rounding rules under [ADR-0005](0005-money-as-integer-cents-bankers-rounding.md)), not just a column and a dropdown. That work is in scope and sequenced (backlog C-29..C-31), with the engine change landing **before** the field becomes editable — a control wired to nothing would let an operator select gross and silently serve net, which is worse than no control. It is an EU legal requirement differing between B2C and B2B: compliance, not preference.
 
+**Update, 2026-08-28.** The engine half is built (C-29): `money-ops` gained `taxIncludedIn`, and `computeTotals` takes a `taxMode` defaulting to `net`. Tax is extracted as `gross × bps / (10000 + bps)` — not `mulBps`, which would overstate it by the rate itself — and net is derived by subtraction so `net + tax === gross` holds by construction rather than by luck of rounding.
+
+The mode is an **input only**; it is deliberately not a field on `ComputedTotals`. `capabilities.taxDisplay` is already where "how to read this tenant's prices" lives and the storefront already fetches it, so repeating it on every cart and order response would be a second source for one fact. What remains is C-30 (the per-channel field, and removing the `EXCLUSIVE` hardcode from capabilities) and C-31 (the storefront rendering it).
+
 ### 12. Per-channel pricing and catalogue scope are not in this decision
 
 The model admits them; this slice does not build them. Per-channel pricing has a sharp consequence for the denormalised price copy in the search index and needs its own record. See `docs/design/CHANNEL-MODEL.md` §7.
