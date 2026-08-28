@@ -96,7 +96,7 @@ Without it two operators editing the same channel silently lose one another's ch
 
 Both mechanisms, doing different jobs:
 
-- **URL** on cacheable reads: `/api/{tenant}/{channel}/graphql`. A cache key that every cache in the chain honours without configuration.
+- **URL** on cacheable reads: `/api/{tenant}/{channelKey}/graphql`, or `/api/{tenant}/graphql` for the tenant default. A cache key that every cache in the chain honours without configuration. `/api` is reserved because tenant ids may be `admin`; the segment carries the key, not the id; admin and system routes take no scope segment (ADR §2).
 - **Header**: `x-tenant-id`, `x-channel-id`, injected by the gateway from validated claims. The trust input.
 
 **The rule that is not deferrable:**

@@ -46,10 +46,28 @@ Seam: when authentication lands, an operator may need scoping to a subset of cha
 
 Cacheability and trust are different problems and are solved by different mechanisms.
 
-- **URL** (`/api/{tenant}/{channel}/…` on cacheable reads) is a **cache key**. Every cache in the chain — browser, CDN, Next — keys on it with no configuration.
+- **URL** (`/api/{tenant}/{channelKey}/graphql` on cacheable reads) is a **cache key**. Every cache in the chain — browser, CDN, Next — keys on it with no configuration.
 - **Header** (`x-tenant-id`, `x-channel-id`) is the **trust input**, injected by the gateway from validated claims.
 
 Today no shared cache stores these responses at all: the api answers GET with `cache-control: private, max-age=0`, which forbids CDN storage outright, and Next's data cache — the only cache in play — already keys on the full URL plus request headers. So the CDN argument is about intent, not the current deployment. URL scoping is adopted now for two reasons. Retrofit asymmetry: changing the URL shape after integrations, bookmarks and cache keys depend on it is brutal, while carrying scope from the start costs little. And honesty about where this is going: if shared caching is ever enabled — a separate decision with its own security analysis, because it means replacing `private` — correctness must not rest on per-CDN handling of `Vary` over custom headers, which ranges from ignoring it (serving one tenant's response to another, at a layer the application cannot observe) to refusing to cache. [CAVEATS](../CAVEATS.md) already records cross-tenant cache serving as the worst failure available here.
+
+**The grammar (G-2, decided 2026-08-28):**
+
+```
+GET /api/{tenant}/{channelKey}/graphql    channel-scoped read
+GET /api/{tenant}/graphql                 tenant's default channel
+GET /graphql                              unchanged; the shipped storefront keeps working
+```
+
+Three properties, each chosen against a specific failure.
+
+`/api` is a **reserved prefix**, because tenant ids match `/^[a-zA-Z0-9._-]{1,64}$/` — which admits `admin`, `health` and `graphql`. A bare `/{tenant}/…` would let a legitimately-named tenant collide with a real route, a bug that appears only when someone signs up with an unlucky name. The prefix puts tenant ids one level down where they cannot be mistaken for route names.
+
+The channel segment is **omitted, not sentinelled**, for the default. §4 argues against reserving the literal `default` as a key because an operator may legitimately want it; making the segment optional removes the reserved word entirely, so "unspecified" is structural rather than a magic value.
+
+The segment carries the **`key`, not the id**. §4 already makes `key` immutable *because* it appears in URLs; putting the UUID there instead would make that reasoning false and the logs unreadable.
+
+**Scope segments appear only where they scope something.** Reads are channel-scoped and take the path. `/admin/*` is *not* — it manages channels, and scoping a channel-management call to a channel is theatre — so admin stays header-only, as does `/system/*`. Tenant-prefixing admin for a uniform external grammar is available at the gateway as a rewrite plus header injection, which costs no change to a published contract; doing it in the api would break 16 documented paths, regenerate every client type, and double the surface the mismatch assertion below has to cover. The grammar matches commercetools, where `{projectKey}` leads the path and store scope is an explicit segment.
 
 **The security rule, which is not deferrable:**
 

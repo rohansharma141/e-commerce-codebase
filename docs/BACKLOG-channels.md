@@ -13,7 +13,7 @@ Sizing: BACKLOG.md's rule applies — XS/S/M only, anything larger is split **be
 | Gate | Question | Blocks |
 |---|---|---|
 | ~~**G-1**~~ | ~~Authentication: prerequisite slice, or gate with a written expiry?~~ **Closed 2026-08-28: prerequisite slice, minimum scope** — the four gateway behaviours ADR-0007 specifies, one operator role, IdP left as configuration. Needs ADR-0015 before C-20. | ~~C-20~~ |
-| **G-2** | URL scoping shape: `/api/{tenant}/{channel}/…` or an alternative path grammar? | C-2 |
+| ~~**G-2**~~ | ~~URL scoping shape?~~ **Closed 2026-08-28:** `/api/{tenant}/{channelKey}/graphql`, segment omitted for the tenant default, `/api` reserved because tenant ids may be `admin`. Reads only — admin and system stay header-only. | ~~C-2~~ |
 | **G-3** | Country/timezone for existing tenants where locale does not determine them — operator input, or documented default plus review flag? | C-11 |
 
 G-1 was the only one that could change the slice's size, and it did: an auth slice (~1–1.5 weeks) now precedes Phase E. G-2 and G-3 are shape, not scope.
@@ -28,9 +28,9 @@ Done first because everything after inherits it, and because URL scoping is chea
 Adopt what exists and extend it, rather than invent: cursor pagination in `GET /admin/products`' exact shape (`limit` + `cursor` → `{ items, nextCursor }`) extended to the other admin list endpoints; a filter/sort grammar; the existing Nest error envelope (`{ message, error, statusCode }`) kept, with the `409` body extending it by the current `version`; `PATCH` merge semantics (explicit `null` = inherit vs omitted = leave alone). Idempotency is convention-only here — the mechanism extraction is C-28. Applied to the existing admin surface and written down in `docs/design/ADMIN-API.md`.
 *Verification:* a conventions spec run against the live admin surface. If nothing was migrated, it fails on every non-conforming list endpoint by name (no `nextCursor`, cursor ignored); excluding one endpoint from the migration must turn the spec red on exactly that endpoint.
 
-**C-2 — URL scoping for cacheable reads** *(M — gated on G-2)*
-`/api/{tenant}/{channel}/graphql` alongside the existing route. Channel segment accepts the tenant default sentinel until channels exist.
-*Verification:* two requests to the scoped URL for different tenants return different bodies through a caching proxy in front. Without scoping, the second returns the first's body.
+**C-2 — URL scoping for cacheable reads** *(M)*
+`/api/{tenant}/{channelKey}/graphql` and `/api/{tenant}/graphql` alongside the existing `/graphql`, which keeps working. No sentinel: an omitted segment means the tenant default. **Non-goal, stated so nobody "completes" the pattern later:** `/admin/*` and `/system/*` do not take scope segments — admin manages channels and is tenant-scoped only, and a uniform external grammar, if ever wanted, is a gateway rewrite rather than an api change.
+*Verification:* two requests to the scoped URL for different tenants return different bodies through a caching proxy in front — without scoping the second returns the first's body. Plus a tenant literally named `admin` resolves through `/api/admin/graphql` rather than hitting the admin surface; on a bare `/{tenant}/…` grammar that request 404s or, worse, routes.
 
 **C-3 — Header is the trust input; URL is asserted** *(S)*
 Resolve tenant from `x-tenant-id` only; assert the URL segment matches; reject mismatch with `400`.
