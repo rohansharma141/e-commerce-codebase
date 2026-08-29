@@ -1,6 +1,10 @@
+import { randomUUID } from 'node:crypto';
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { EventBus } from '@platform/shared/event-bus';
 import {
+  CHANNELS_EVENTS,
   assertChannelValid,
+  resolveChannelConfig,
   validateChannelCreate,
   validateChannelUpdate,
   validatePromoteDefault,
@@ -78,7 +82,39 @@ export interface ChannelStore {
 export class ChannelsService implements IChannelsQuery, ChannelsAdmin {
   constructor(
     @Inject(ChannelsRepository) private readonly store: ChannelStore,
+    private readonly events: EventBus,
   ) {}
+
+  /**
+   * Publishes after the write has committed, never before.
+   *
+   * A consumer that receives `channels.created` and immediately reads through
+   * (C-14) must find the row. Publishing inside the write would let a rollback
+   * leave subscribers holding a channel that does not exist -- and the
+   * in-process bus makes that ordering easy to get wrong precisely because it
+   * feels synchronous.
+   */
+  private async emit(name: string, tenantId: string, payload: unknown): Promise<void> {
+    await this.events.publish({
+      name,
+      eventId: randomUUID(),
+      occurredAt: new Date().toISOString(),
+      tenantId,
+      payload: payload as never,
+    });
+  }
+
+  /**
+   * The resolved config that rides along on every channel event.
+   *
+   * Resolved rather than stored, so a consumer never has to ask this module
+   * what a `null` meant -- the follow-up read ADR-0014 §3 rules out.
+   */
+  private async resolved(tenantId: string, channel: Channel): Promise<ChannelConfig> {
+    const defaults = await this.store.findTenantDefaults(tenantId);
+    if (!defaults) throw new NotFoundException(`no channel configuration for ${tenantId}`);
+    return resolveChannelConfig(channel, defaults).config;
+  }
 
   // ── reads ───────────────────────────────────────────────────────────────
 
@@ -134,7 +170,12 @@ export class ChannelsService implements IChannelsQuery, ChannelsAdmin {
     await this.rejecting(async () =>
       validateChannelCreate(tenantId, dto, await this.context(tenantId)),
     );
-    return this.store.create(tenantId, dto);
+    const created = await this.store.create(tenantId, dto);
+    await this.emit(CHANNELS_EVENTS.Created, tenantId, {
+      channel: created,
+      config: await this.resolved(tenantId, created),
+    });
+    return created;
   }
 
   async update(
@@ -147,7 +188,36 @@ export class ChannelsService implements IChannelsQuery, ChannelsAdmin {
     await this.rejecting(async () =>
       validateChannelUpdate(current, dto, await this.context(tenantId)),
     );
-    return this.persist(() => this.store.update(tenantId, channelId, dto, expectedVersion));
+    const updated = await this.persist(() =>
+      this.store.update(tenantId, channelId, dto, expectedVersion),
+    );
+
+    // `changed` is computed by diffing the stored row before and after, not by
+    // trusting the caller's patch: a PATCH may name a field and set it to the
+    // value it already had, and reporting that as a change would invalidate
+    // caches for a write that moved nothing.
+    const changed = (Object.keys(dto) as (keyof Channel)[]).filter(
+      (k) => k in current && current[k] !== updated[k],
+    );
+
+    // Archival is its own event. A consumer subscribed only to `updated` would
+    // keep resolving a closed market, so the distinction is a separate name
+    // rather than a field someone has to remember to branch on.
+    if (updated.status === 'archived' && current.status !== 'archived') {
+      await this.emit(CHANNELS_EVENTS.Archived, tenantId, {
+        channelId: updated.id,
+        tenantId,
+        key: updated.key,
+      });
+      return updated;
+    }
+
+    await this.emit(CHANNELS_EVENTS.Updated, tenantId, {
+      channel: updated,
+      config: await this.resolved(tenantId, updated),
+      changed,
+    });
+    return updated;
   }
 
   /**
@@ -164,7 +234,17 @@ export class ChannelsService implements IChannelsQuery, ChannelsAdmin {
   async promoteDefault(tenantId: string, channelId: string): Promise<Channel> {
     const candidate = await this.require(tenantId, channelId);
     await this.rejecting(async () => validatePromoteDefault(candidate));
-    return this.store.promoteDefault(tenantId, channelId);
+    const previous = (await this.store.list(tenantId)).find((c) => c.config.isDefault);
+    const promoted = await this.store.promoteDefault(tenantId, channelId);
+    await this.emit(CHANNELS_EVENTS.DefaultChanged, tenantId, {
+      tenantId,
+      newDefaultChannelId: promoted.id,
+      newDefaultKey: promoted.key,
+      // Null only for a tenant's first channel. Read before the promotion, or
+      // it would report the channel that just won.
+      previousDefaultChannelId: previous?.config.channelId ?? null,
+    });
+    return promoted;
   }
 
   async updateTenantDefaults(
@@ -172,10 +252,24 @@ export class ChannelsService implements IChannelsQuery, ChannelsAdmin {
     dto: UpdateTenantDefaultsDto,
     expectedVersion: number,
   ): Promise<TenantDefaults> {
-    await this.requireDefaults(tenantId);
-    return this.persist(() =>
+    const before = await this.requireDefaults(tenantId);
+    const after = await this.persist(() =>
       this.store.updateTenantDefaults(tenantId, dto, expectedVersion),
     );
+
+    const changedFields = (Object.keys(dto) as (keyof TenantDefaults)[]).filter(
+      (k) => JSON.stringify(before[k]) !== JSON.stringify(after[k]),
+    );
+
+    // One event for the tenant, not one per affected channel. A defaults edit
+    // can move the resolved config of every channel that inherits the field, so
+    // fanning out per channel would be a thundering herd on a single operator
+    // click. Consumers invalidate that tenant's entries wholesale.
+    await this.emit(CHANNELS_EVENTS.TenantDefaultsUpdated, tenantId, {
+      defaults: after,
+      changedFields,
+    });
+    return after;
   }
 
   // ── plumbing ────────────────────────────────────────────────────────────

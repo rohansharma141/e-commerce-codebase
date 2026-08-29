@@ -175,9 +175,18 @@ For any tenant in `pricing.tenant_config` without a channel: `tenant_defaults` f
 The segment is asserted against `x-channel-id` exactly as the tenant segment is against `x-tenant-id`, mismatch is `400` both ways round, and **a channel URL with no channel header is also `400`** — the caller named a channel, and serving the default instead would answer a question nobody asked. Resolution and the `404` stay in C-12's middleware, which runs later and has the database connection this one does not.
 *Verified: 19/19 pass*, including an unknown channel returning `404` rather than falling back, and mismatch rejected in both directions.
 
-**C-13 — Events published**
-`channels.created`, `channels.updated`, `channels.archived`, `channels.tenant-defaults.updated` — module-prefixed like every existing event. Network-strict.
-*Verification:* a consumer asserts payload completeness — no field requires a follow-up lookup. Handler run twice produces the same state (idempotence).
+**C-13 — Events published** ✅
+`channels.created`, `channels.updated`, `channels.archived`, `channels.default-changed`, `channels.tenant-defaults.updated` — module-prefixed like every existing event. Published **after** the write commits, never inside it: a consumer that receives `created` and immediately reads through (C-14) must find the row, and the in-process bus makes that ordering easy to get wrong precisely because it feels synchronous.
+
+*Verified 2026-08-28, and made to fail twice.* Events go through a **real `EventBus`**, not a stubbed `publish()`, so payloads pass through its `structuredClone` — which is what actually enforces "network-strict". A `Set`, a class instance or a function fails in the test rather than at a network boundary that does not exist yet.
+
+- **Payload completeness.** `created` carries the **resolved** config, not the stored row. Mutating it to send the row's inherit-nulls failed the test — a consumer receiving `currencyCode: null` would have to ask this module what the tenant default is, which is the synchronous cross-module read ADR-0014 §3 rules out.
+- **Archival is its own event.** Mutating it to emit a plain `updated` failed 2 tests. A consumer subscribed only to `updated` would keep resolving a closed market; a separate name makes forgetting it a visible gap rather than a silent one.
+- **Idempotence.** A handler run twice on the same event reaches the same state, modelled as the upsert-by-`channelId` read-model C-14 will build. An appending handler ends with two rows.
+- **`changed` diffs the stored row, not the patch keys.** A `PATCH` may name a field and set it to the value it already had; reporting that as a change would invalidate caches for a write that moved nothing.
+- **One tenant-defaults event, not one per channel.** Fanning out per channel is a thundering herd on a single operator click — a tenant with fifty markets would emit fifty events for one edit.
+
+*A mistake worth recording:* the events contract already existed from C-6 and was overwritten on the assumption it was a stub, dropping `channels.default-changed` and `tenantId` from the archived payload. Caught by reading the diff before committing, and restored — the original's reasoning was better than the replacement's.
 
 **C-14 — Read-model in consuming modules**
 Lazy population, read-through on miss.

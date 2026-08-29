@@ -46,6 +46,17 @@ export interface ChannelCreatedPayload {
 export interface ChannelUpdatedPayload {
   readonly channel: Channel;
   readonly config: ChannelConfig;
+  /**
+   * Which fields this write actually changed.
+   *
+   * Consumers invalidate at different granularities: a rename touches display
+   * caches, a currency change invalidates every price ever rendered for the
+   * channel. Without this a consumer must diff against state it may not hold,
+   * and would conservatively invalidate everything on every edit. An empty
+   * array means a no-op write, which is worth being able to see rather than
+   * inferring from values that happen to match.
+   */
+  readonly changed: readonly (keyof Channel)[];
 }
 
 export interface ChannelArchivedPayload {

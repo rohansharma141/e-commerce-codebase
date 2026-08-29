@@ -8,7 +8,10 @@ import {
   type TenantDefaults,
   type UpdateChannelDto,
   type UpdateTenantDefaultsDto,
+  CHANNELS_EVENTS,
 } from '@platform/modules/channels/contracts';
+import { EventBus } from '@platform/shared/event-bus';
+import type { DomainEvent } from '@platform/shared/event-bus';
 import { VersionConflictError } from './channels.repository';
 import { ChannelsService, type ChannelStore } from './channels.service';
 
@@ -145,9 +148,22 @@ class FakeStore implements ChannelStore {
   }
 }
 
-const make = (rows?: Channel[]): { svc: ChannelsService; store: FakeStore } => {
+const make = (
+  rows?: Channel[],
+): { svc: ChannelsService; store: FakeStore; events: DomainEvent[] } => {
   const store = new FakeStore(rows);
-  return { svc: new ChannelsService(store), store };
+  const events: DomainEvent[] = [];
+  const bus = new EventBus();
+  // Subscribing to every name the module publishes, rather than stubbing
+  // publish(): this way the payloads go through the real bus, including its
+  // structuredClone, so a non-serializable field fails here rather than at a
+  // network boundary that does not exist yet.
+  for (const name of Object.values(CHANNELS_EVENTS)) {
+    bus.subscribe(name, (e) => {
+      events.push(e);
+    });
+  }
+  return { svc: new ChannelsService(store, bus), store, events };
 };
 
 describe('create', () => {

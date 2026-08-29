@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { Inject, Logger, Module, type OnModuleInit } from '@nestjs/common';
 import { DatabaseModule, MIGRATION_RUNNER, type MigrationRunner } from '@platform/shared/database';
+import { EventBusModule } from '@platform/shared/event-bus';
 import { ChannelsRepository } from './channels.repository';
 import { ChannelsController } from './channels.controller';
 import { ChannelsService } from './channels.service';
@@ -33,7 +34,7 @@ function migrationsDir(): string {
  * `CREATE EXTENSION` — the bug P0-2 fixed.
  */
 @Module({
-  imports: [DatabaseModule],
+  imports: [DatabaseModule, EventBusModule],
   controllers: [ChannelsController],
   providers: [ChannelsRepository, ChannelsService],
   exports: [ChannelsService],
