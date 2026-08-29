@@ -11,3 +11,4 @@ export * from './channels.repository';
 export * from './channels.service';
 export * from './channels.schema';
 export * from './channel-scope.middleware';
+export * from './channel-read-model.provider';

@@ -1,8 +1,8 @@
-import { Injectable, NotFoundException, type NestMiddleware } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException, type NestMiddleware } from '@nestjs/common';
 import type { NextFunction, Request, Response } from 'express';
 import { bindChannel } from '@platform/shared/tenant-context';
-import type { ChannelConfig } from '@platform/modules/channels/contracts';
-import { ChannelsService } from './channels.service';
+import type { ChannelConfig, IChannelsQuery } from '@platform/modules/channels/contracts';
+import { CHANNEL_QUERY } from './channel-read-model.provider';
 
 export const CHANNEL_HEADER = 'x-channel-id';
 
@@ -49,7 +49,14 @@ export const CHANNEL_HEADER = 'x-channel-id';
  */
 @Injectable()
 export class ChannelScopeMiddleware implements NestMiddleware {
-  constructor(private readonly channels: ChannelsService) {}
+  /**
+   * Depends on the read-model behind CHANNEL_QUERY, not on ChannelsService.
+   *
+   * This runs on every channel-scoped request, so it is the hot path the
+   * replica exists for: a warm entry answers without touching the database at
+   * all, and a miss falls through to the source rather than failing.
+   */
+  constructor(@Inject(CHANNEL_QUERY) private readonly channels: IChannelsQuery) {}
 
   async use(req: Request, _res: Response, next: NextFunction): Promise<void> {
     const raw = req.headers[CHANNEL_HEADER];

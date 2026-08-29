@@ -188,9 +188,19 @@ The segment is asserted against `x-channel-id` exactly as the tenant segment is 
 
 *A mistake worth recording:* the events contract already existed from C-6 and was overwritten on the assumption it was a stub, dropping `channels.default-changed` and `tenantId` from the archived payload. Caught by reading the diff before committing, and restored — the original's reasoning was better than the replacement's.
 
-**C-14 — Read-model in consuming modules**
-Lazy population, read-through on miss.
-*Verification:* stop publishing `channels.created`; a write referencing a new channel must still succeed via read-through. If it fails, validation is querying rather than replicating.
+**C-14 — Read-model in consuming modules** OK
+`ChannelReadModel` in `contracts/` -- framework-free, so every consuming module shares one implementation rather than three growing their own. Fed from the bus by `ChannelReadModelFeeder`, which lives in `src/` because a class in `contracts/` must not know about Nest.
+
+Consumers depend on the **`CHANNEL_QUERY` token**, never on `ChannelsService`. After extraction the token is backed by a read-model over an HTTP client and no consumer changes. Its first consumer is `ChannelScopeMiddleware`, which runs on every channel-scoped request -- the hot path the replica exists for, not a mechanism waiting for a user.
+
+*Verified: the stated check asserts events are an **optimisation**, not a requirement.* Tests come in pairs, because either alone passes a broken implementation:
+- **No events at all** -> a channel is still resolved, via read-through. Events-only would reject writes for channels that plainly exist, after a restart or a dropped message.
+- **Having read through once** -> the source is then *broken* and the answer still comes back. Read-through without caching passes the first test while quietly reintroducing the per-write query the design removes.
+- **An event alone** -> resolves with the source broken from the start, never asking.
+
+Also pinned: misses are **not** cached (caching a null makes a just-created channel unresolvable -- a miss becoming a durable wrong answer); a rename drops the entry filed under the old key; a defaults edit invalidates that tenant *wholesale* while leaving other tenants warm; `listActive` never answers from the replica, because a partial replica cannot answer a completeness question without silently hiding markets.
+
+*Live confirmation:* valid channels `200`, unknown `404`, and **cross-tenant `404`** -- `t-books` asking for `t-fashion`'s `de` is refused, proving the composite key does not leak across tenants.
 
 **C-15 — Reconciliation and TTL**
 Periodic full reload; bounded staleness. The reload binds `app.system_worker` (the outbox precedent) — with no bound tenant, RLS would feed it zero rows and it would report success reading nothing.

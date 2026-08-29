@@ -6,6 +6,11 @@ import { EventBusModule } from '@platform/shared/event-bus';
 import { ChannelsRepository } from './channels.repository';
 import { ChannelsController } from './channels.controller';
 import { ChannelsService } from './channels.service';
+import {
+  CHANNEL_QUERY,
+  ChannelReadModelFeeder,
+  channelReadModelProvider,
+} from './channel-read-model.provider';
 
 export const CHANNELS_SCHEMA_NAME = 'channels';
 
@@ -36,8 +41,15 @@ function migrationsDir(): string {
 @Module({
   imports: [DatabaseModule, EventBusModule],
   controllers: [ChannelsController],
-  providers: [ChannelsRepository, ChannelsService],
-  exports: [ChannelsService],
+  providers: [
+    ChannelsRepository,
+    ChannelsService,
+    channelReadModelProvider,
+    ChannelReadModelFeeder,
+  ],
+  // CHANNEL_QUERY is the read surface other modules consume (C-16 onwards).
+  // ChannelsService stays exported for the composition root only.
+  exports: [ChannelsService, CHANNEL_QUERY],
 })
 export class ChannelsModule implements OnModuleInit {
   private readonly logger = new Logger(ChannelsModule.name);
