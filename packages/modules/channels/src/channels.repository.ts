@@ -4,6 +4,7 @@ import {
   TENANT_DRIZZLE,
   clampLimit,
   decodeCursor,
+  withTenantTransaction,
   toPage,
   type TenantDrizzleAccessor,
 } from '@platform/shared/database';
@@ -80,19 +81,29 @@ const toDefaults = (r: TenantDefaultsRow): TenantDefaults => ({
 });
 
 /**
- * Applies `PATCH` merge semantics to one column.
+ * Applies `PATCH` merge semantics to one field.
  *
  * `undefined` means the caller omitted the field: leave it alone, which for a
  * SQL UPDATE means not naming the column at all. `null` means set to null,
  * i.e. resume inheriting. Collapsing the two would make "stop overriding this"
  * inexpressible — see ADMIN-API.md §3.
+ *
+ * `field` is the **Drizzle schema property** (`taxRateBps`), NOT the SQL column
+ * (`tax_rate_bps`). Drizzle maps the former to the latter; handed a column name
+ * it does not recognise, it silently drops the key — the update still succeeds,
+ * still bumps `version`, still returns a row, and changes nothing. That is
+ * exactly what this file shipped with, and the integration test caught it by
+ * asserting the new value rather than the absence of an error.
+ *
+ * The key type is bound to the row shape so the compiler now rejects a column
+ * name outright.
  */
-function put<T>(
-  values: Record<string, unknown>,
-  column: string,
-  value: T | null | undefined,
+function put<V extends Record<string, unknown>>(
+  values: V,
+  field: keyof V & string,
+  value: unknown,
 ): void {
-  if (value !== undefined) values[column] = value;
+  if (value !== undefined) (values as Record<string, unknown>)[field] = value;
 }
 
 @Injectable()
@@ -146,21 +157,24 @@ export class ChannelsRepository {
     dto: UpdateTenantDefaultsDto,
     expectedVersion: number,
   ): Promise<TenantDefaults> {
-    const set: Record<string, unknown> = {
+    const set: Partial<Record<keyof TenantDefaultsRow, unknown>> = {
       updatedAt: sql`now()`,
       version: sql`${tenantDefaults.version} + 1`,
     };
-    put(set, 'currency_code', dto.currencyCode);
-    put(set, 'default_locale', dto.defaultLocale);
-    put(set, 'supported_locales', dto.supportedLocales ? [...dto.supportedLocales] : undefined);
+    put(set, 'currencyCode', dto.currencyCode);
+    put(set, 'defaultLocale', dto.defaultLocale);
+    put(set, 'supportedLocales', dto.supportedLocales ? [...dto.supportedLocales] : undefined);
     put(set, 'country', dto.country);
     put(set, 'timezone', dto.timezone);
-    put(set, 'tax_display', dto.taxDisplay);
-    put(set, 'tax_rate_bps', dto.taxRateBps);
+    put(set, 'taxDisplay', dto.taxDisplay);
+    put(set, 'taxRateBps', dto.taxRateBps);
 
     const [row] = await this.db
       .update(tenantDefaults)
-      .set(set)
+      // Cast: `set` is built dynamically for PATCH semantics, so its keys are
+      // known only at runtime. The `put` helper constrains them to real schema
+      // properties, which is the part that was actually wrong before.
+      .set(set as Record<string, never>)
       .where(
         and(
           eq(tenantDefaults.tenantId, tenantId),
@@ -369,25 +383,25 @@ export class ChannelsRepository {
     dto: UpdateChannelDto & { readonly key?: string },
     expectedVersion: number,
   ): Promise<Channel> {
-    const set: Record<string, unknown> = {
+    const set: Partial<Record<keyof ChannelRow, unknown>> = {
       updatedAt: sql`now()`,
       version: sql`${channels.version} + 1`,
     };
     put(set, 'key', dto.key);
     put(set, 'name', dto.name);
     put(set, 'status', dto.status);
-    put(set, 'currency_code', dto.currencyCode);
-    put(set, 'default_locale', dto.defaultLocale);
-    put(set, 'supported_locales', dto.supportedLocales ? [...dto.supportedLocales] : dto.supportedLocales);
+    put(set, 'currencyCode', dto.currencyCode);
+    put(set, 'defaultLocale', dto.defaultLocale);
+    put(set, 'supportedLocales', dto.supportedLocales ? [...dto.supportedLocales] : dto.supportedLocales);
     put(set, 'country', dto.country);
     put(set, 'timezone', dto.timezone);
-    put(set, 'tax_display', dto.taxDisplay);
-    put(set, 'tax_rate_bps', dto.taxRateBps);
-    put(set, 'external_ref', dto.externalRef);
+    put(set, 'taxDisplay', dto.taxDisplay);
+    put(set, 'taxRateBps', dto.taxRateBps);
+    put(set, 'externalRef', dto.externalRef);
 
     const [row] = await this.db
       .update(channels)
-      .set(set)
+      .set(set as Record<string, never>)
       .where(
         and(
           eq(channels.tenantId, tenantId),
@@ -421,13 +435,14 @@ export class ChannelsRepository {
    * two statements.
    */
   async promoteDefault(tenantId: string, channelId: string): Promise<Channel> {
-    return this.db.transaction(async (tx) => {
-      await tx
+    return withTenantTransaction(async () => {
+      const db = this.db;
+      await db
         .update(channels)
         .set({ isDefault: false, updatedAt: sql`now()` })
         .where(and(eq(channels.tenantId, tenantId), eq(channels.isDefault, true)));
 
-      const [row] = await tx
+      const [row] = await db
         .update(channels)
         .set({
           isDefault: true,

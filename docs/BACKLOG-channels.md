@@ -4,20 +4,15 @@ Work breakdown for [ADR-0014](../adr/0014-channel-as-sales-channel.md) and [CHAN
 
 House rules applied: one item, one commit, one stated verification. Anything needing the word "and" between deliverables is two items. Every verification states **what it prints if the change did nothing** — a check that cannot fail is not a check.
 
-> ### ⚠️ Unverified work on this branch
+> ### ✅ Verified 2026-08-28 — and it found three real bugs
 >
-> **C-5 and C-7 were written without a database available**, at the user's explicit direction after the trade-off was raised. They compile, lint, and are wired into the api — and **nothing else about them is known**. The integration spec that would check them exists and is gated on `TEST_DATABASE_URL`, so it currently **skips** (19 tests) rather than passing; a green run today says nothing about this code.
+> C-5, C-7, C-10, C-11a and C-2b were written without a database, then verified against a **cold** one (`docker compose down -v`). **134 channels tests, 45 admin-conventions, 19 scoped-graphql — all green.** Three defects were found, every one of them silent:
 >
-> **C-8b's guards are separately verified** and do not share this uncertainty — they run against an in-memory store precisely so they do not. What is unverified is the SQL underneath: whether it persists what the guards permitted, whether RLS scopes it, and whether concurrent promotion serialises.
+> 1. **The api would not boot at all.** `apps/api/Dockerfile` copies each module's migrations explicitly and channels had no line, so the container died with *"channels migrations directory not found"*. Invisible locally — `nx serve` and every test read migrations straight from the source tree, so only a built image fails. The Dockerfile now carries a warning for the next module.
+> 2. **Every transaction silently saw zero rows.** Drizzle's `db.transaction()` resolves to the *parent* client's `begin()`, taking a fresh pool connection with no `app.tenant_id` — so RLS hid everything inside it. Proven rather than guessed, with a probe printing `OUTSIDE: probe-tenant  INSIDE: null`. No error is raised: `UPDATE … WHERE <policy hides the row>` is legal SQL affecting zero rows. This had already been discovered once in `checkout.service.ts` and solved locally there, so it is now extracted as **`withTenantTransaction`** in shared, with the failure mode written down. This one bug caused **17 of the 19** initial failures.
+> 3. **`PATCH` updated nothing.** The dynamic `set` object used SQL column names (`tax_rate_bps`) where Drizzle wants schema properties (`taxRateBps`). Unrecognised keys are dropped, so the update succeeded, bumped `version`, returned a row, and changed nothing. The `put` helper's key type is now bound to the row shape — a column name is a **compile error**, confirmed by reintroducing one.
 >
-> Nothing else built after these should be trusted to rest on them until this is cleared. To clear it:
->
-> ```
-> docker compose down -v && docker compose up -d          # cold, per CLAUDE.md
-> TEST_DATABASE_URL=postgres://platform:platform@localhost:5432/platform >   pnpm nx test channels-src --skipNxCache
-> ```
->
-> Migrations especially: this project has been bitten twice by migrations that were fine on a warm machine and fatal on first boot, because the ledger means a developer never re-runs the failing path.
+> All three share a shape worth naming: **each one succeeded while doing nothing.** None would have been caught by a check asserting "no error was thrown"; each was caught by asserting the new value was actually there.
 
 Sizing: BACKLOG.md's rule applies — XS/S/M only, anything larger is split **before it is started**. Phase A is sized now; each later phase gets sized and split when it is next up, not before. Items are numbered by arrival and sequenced by phase, so C-28+ appearing mid-list is deliberate.
 
@@ -82,9 +77,9 @@ Extract checkout's `idempotency-key` handling — currently private to `checkout
 
 ## Phase B — the channels module
 
-**C-5 — Schema and migrations** ⚠️ *written, UNVERIFIED*
+**C-5 — Schema and migrations** ✅ *verified on a cold database*
 `channels.tenant_defaults` and `channels.channels`, RLS on `tenant_id` with the `app.system_worker` clause, `unique (tenant_id, key)`, partial `unique (tenant_id) where is_default`, a key-format CHECK mirroring the contracts regex, and status/tax CHECK constraints. Module wired into the api so migrations run at boot.
-*Verification — written, NOT RUN:* `channels.integration.spec.ts` covers all of it. Run on a **cold** database as the **non-superuser** role. Two channels in one tenant are both visible (the negative control against someone later adding a channel RLS policy), a second default insert fails, the same key is allowed under two tenants, and a URL-breaking key is rejected. Every isolation assertion is paired with a **non-zero** assertion on the same connection, because a policy that hides everything passes an isolation test that only checks what is absent.
+*Verified 2026-08-28.* Migration applied cold (`applied=2 skipped=0`); `\d` confirms the partial unique index keeps its `WHERE is_default` predicate, every CHECK constraint exists, and RLS reports *forced row security enabled* with the system-worker clause. Run on a **cold** database as the **non-superuser** role. Two channels in one tenant are both visible (the negative control against someone later adding a channel RLS policy), a second default insert fails, the same key is allowed under two tenants, and a URL-breaking key is rejected. Every isolation assertion is paired with a **non-zero** assertion on the same connection, because a policy that hides everything passes an isolation test that only checks what is absent.
 
 **C-6 — Contracts** ✅
 `Channel` (stored, nullable = inherit), `ChannelConfig` (resolved), `ResolvedChannel` (config + which fields were inherited), `IChannelsQuery` / `ChannelsAdmin`, event types, and two pure functions: `resolveChannelConfig` and `minorUnitsFor`.
@@ -101,9 +96,9 @@ Two bugs the tests were written to catch, both of which a thinner suite would ha
 
 `minorUnitsFor` derives from `Intl` rather than a table, which gets the three-decimal Gulf currencies (KWD, BHD) right — the ones hand-kept tables miss. Its known limit is pinned rather than left to be found: a well-formed but unassigned code (`XYZ`) silently yields 2, because Intl reports the CLDR default instead of failing. Catching a typo'd currency is write-time validation's job (**C-8**), not this function's. `capabilities.module.ts` still holds a five-entry table with a fallback of 2; it becomes redundant at C-18.
 
-**C-7 — Repository** ⚠️ *written, UNVERIFIED* *(reduced: resolution moved to C-6)*
+**C-7 — Repository** ✅ *verified* *(reduced: resolution moved to C-6)*
 Persistence for both tables, resolving through C-6's pure `resolveChannelConfig` rather than reimplementing the coalesce. Includes optimistic concurrency (`version`, `VersionConflictError` carrying the current version so a client can re-read), `PATCH` merge semantics at the SQL level (an omitted field is not named in the UPDATE; an explicit null is), and `promoteDefault` as a single transaction with the unset strictly before the set.
-*Verification — written, NOT RUN:* inherit and override asserted in both directions; unknown, archived and cross-tenant keys all resolve to null and never to the default; a stale version is rejected; two concurrent promotions leave exactly one default rather than an intermittent constraint violation.
+*Verified.* Inherit and override asserted in both directions; unknown, archived and cross-tenant keys all resolve to null and never to the default; a stale version is rejected; two concurrent promotions leave exactly one default rather than an intermittent constraint violation.
 
 **Still outstanding for C-7, and not attempted:** the invariant predicates from C-8a are *not yet called* by this repository — that remains C-8b. The repository will currently accept a rename past `draft` and a currency change after transacting. That is the documented split, not an oversight, but it means the repository is not safe to expose through C-10's endpoints until C-8b lands.
 
@@ -135,10 +130,10 @@ Each rejection asserts `store.writes` is empty, not merely that an error was thr
 `version` on write, `409` on mismatch, `ETag`/`If-Match` on REST, required input on GraphQL mutations.
 *Verification:* two writes with the same expected version; the second returns `409`. Without version checking, both succeed and the first change is lost silently.
 
-**C-10 — Admin CRUD endpoints** ⚠️ *written; the pure parts verified, the HTTP path not*
+**C-10 — Admin CRUD endpoints** ✅ *verified end to end*
 `GET/POST /admin/channels`, `GET/PATCH /admin/channels/:id`, `POST /admin/channels/:id/archive`, `POST /admin/channels/:id/promote-default`, `GET/PATCH /admin/tenant-defaults`. Cursor-paginated on `key`, the standard error envelope, `PATCH` merging with explicit-null meaning inherit, `If-Match` carrying the version and `409` returning `currentVersion`. `@ApiProperty` classes so `/docs-json` shows real schemas.
 
-*Verification:* `/admin/channels` is now a row in `admin-conventions.integration.spec.ts`, which is C-10's stated check — a new endpoint satisfies the conventions rather than the conventions being restated for it. **That spec needs a live api and has not been run.**
+*Verification:* `/admin/channels` is now a row in `admin-conventions.integration.spec.ts`, which is C-10's stated check — a new endpoint satisfies the conventions rather than the conventions being restated for it. **Run 2026-08-28: 45/45 pass**, the 7 new `/admin/channels` rows included. `/docs-json` went 27 → 35 schemas, all with real properties, and the generated REST client was regenerated so R-4 stays green.
 
 Two pieces of controller logic are not delegation, and both *are* verified by tests that run, because both are pure and both are the kind of thing that silently half-works:
 - **`If-Match` is required.** Mutating it to default silently to `0` failed the test. Treating an absent precondition as "no precondition" is how optimistic concurrency quietly stops applying to the one client that forgot it — the client that overwrites someone else's edit. Note TypeScript itself refuses the naive removal: the throw is what narrows `string | undefined`.
@@ -146,7 +141,7 @@ Two pieces of controller logic are not delegation, and both *are* verified by te
 
 *Deliberately not built:* the GraphQL half. Nothing consumes a channel query until the storefront does, and an unused public surface is a maintenance cost with no consumer. It lands with **C-19**, where it has one.
 
-**C-11a — Seed writes channel fixtures** ✅ *written; runs only with a database*
+**C-11a — Seed writes channel fixtures** ✅ *verified*
 `t-fashion` gets **two** channels — `uk` (inherits everything) and `de` (EUR/`de-DE`/DE/`Europe/Berlin`, overriding everything). `t-electronics` and `t-books` get one US channel each. Tenant defaults carry real values per tenant.
 
 The two-channel tenant is the point: ADR-0014's negative control is *"two channels with different currencies; assert responses differ"*, and one channel per tenant passes even if resolution is hardcoded to the default. It is also what lets `/admin/channels` be a row in the conventions spec at all, since that needs two rows to paginate. `uk` inheriting and `de` overriding means one fixture exercises both directions of the coalesce.
@@ -163,7 +158,7 @@ For any tenant in `pricing.tenant_config` without a channel: `tenant_defaults` f
 
 ## Phase C — resolution and propagation
 
-**C-12 — Channel on the request context** ✅ *(the resolution branch is verified; the HTTP path is not)*
+**C-12 — Channel on the request context** ✅ *verified*
 `ChannelScopeMiddleware` resolves `x-channel-id` and binds the channel onto the existing tenant context — one `AsyncLocalStorage`, a field on the context, not a parallel mechanism.
 
 *Where it lives, and why not in `tenant.middleware.ts`:* a boundary constraint. `scope:shared` may only depend on `scope:shared`, so the shared tenant middleware cannot reach the channels contracts — and it could not do the work anyway, because resolution needs the tenant-bound connection that `TenantBindingMiddleware` establishes afterwards. So the context carries `channelId`/`channelKey` as plain strings (the only shape shared may name) and the channels module fills them in third. `bindChannel` is the single supported mutation point.
@@ -172,13 +167,13 @@ For any tenant in `pricing.tenant_config` without a channel: `tenant_defaults` f
 
 *Verification — RUN, and made to fail.* The branch that matters is **absent versus unknown**, and conflating them is the failure this design is arranged against, so it is tested directly rather than inferred from an HTTP round trip. Mutating the middleware to fall back silently instead of throwing failed 2 tests, including one asserting `next()` was *not* called — a middleware that threw and continued would serve the request unscoped, which is the fallback it just refused. 115 channels tests pass.
 
-**Not covered by anything that has run:** that `findByKey` genuinely excludes archived and cross-tenant rows. The fake assumes it does; the real check is in `channels.integration.spec.ts`, unrun.
+`findByKey` excluding archived and cross-tenant rows is now confirmed against real RLS, not assumed by a fake.
 
-**C-2b — The channel segment of the URL grammar** ⚠️ *written, unrun*
+**C-2b — The channel segment of the URL grammar** ✅ *verified*
 `/api/{tenant}/{channelKey}/graphql` alongside `/api/{tenant}/graphql`. The two forms are distinguished by segment count alone, which is why a channel keyed `graphql` is unambiguous rather than a collision — `/api/t/graphql` is the default, `/api/t/graphql/graphql` names that channel. No `default` sentinel is reserved.
 
 The segment is asserted against `x-channel-id` exactly as the tenant segment is against `x-tenant-id`, mismatch is `400` both ways round, and **a channel URL with no channel header is also `400`** — the caller named a channel, and serving the default instead would answer a question nobody asked. Resolution and the `404` stay in C-12's middleware, which runs later and has the database connection this one does not.
-*Verification:* written into `scoped-graphql.integration.spec.ts`; needs a live api.
+*Verified: 19/19 pass*, including an unknown channel returning `404` rather than falling back, and mismatch rejected in both directions.
 
 **C-13 — Events published**
 `channels.created`, `channels.updated`, `channels.archived`, `channels.tenant-defaults.updated` — module-prefixed like every existing event. Network-strict.

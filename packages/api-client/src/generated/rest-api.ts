@@ -93,6 +93,94 @@ export interface paths {
         patch: operations["ProductsController_update"];
         trace?: never;
     };
+    "/admin/channels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List channels (by key, cursor-paginated; includes drafts and archived) */
+        get: operations["ChannelsController_list"];
+        put?: never;
+        /** Create a channel (defaults to draft) */
+        post: operations["ChannelsController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/channels/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one channel, with which fields are inherited */
+        get: operations["ChannelsController_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update a channel. Omitted fields are left alone; explicit null resumes inheriting. */
+        patch: operations["ChannelsController_update"];
+        trace?: never;
+    };
+    "/admin/channels/{id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive a channel. Rejected for the default and for the last active channel. */
+        post: operations["ChannelsController_archive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/channels/{id}/promote-default": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Make this the tenant default. Must be active. */
+        post: operations["ChannelsController_promoteDefault"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/tenant-defaults": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The per-tenant baseline every channel inherits from */
+        get: operations["ChannelsController_getDefaults"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update the baseline. Changes every channel that has not overridden the edited field. */
+        patch: operations["ChannelsController_updateDefaults"];
+        trace?: never;
+    };
     "/admin/tenant-config": {
         parameters: {
             query?: never;
@@ -389,6 +477,211 @@ export interface components {
             items: components["schemas"]["Product"][];
             /** @description Opaque token for the next page, or null on the last page. Pass it back as ?cursor=. Do not parse it — the sort key is `id`. */
             nextCursor: string | null;
+        };
+        ChannelConfigResponse: {
+            /** Format: uuid */
+            channelId: string;
+            /** @example t-fashion */
+            tenantId: string;
+            /**
+             * @description Immutable once the channel leaves draft.
+             * @example uk
+             */
+            key: string;
+            /**
+             * @description Display only; freely mutable.
+             * @example United Kingdom
+             */
+            name: string;
+            /** @enum {string} */
+            status: "draft" | "active" | "archived";
+            isDefault: boolean;
+            /**
+             * @description ISO 4217.
+             * @example GBP
+             */
+            currencyCode: string;
+            /**
+             * @description Decimal places for currencyCode, derived from ISO 4217 rather than stored. Every money value in this API is an integer in minor units; a consumer that assumes 2 will be wrong for JPY.
+             * @example 2
+             */
+            currencyMinorUnits: number;
+            /**
+             * @description BCP 47. Drives formatting, not translation.
+             * @example en-GB
+             */
+            defaultLocale: string;
+            /**
+             * @example [
+             *       "en-GB"
+             *     ]
+             */
+            supportedLocales: string[];
+            /**
+             * @description ISO 3166-1 alpha-2.
+             * @example GB
+             */
+            country: string;
+            /**
+             * @description IANA.
+             * @example Europe/London
+             */
+            timezone: string;
+            /**
+             * @description Whether listed prices include tax. The engine computes both (C-29); until C-30 this reports what the tenant is configured for.
+             * @enum {string}
+             */
+            taxDisplay: "gross" | "net";
+            /**
+             * @description Basis points. One flat rate per channel — no tax classes, no destination-based tax.
+             * @example 2000
+             */
+            taxRateBps: number | null;
+        };
+        ResolvedChannelResponse: {
+            config: components["schemas"]["ChannelConfigResponse"];
+            /**
+             * @description Which fields came from tenant defaults rather than being overridden on this channel. An array, not a set: `inherited` is a Set in the domain model and JSON.stringify turns a Set into `{}`, so it is converted at this boundary. The back office needs this to distinguish "inherited" from "happens to equal the default" — the two look identical in `config` but behave differently when the defaults are edited.
+             * @example [
+             *       "country",
+             *       "timezone"
+             *     ]
+             */
+            inherited: string[];
+        };
+        ChannelListResponse: {
+            items: components["schemas"]["ResolvedChannelResponse"][];
+            /** @description Opaque token for the next page, or null on the last page. Do not parse it — the sort key is `key`. */
+            nextCursor: string | null;
+        };
+        CreateChannelBody: {
+            /**
+             * @description Lowercase, URL-safe, unique per tenant. Immutable once the channel leaves draft.
+             * @example uk
+             */
+            key: string;
+            /** @example United Kingdom */
+            name: string;
+            /**
+             * @description Defaults to draft, so a market can be prepared before it is exposed.
+             * @default draft
+             * @enum {string}
+             */
+            status: "draft" | "active" | "archived";
+            /** @description Omit or null to inherit. */
+            currencyCode?: string | null;
+            defaultLocale?: string | null;
+            supportedLocales?: string[] | null;
+            country?: string | null;
+            timezone?: string | null;
+            /** @enum {string|null} */
+            taxDisplay?: "gross" | "net" | null;
+            taxRateBps?: number | null;
+            externalRef?: string | null;
+        };
+        ChannelResponse: {
+            /** Format: uuid */
+            id: string;
+            /** @example t-fashion */
+            tenantId: string;
+            /** @example uk */
+            key: string;
+            /** @example United Kingdom */
+            name: string;
+            /** @enum {string} */
+            status: "draft" | "active" | "archived";
+            isDefault: boolean;
+            /** @description Set once an order has been placed on this channel. Freezes currencyCode: changing it afterwards would reinterpret every existing order’s minor-unit integers. */
+            hasTransacted: boolean;
+            /**
+             * @description Send back as `If-Match` on a write.
+             * @example 1
+             */
+            version: number;
+            /** @description null = inherit from tenant defaults. */
+            currencyCode: string | null;
+            /** @description null = inherit. */
+            defaultLocale: string | null;
+            /** @description null = inherit. */
+            supportedLocales: string[] | null;
+            /** @description null = inherit. */
+            country: string | null;
+            /** @description null = inherit. */
+            timezone: string | null;
+            /**
+             * @description null = inherit.
+             * @enum {string|null}
+             */
+            taxDisplay: "gross" | "net" | null;
+            /** @description null = inherit. */
+            taxRateBps: number | null;
+            /** @description Opaque mapping to an ERP/OMS/PIM. The platform never interprets it. */
+            externalRef: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        UpdateChannelBody: {
+            /** @example UK & Ireland */
+            name?: string;
+            /** @enum {string} */
+            status?: "draft" | "active" | "archived";
+            /** @description null resumes inheriting. */
+            currencyCode?: string | null;
+            defaultLocale?: string | null;
+            supportedLocales?: string[] | null;
+            country?: string | null;
+            timezone?: string | null;
+            /** @enum {string|null} */
+            taxDisplay?: "gross" | "net" | null;
+            taxRateBps?: number | null;
+            externalRef?: string | null;
+        };
+        TenantDefaultsResponse: {
+            /** @example t-fashion */
+            tenantId: string;
+            /** @example USD */
+            currencyCode: string;
+            /** @example en-US */
+            defaultLocale: string;
+            /**
+             * @example [
+             *       "en-US"
+             *     ]
+             */
+            supportedLocales: string[];
+            /** @example US */
+            country: string;
+            /** @example America/New_York */
+            timezone: string;
+            /** @enum {string} */
+            taxDisplay: "gross" | "net";
+            /** @example 875 */
+            taxRateBps: number | null;
+            /**
+             * @description Send this back as `If-Match` on a write. A mismatch is a 409.
+             * @example 3
+             */
+            version: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        UpdateTenantDefaultsBody: {
+            /** @example USD */
+            currencyCode?: string;
+            /** @example en-US */
+            defaultLocale?: string;
+            supportedLocales?: string[];
+            /** @example US */
+            country?: string;
+            /** @example America/New_York */
+            timezone?: string;
+            /** @enum {string} */
+            taxDisplay?: "gross" | "net";
+            taxRateBps?: number | null;
         };
         Price: {
             /** @example t-fashion */
@@ -938,6 +1231,200 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    ChannelsController_list: {
+        parameters: {
+            query?: {
+                /** @description Defaults to 50, max 100. */
+                limit?: string;
+                /** @description Opaque token from a previous response's nextCursor. Do not parse it. */
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelListResponse"];
+                };
+            };
+        };
+    };
+    ChannelsController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateChannelBody"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelResponse"];
+                };
+            };
+        };
+    };
+    ChannelsController_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResolvedChannelResponse"];
+                };
+            };
+        };
+    };
+    ChannelsController_update: {
+        parameters: {
+            query?: never;
+            header: {
+                "if-match": string;
+                /** @description The `version` from a prior read. Required — an absent precondition is a 400. */
+                "If-Match": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateChannelBody"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelResponse"];
+                };
+            };
+            /** @description Someone else wrote first. The body carries `currentVersion` so a client can re-read and retry in one more round trip. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ChannelsController_archive: {
+        parameters: {
+            query?: never;
+            header: {
+                "if-match": string;
+                "If-Match": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelResponse"];
+                };
+            };
+        };
+    };
+    ChannelsController_promoteDefault: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelResponse"];
+                };
+            };
+        };
+    };
+    ChannelsController_getDefaults: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantDefaultsResponse"];
+                };
+            };
+        };
+    };
+    ChannelsController_updateDefaults: {
+        parameters: {
+            query?: never;
+            header: {
+                "if-match": string;
+                "If-Match": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateTenantDefaultsBody"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantDefaultsResponse"];
+                };
             };
         };
     };

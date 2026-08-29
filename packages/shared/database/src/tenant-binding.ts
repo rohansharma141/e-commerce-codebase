@@ -82,3 +82,48 @@ export interface TenantDrizzleAccessor {
 export const tenantDrizzleAccessor: TenantDrizzleAccessor = {
   get: () => currentTenantDrizzleOrThrow(),
 };
+/**
+ * Runs `fn` inside a transaction **on the request's tenant-bound connection**.
+ *
+ * Use this instead of `db.transaction()`. Always.
+ *
+ * The Drizzle client from `TENANT_DRIZZLE` is built on a Proxy of the
+ * request's reserved postgres-js connection. Single statements route through
+ * it correctly, but `db.transaction()` resolves to the PARENT client's
+ * `begin()`, which pulls a **fresh** connection from the pool — one with no
+ * `app.tenant_id` set. RLS then matches zero rows for everything inside the
+ * transaction.
+ *
+ * The failure is silent, which is what makes it worth a helper. Reads return
+ * empty and writes report success having changed nothing; no error is raised,
+ * because "UPDATE ... WHERE <policy hides the row>" is a perfectly legal
+ * statement that affects zero rows. It was found twice: once in checkout, and
+ * again in the channels default-promotion, where a demonstrated probe printed
+ * `OUTSIDE: probe-tenant  INSIDE: null`.
+ *
+ * Manual BEGIN/COMMIT on the reserved connection is the fix, so every Drizzle
+ * op inside inherits both the transaction and the GUC.
+ */
+export async function withTenantTransaction<T>(fn: () => Promise<T>): Promise<T> {
+  const binding = tenantBindingStorage.getStore();
+  if (!binding) {
+    throw new Error(
+      'withTenantTransaction requires an active tenant binding. It must run inside ' +
+        'withTenantConnection(), or the transaction would silently see zero rows.',
+    );
+  }
+  await binding.reserved`BEGIN`;
+  try {
+    const result = await fn();
+    await binding.reserved`COMMIT`;
+    return result;
+  } catch (err) {
+    try {
+      await binding.reserved`ROLLBACK`;
+    } catch {
+      // The connection is being torn down or already aborted; surface the
+      // original failure rather than masking it with a rollback error.
+    }
+    throw err;
+  }
+}
