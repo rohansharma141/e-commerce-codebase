@@ -77,6 +77,8 @@ describeLive('optimistic concurrency on the wire', () => {
    * is freely editable, so a rejection here is about concurrency rather than an
    * invariant firing for an unrelated reason.
    */
+  const created: string[] = [];
+
   const makeDraft = async (): Promise<ChannelBody> => {
     const key = `probe-${randomUUID().slice(0, 8)}`;
     const { status, body } = await req<ChannelBody>('/admin/channels', {
@@ -84,8 +86,41 @@ describeLive('optimistic concurrency on the wire', () => {
       body: JSON.stringify({ key, name: 'Concurrency probe' }),
     });
     expect(status).toBe(201);
+    created.push(body.id);
     return body;
   };
+
+  /**
+   * Archive every probe this run created.
+   *
+   * The first version of this file left its drafts behind, and they accumulated
+   * in the demo tenant's `/admin/channels` list across runs — six per run,
+   * found when a later listing came back as `de, probe-…, probe-…, probe-…`.
+   * A suite that edits the stack people demo from, and does not put it back,
+   * leaves the next reader guessing which rows are real.
+   *
+   * Archived rather than deleted because there is no delete: channels are
+   * archived by design, since order snapshots name them (C-16a). An archived
+   * probe no longer resolves, no longer counts as active, and is visibly marked
+   * in the list. `pnpm seed` removes them entirely.
+   *
+   * Best-effort on purpose — a cleanup that throws would bury the real test
+   * failure under its own.
+   */
+  afterAll(async () => {
+    for (const id of created) {
+      try {
+        const current = await req(`/admin/channels/${id}`);
+        if (!current.etag) continue;
+        await req(`/admin/channels/${id}/archive`, {
+          method: 'POST',
+          headers: { 'if-match': current.etag },
+        });
+      } catch {
+        // see above
+      }
+    }
+  });
 
   it('a read hands back an ETag a client can send straight back', async () => {
     const created = await makeDraft();
