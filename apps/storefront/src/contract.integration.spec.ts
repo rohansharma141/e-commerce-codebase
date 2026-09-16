@@ -276,6 +276,12 @@ describeLive('storefront ↔ api contract', () => {
       expect(Object.keys(order).sort()).toEqual(
         [
           'appliedPromotion',
+          // Added deliberately in C-16a: the channel the order was sold
+          // through, snapshotted at checkout. C-16a first shipped WITHOUT
+          // widening this list, and this assertion failed on the next run --
+          // which is exactly the job described above: a regenerate had absorbed
+          // the new field silently, and this is where it became a decision.
+          'channel',
           'createdAt',
           'currency',
           'discountCents',
@@ -290,6 +296,11 @@ describeLive('storefront ↔ api contract', () => {
         ].sort(),
       );
       expect(order.status).toBe('created');
+      // The channel snapshot: present on every order placed since C-16a, with a
+      // concrete channel id. A null here means checkout skipped the snapshot.
+      expect(order.channel).not.toBeNull();
+      expect(typeof order.channel?.channelId).toBe('string');
+      expect(Number.isInteger(order.channel?.currencyMinorUnits)).toBe(true);
       expect(order.tenantId).toBe(TENANT);
       expect(order.lines).toHaveLength(1);
       expect(order.lines[0]?.qty).toBe(2);
