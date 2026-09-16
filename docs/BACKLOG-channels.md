@@ -65,9 +65,14 @@ Delivered: [`docs/design/ADMIN-API.md`](design/ADMIN-API.md), the shared cursor 
 
 GET is covered explicitly, including that the scoped path still reaches `graphql-cache.plugin.ts` and emits the same `cache-control` and `vary` as the unscoped one. A scoped path working only for POST would carry scope on exactly the requests no cache keys, and would have silently undone H-3b.
 
-**C-4 — `Vary` extended and guard spec updated** *(S)*
-`Vary: x-tenant-id, x-channel-id`; `api-graphql.spec.ts` extended to fail if either header stops being sent or the method reverts to POST.
-*Verification:* remove the channel header from the client and confirm the spec fails; remove `Vary` from the response and confirm the proxy test fails.
+**C-4 — `Vary` extended** ✅ *(the api half; the client guard rides with C-19)*
+`graphql-cache.plugin.ts` now emits `Vary: x-tenant-id, x-channel-id` on every GraphQL response, POST included, exported as a `VARY` constant so the specs assert the value the api actually sends rather than restating it.
+
+*Why the channel header is listed even though C-2b put the key in the URL:* the header-only `/graphql` path still exists, still honours `x-channel-id`, and is what the shipped storefront uses until C-19. On that path the header is the only thing distinguishing two channels of one tenant, so `Vary` is what keeps them apart in any cache that respects it. ADR-0014 §2 is explicit that URL scoping is defence in depth *alongside* `Vary`, not a replacement.
+
+*Verified.* The plugin had no spec before this row; it has five tests now, pinning both header names order-insensitively, `Vary` on POST as well as GET, and `cache-control` set on GET only — a POST described as cacheable would let a mutation's response be stored. Dropping the channel header from `VARY` fails exactly `names both scope headers`.
+
+*Split, recorded:* the row's storefront half — `api-graphql.spec.ts` failing if the channel header stops being sent — cannot be built yet, because the storefront does not send `x-channel-id` until C-19. A guard for a header nothing sends would pass vacuously. It lands with C-19, where the client gains the header and the guard has something to guard. The "remove `Vary` and the proxy test fails" check is `scoped-graphql.integration.spec.ts`'s `preserves the cache headers` case, which needs a live api and will pick this up on its next run.
 
 **C-28 — Shared idempotency mechanism** *(M)*
 Extract checkout's `idempotency-key` handling — currently private to `checkout.service.ts`, with its own table in the orders schema — into a shared mechanism admin creates can use. Checkout's behaviour stays byte-identical.
