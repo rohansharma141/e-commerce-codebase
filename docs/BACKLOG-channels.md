@@ -213,9 +213,20 @@ Also pinned: misses are **not** cached (caching a null makes a just-created chan
 
 *Live confirmation:* valid channels `200`, unknown `404`, and **cross-tenant `404`** -- `t-books` asking for `t-fashion`'s `de` is refused, proving the composite key does not leak across tenants.
 
-**C-15 — Reconciliation and TTL**
-Periodic full reload; bounded staleness. The reload binds `app.system_worker` (the outbox precedent) — with no bound tenant, RLS would feed it zero rows and it would report success reading nothing.
-*Verification:* drop a `channels.archived` event and assert the consumer rejects writes to it within the staleness budget — without reconciliation the write succeeds forever and no existing test notices. The reload additionally asserts a **non-zero** row count, so an RLS-blinded reconciler fails rather than passing vacuously.
+**C-15 — Reconciliation and TTL** ✅ *verified against a real database*
+`ChannelReconciler` reloads every active channel across every tenant on a timer (`CHANNELS_RECONCILE_MS`, default 60s, `0` disables). The interval **is** the staleness bound: after a dropped event the replica is wrong for at most one interval.
+
+*The gap it closes, demonstrated rather than asserted.* `THE GAP: a dropped archive leaves a stale hit that read-through cannot fix` archives a channel directly in the database — no service call, so no event — and shows the replica still resolving it, with `sourceReads` still at 1. A hit never asks the source, so read-through structurally cannot notice. That test **passes against the bug on purpose**; it is the demonstration, and the next test is the fix.
+
+*The `0 = 0` guard, and it fires.* The reload binds `app.system_worker` transaction-locally, exactly as `audit.webhook_outbox` does. Removing that one line fails **2 of 5** tests including `reads a NON-ZERO count` — without that assertion a blinded reconciler would reload nothing, replace nothing, and report success. A companion test asserts the same query returns **zero** rows *without* the binding, so the RLS clause is proven load-bearing rather than assumed.
+
+*A zero-row read is refused, not applied.* The reconciler cannot distinguish an RLS-blinded read from a genuinely empty database, and the safe answer to both is to change nothing and log loudly. Wiping a warm replica on a blinded read would convert the fault into a read-through storm against a database that then answers correctly — masking the very problem.
+
+*Two bugs found by running it:*
+- **`toISOString is not a function`.** A raw postgres-js connection does not necessarily return `timestamptz` as a `Date`; the tenant-bound Drizzle path this module otherwise uses hides that difference. Coerced through `new Date()`, which is correct for either representation.
+- **A test that depended on the previous test's state.** `reconciliation removes it` asserted a stale hit on a *fresh* read-model, which reads through and correctly sees the archive. It now manufactures its own staleness — warm the replica, archive behind its back — so it is self-contained.
+
+`replaceAll` swaps the maps atomically rather than clear-then-fill, so no request ever observes a half-built replica and the reconciler cannot become the cause of a periodic latency spike.
 
 **C-16 — Orders and cart carry channel**
 `channel_id` on both; orders snapshot id, key, name, currency and exponent at checkout; carts are channel-bound.

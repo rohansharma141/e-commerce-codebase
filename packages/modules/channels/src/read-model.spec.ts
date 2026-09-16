@@ -250,3 +250,39 @@ describe('completeness questions are never answered from the replica', () => {
     expect(source.calls).toEqual(['listActive', 'listActive']);
   });
 });
+
+describe('replaceAll (C-15 reconciliation)', () => {
+  it('removes anything not in the new set — the dropped-archive case', async () => {
+    // The stale hit read-through cannot fix: a channel archived while its
+    // event was dropped stays resolvable forever. A full replace is what
+    // finally removes it.
+    const rm = new ChannelReadModel(new CountingSource([]));
+    rm.onCreated({ channel: {} as never, config: config({ channelId: 'a', key: 'a' }) });
+    rm.onCreated({ channel: {} as never, config: config({ channelId: 'b', key: 'b' }) });
+
+    rm.replaceAll([config({ channelId: 'a', key: 'a' })]);
+
+    expect(await rm.findByKey('t1', 'a')).not.toBeNull();
+    expect(await rm.findByKey('t1', 'b')).toBeNull();
+    expect(rm.stats.size).toBe(1);
+  });
+
+  it('re-points the default when the reload says it moved', async () => {
+    const rm = new ChannelReadModel(new CountingSource([]));
+    rm.onCreated({ channel: {} as never, config: config({ channelId: 'a', key: 'a', isDefault: true }) });
+
+    rm.replaceAll([
+      config({ channelId: 'a', key: 'a', isDefault: false }),
+      config({ channelId: 'b', key: 'b', isDefault: true }),
+    ]);
+
+    expect((await rm.findDefault('t1')).key).toBe('b');
+  });
+
+  it('records when it last ran, so staleness is observable', () => {
+    const rm = new ChannelReadModel(new CountingSource([]));
+    expect(rm.lastReplacedAt).toBeNull();
+    rm.replaceAll([]);
+    expect(rm.lastReplacedAt).not.toBeNull();
+  });
+});

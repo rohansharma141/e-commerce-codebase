@@ -202,7 +202,42 @@ export class ChannelReadModel implements IChannelsQuery {
     this.defaultKey.delete(tenantId);
   }
 
-  /** Drops everything. C-15's reconciliation uses this before a full reload. */
+  /**
+   * Replace the entire replica in one step (C-15).
+   *
+   * The reconciler calls this rather than `clear()` then N × `onCreated()`. A
+   * clear-then-fill opens a window in which every request misses and falls
+   * through to the source — harmless for correctness, but it would make the
+   * reconciler itself the cause of a periodic latency spike on every scoped
+   * request. Building the new maps first and swapping means no request ever
+   * observes the half-built state.
+   *
+   * Anything not in `configs` is gone afterwards, which is the point: a channel
+   * archived while its `archived` event was dropped is exactly what this
+   * removes.
+   */
+  replaceAll(configs: readonly ChannelConfig[]): void {
+    const byKey = new Map<string, ChannelConfig>();
+    const byId = new Map<string, ChannelConfig>();
+    const defaultKey = new Map<string, string>();
+    for (const c of configs) {
+      byKey.set(ChannelReadModel.k(c.tenantId, c.key), c);
+      byId.set(ChannelReadModel.k(c.tenantId, c.channelId), c);
+      if (c.isDefault) defaultKey.set(c.tenantId, c.key);
+    }
+    this.byKey.clear();
+    this.byId.clear();
+    this.defaultKey.clear();
+    for (const [k, v] of byKey) this.byKey.set(k, v);
+    for (const [k, v] of byId) this.byId.set(k, v);
+    for (const [k, v] of defaultKey) this.defaultKey.set(k, v);
+    this.lastReplacedAt = new Date().toISOString();
+  }
+
+  /** When the replica was last wholly replaced, for observability (C-25). Null until then. */
+  lastReplacedAt: string | null = null;
+
+  /** Drops everything. Prefer `replaceAll` for a reload. */
   clear(): void {
     this.byKey.clear();
     this.byId.clear();

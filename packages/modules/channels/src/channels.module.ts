@@ -11,6 +11,7 @@ import {
   ChannelReadModelFeeder,
   channelReadModelProvider,
 } from './channel-read-model.provider';
+import { ChannelReconciler } from './channel-reconciler';
 
 export const CHANNELS_SCHEMA_NAME = 'channels';
 
@@ -46,6 +47,9 @@ function migrationsDir(): string {
     ChannelsService,
     channelReadModelProvider,
     ChannelReadModelFeeder,
+    // Closes the stale-hit gap the feeder leaves: a dropped event is wrong for
+    // at most CHANNELS_RECONCILE_MS. Set it to 0 to disable (tests do).
+    ChannelReconciler,
   ],
   // CHANNEL_QUERY is the read surface other modules consume (C-16 onwards).
   // ChannelsService stays exported for the composition root only.
