@@ -26,10 +26,18 @@ export const orders = ordersSchema.table(
     taxRateBps: integer('tax_rate_bps').notNull(),
     taxCents: bigint('tax_cents', { mode: 'number' }).notNull(),
     grandTotalCents: bigint('grand_total_cents', { mode: 'number' }).notNull(),
+    // The channel snapshot (C-16a). Nullable: orders placed before this tenant
+    // had channels carry a channel_id from the backfill but no key or name,
+    // because there was no historical name to record. See 0003.
+    channelId: uuid('channel_id'),
+    channelKey: text('channel_key'),
+    channelName: text('channel_name'),
+    currencyMinorUnits: integer('currency_minor_units'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     tenantCreatedIdx: index('orders_tenant_created_idx').on(t.tenantId, t.createdAt),
+    tenantChannelIdx: index('orders_tenant_channel_idx').on(t.tenantId, t.channelId),
   }),
 );
 

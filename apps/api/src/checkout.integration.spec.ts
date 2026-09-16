@@ -34,6 +34,8 @@ import { PromotionsRepository } from '@platform/modules/pricing/src/promotions/p
 import { TotalsService } from '@platform/modules/pricing/src/totals/totals.service';
 import type { Promotion } from '@platform/modules/pricing/contracts';
 import { CheckoutService } from '@platform/modules/orders/src/checkout.service';
+import { ChannelsRepository } from '@platform/modules/channels/src/channels.repository';
+import { ChannelsService } from '@platform/modules/channels/src/channels.service';
 
 /**
  * This spec lives in apps/api rather than in the orders module, because what
@@ -59,6 +61,8 @@ describeIf('orders checkout integration', () => {
   let pricesRepo: PricesRepository;
   let cartService: CartService;
   let tenantConfigService: TenantConfigService;
+  let channelsRepo: ChannelsRepository;
+  let channelsService: ChannelsService;
 
   const productA = randomUUID();
   const productB = randomUUID();
@@ -87,7 +91,13 @@ describeIf('orders checkout integration', () => {
     // references conceptually but no cross-schema FKs; pricing is independent.
     await sql.unsafe('DROP SCHEMA IF EXISTS orders CASCADE');
     await sql.unsafe('DROP SCHEMA IF EXISTS pricing CASCADE');
+    await sql.unsafe('DROP SCHEMA IF EXISTS channels CASCADE');
     await runner.apply(join(MODULES, 'pricing', 'src', 'db', 'migrations'), 'pricing');
+    // Channels before orders: orders' 0003 backfills channel_id from
+    // channels.channels. It is guarded on the table existing, so either order
+    // *works*, but applying them in dependency order here means this spec
+    // exercises the path a warm production database takes.
+    await runner.apply(join(MODULES, 'channels', 'src', 'db', 'migrations'), 'channels');
     await runner.apply(join(MODULES, 'orders', 'src', 'db', 'migrations'), 'orders');
 
     bus = new EventBus();
@@ -98,6 +108,11 @@ describeIf('orders checkout integration', () => {
     const totalsService = new TotalsService(tenantConfigService, pricesRepo, promotionsRepo);
     const cartRepo = new CartRepository(new TenantRedisClient(redis));
     cartService = new CartService(cartRepo, totalsService);
+    // The real channels stack, not a stub: this spec is composition-root work,
+    // and the point of C-16a is that checkout snapshots what the channels
+    // module actually resolves. A stub would pass whatever it was told.
+    channelsRepo = new ChannelsRepository(tenantDrizzleAccessor);
+    channelsService = new ChannelsService(channelsRepo, bus);
     checkout = new CheckoutService(
       tenantDrizzleAccessor,
       cartService,
@@ -106,12 +121,24 @@ describeIf('orders checkout integration', () => {
       promotionsRepo,
       bus,
       new HookRegistry(),
+      channelsService,
     );
 
     // Bootstrap each tenant's pricing config + prices.
     for (const t of [t1, t2]) {
       await asT(t, async () => {
         await tenantConfigService.upsert(t, { currency: 'USD', taxRateBps: 875 });
+        await channelsRepo.upsertTenantDefaults(t, {
+          currencyCode: 'USD',
+          defaultLocale: 'en-US',
+          supportedLocales: ['en-US'],
+          country: 'US',
+          timezone: 'America/New_York',
+          taxDisplay: 'net',
+          taxRateBps: 875,
+        });
+        const web = await channelsRepo.create(t, { key: 'web', name: 'Web Store', status: 'active' });
+        await channelsRepo.promoteDefault(t, web.id);
         await pricesRepo.upsert(t, productA, 1000); // $10.00
         await pricesRepo.upsert(t, productB, 2500); // $25.00
       });
@@ -265,5 +292,61 @@ describeIf('orders checkout integration', () => {
     await expect(
       asT(t2, () => checkout['findOrderOrThrow'](t2, order.id)),
     ).rejects.toThrow(/not found/);
+  });
+
+  describe('channel snapshot (C-16a)', () => {
+    /**
+     * The stated check: rename a channel after an order exists and the order
+     * still renders its original key and name. Without the snapshot it renders
+     * the new one -- history quietly rewritten by an edit nobody connected to it.
+     */
+    it('a rename does not rewrite an existing order', async () => {
+      const cartId = await newCart(t1);
+      const { order } = await asT(t1, () => checkout.checkout(t1, cartId));
+
+      expect(order.channel).not.toBeNull();
+      expect(order.channel?.key).toBe('web');
+      expect(order.channel?.name).toBe('Web Store');
+      expect(order.channel?.currencyMinorUnits).toBe(2);
+
+      // Rename the live channel. A draft channel is the only one whose key may
+      // change, so the name is what moves here -- which is the display fact an
+      // order is most likely to have copied by reference.
+      const live = (await asT(t1, () => channelsRepo.list(t1)))[0]!;
+      // Read the version rather than assuming 1: promoteDefault already bumped
+      // it during setup. The first draft of this test hardcoded 1 and got a
+      // 409 -- optimistic concurrency catching a stale assumption, which is
+      // exactly what it is for, and worth leaving a note about.
+      const before = (await asT(t1, () =>
+        channelsRepo.getWithVersion(t1, live.config.channelId),
+      ))!;
+      await asT(t1, () =>
+        channelsService.update(
+          t1,
+          live.config.channelId,
+          { name: 'Renamed Store' },
+          before.version,
+        ),
+      );
+
+      // Re-read the order from storage -- not the in-memory object returned
+      // above, which could hold a stale copy and pass regardless.
+      const reFetched = await asT(t1, () => checkout['findOrderOrThrow'](t1, order.id));
+      expect(reFetched.channel?.name).toBe('Web Store');
+
+      // And the channel really did change, so the assertion above is about the
+      // snapshot rather than about a rename that silently failed.
+      const after = (await asT(t1, () => channelsRepo.list(t1)))[0]!;
+      expect(after.config.name).toBe('Renamed Store');
+    });
+
+    it('snapshots the tenant default when the request names no channel', async () => {
+      // The absent-channel fallback: this spec binds no x-channel-id, so
+      // resolution takes the default. An order with a null channel here would
+      // mean the write path silently skipped the snapshot.
+      const cartId = await newCart(t2);
+      const { order } = await asT(t2, () => checkout.checkout(t2, cartId));
+      expect(order.channel?.key).toBe('web');
+    });
   });
 });

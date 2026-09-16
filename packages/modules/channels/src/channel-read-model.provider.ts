@@ -2,6 +2,7 @@ import { Inject, Injectable, type OnModuleInit } from '@nestjs/common';
 import { EventBus } from '@platform/shared/event-bus';
 import {
   CHANNELS_EVENTS,
+  CHANNEL_QUERY,
   ChannelReadModel,
   type ChannelArchivedPayload,
   type ChannelCreatedPayload,
@@ -12,14 +13,14 @@ import {
 import { ChannelsService } from './channels.service';
 
 /**
- * The injection token consumers depend on for channel reads.
+ * Re-exported, not redefined.
  *
- * A token rather than the concrete class, so a consuming module never names
- * `ChannelsService` and the composition root decides what backs it. Today that
- * is a read-model over the in-process service; after extraction it is a
- * read-model over an HTTP client, and no consumer changes.
+ * The token lives in `contracts/` so consuming modules can depend on it without
+ * importing this package — two `Symbol()` calls with the same description are
+ * different symbols, and a duplicate here would silently produce a second DI
+ * key that nothing is bound to.
  */
-export const CHANNEL_QUERY = Symbol('CHANNEL_QUERY');
+export { CHANNEL_QUERY };
 
 /**
  * Keeps the read-model fed from the bus (C-14).

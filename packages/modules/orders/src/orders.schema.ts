@@ -79,6 +79,32 @@ export class OrderAppliedPromotion implements AppliedPromotionSnapshot {
   readonly discountCents!: number;
 }
 
+export class OrderChannelSnapshot implements Contract.OrderChannelSnapshot {
+  @ApiProperty({ format: 'uuid' })
+  readonly channelId!: string;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: 'uk',
+    description:
+      'The channel key as at checkout. A copy, not a reference: renaming or archiving the channel must not change what an existing order says it was. Null for orders placed before this tenant had channels.',
+  })
+  readonly key!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, example: 'United Kingdom' })
+  readonly name!: string | null;
+
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    example: 2,
+    description:
+      'Decimal places for `currency` as charged. Stored rather than derived so the order renders exactly as charged even if ISO 4217 later changes an exponent.',
+  })
+  readonly currencyMinorUnits!: number | null;
+}
+
 export class Order implements Contract.Order {
   @ApiProperty({ format: 'uuid' })
   readonly id!: string;
@@ -95,6 +121,13 @@ export class Order implements Contract.Order {
 
   @ApiProperty({ example: 'USD', description: 'ISO 4217, as at checkout.' })
   readonly currency!: string;
+
+  @ApiProperty({
+    type: () => OrderChannelSnapshot,
+    nullable: true,
+    description: 'The channel this order was sold through, as it looked at checkout.',
+  })
+  readonly channel!: OrderChannelSnapshot | null;
 
   @ApiProperty({ example: 28788, description: 'Minor units.' })
   readonly subtotalCents!: number;

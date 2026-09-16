@@ -908,6 +908,22 @@ export interface components {
              */
             cartId: string;
         };
+        OrderChannelSnapshot: {
+            /** Format: uuid */
+            channelId: string;
+            /**
+             * @description The channel key as at checkout. A copy, not a reference: renaming or archiving the channel must not change what an existing order says it was. Null for orders placed before this tenant had channels.
+             * @example uk
+             */
+            key: string | null;
+            /** @example United Kingdom */
+            name: string | null;
+            /**
+             * @description Decimal places for `currency` as charged. Stored rather than derived so the order renders exactly as charged even if ISO 4217 later changes an exponent.
+             * @example 2
+             */
+            currencyMinorUnits: number | null;
+        };
         OrderLine: {
             /** Format: uuid */
             id: string;
@@ -975,6 +991,8 @@ export interface components {
              * @example USD
              */
             currency: string;
+            /** @description The channel this order was sold through, as it looked at checkout. */
+            channel: components["schemas"]["OrderChannelSnapshot"] | null;
             /**
              * @description Minor units.
              * @example 28788

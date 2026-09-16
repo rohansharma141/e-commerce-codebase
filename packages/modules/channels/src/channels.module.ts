@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { Inject, Logger, Module, type OnModuleInit } from '@nestjs/common';
+import { Global, Inject, Logger, Module, type OnModuleInit } from '@nestjs/common';
 import { DatabaseModule, MIGRATION_RUNNER, type MigrationRunner } from '@platform/shared/database';
 import { EventBusModule } from '@platform/shared/event-bus';
 import { ChannelsRepository } from './channels.repository';
@@ -30,15 +30,22 @@ function migrationsDir(): string {
 /**
  * Channels module — owns sales channels and per-tenant configuration defaults.
  *
- * Not `@Global`. Other modules will consume channel configuration through
- * event-replicated read-models (C-14), never by injecting this repository
- * across a module line — a synchronous cross-module read on a write path is
- * both a boundary violation and a latency multiplier (ADR-0014 §3).
+ * `@Global`, matching PricingModule and CartModule, so `CHANNEL_QUERY` is
+ * available app-wide without a consumer importing this module. That is the only
+ * way orders can depend on it at all: a module may not import another module's
+ * `src`, so `imports: [ChannelsModule]` in orders would be a build failure.
+ *
+ * What consumers get is the **token from `contracts/`**, bound to the event-fed
+ * read-model (C-14) — not this repository. The distinction is the whole of
+ * ADR-0014 §3: a synchronous cross-module read on a write path is both a
+ * boundary violation and, after extraction, a network hop inside every
+ * checkout. The read-model makes the common case local and the miss correct.
  *
  * The migration runner takes a session advisory lock, so several modules
  * booting concurrently against a cold database serialise rather than racing on
  * `CREATE EXTENSION` — the bug P0-2 fixed.
  */
+@Global()
 @Module({
   imports: [DatabaseModule, EventBusModule],
   controllers: [ChannelsController],

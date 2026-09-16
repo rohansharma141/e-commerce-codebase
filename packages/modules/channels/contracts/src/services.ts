@@ -20,6 +20,24 @@ import type {
  * This mirrors `IPricesQuery` / `IPromotionsQuery` in the pricing contracts.
  */
 
+/**
+ * DI token for `IChannelsQuery`.
+ *
+ * In `contracts/` rather than `src/` because a consuming module must be able to
+ * ask for the interface without importing the module that implements it — the
+ * boundary rule (`type:src` may depend only on `scope:shared` and
+ * `type:contracts`) makes that a build failure, and it is right: a token is
+ * part of the public surface, the same way the interface is.
+ *
+ * A `Symbol` needs no dependencies, so this does not put a framework inside
+ * the contract package.
+ *
+ * The composition root binds it to a `ChannelReadModel` over the in-process
+ * service today; after extraction it binds to a read-model over an HTTP
+ * client, and no consumer changes.
+ */
+export const CHANNEL_QUERY = Symbol('CHANNEL_QUERY');
+
 export interface IChannelsQuery {
   /**
    * Resolve a channel by key within a tenant.

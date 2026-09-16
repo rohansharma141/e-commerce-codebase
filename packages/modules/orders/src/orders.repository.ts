@@ -129,6 +129,10 @@ function toDomain(
     taxRateBps: number;
     taxCents: number;
     grandTotalCents: number;
+    channelId: string | null;
+    channelKey: string | null;
+    channelName: string | null;
+    currencyMinorUnits: number | null;
     createdAt: Date;
   },
   lines: ReadonlyArray<{
@@ -169,6 +173,18 @@ function toDomain(
     taxRateBps: o.taxRateBps,
     taxCents: o.taxCents,
     grandTotalCents: o.grandTotalCents,
+    // Null rather than a partially-filled object when there is no channel at
+    // all: an order predating channels has nothing to say here, and an object
+    // of nulls reads as "a channel we know nothing about" rather than "no
+    // channel".
+    channel: o.channelId
+      ? {
+          channelId: o.channelId,
+          key: o.channelKey,
+          name: o.channelName,
+          currencyMinorUnits: o.currencyMinorUnits,
+        }
+      : null,
     lines: orderLinesDomain,
     appliedPromotion: snap
       ? {

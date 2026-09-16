@@ -1,5 +1,6 @@
 import postgres, { type Sql } from 'postgres';
 import type { TenantFixture } from './catalogs/fixtures';
+import { TENANT_DEFAULTS } from './channels-seed';
 
 export interface GeneratedProduct {
   readonly id: string;
@@ -19,10 +20,35 @@ export interface PricingSeedSummary {
   readonly promotionsCreated: number;
 }
 
-const TAX_RATES_BY_TENANT: Record<string, number> = {
-  't-fashion': 875, // 8.75%
-  't-electronics': 725, // 7.25%
-  't-books': 0,
+/**
+ * Currency and tax come from the CHANNEL fixtures, not from a second table
+ * here.
+ *
+ * They used to be duplicated, and the two copies had drifted: this file seeded
+ * every tenant as `USD` while `t-fashion`'s channel said `GBP`, and taxed
+ * `t-electronics` at 725 bps where its channel said 625. Nothing noticed until
+ * C-16a put the channel snapshot on the order and a live response read
+ * `currency: USD` next to `"key": "uk"` — a contradiction visible only once
+ * both values appeared in the same payload.
+ *
+ * One source of truth removes the class of problem rather than the instance.
+ * `channels.tenant_defaults` is the richer fixture (it also carries country,
+ * timezone and locales), so it wins.
+ *
+ * Note this does NOT unify currency resolution in the api — checkout still
+ * charges in `pricing.tenant_config.currency` while the channel carries its
+ * own. That is C-18's job. What this guarantees is only that the two agree in
+ * the fixtures, so the demo does not display a contradiction.
+ */
+const defaultsFor = (tenantId: string): { currency: string; taxRateBps: number } => {
+  const d = TENANT_DEFAULTS[tenantId];
+  if (!d) {
+    throw new Error(
+      `no channel fixture for tenant "${tenantId}". Pricing config is derived from ` +
+        `channels-seed.ts so the two cannot drift; add the tenant there.`,
+    );
+  }
+  return { currency: d.currencyCode, taxRateBps: d.taxRateBps };
 };
 
 /**
@@ -136,7 +162,7 @@ export async function seedPricingForTenant(
   products: readonly GeneratedProduct[],
   sql: Sql,
 ): Promise<PricingSeedSummary> {
-  const taxRateBps = TAX_RATES_BY_TENANT[fixture.tenantId] ?? 0;
+  const { currency, taxRateBps } = defaultsFor(fixture.tenantId);
   const promos = PROMOS_BY_TENANT[fixture.tenantId] ?? [];
 
   await sql`SELECT set_config('app.tenant_id', ${fixture.tenantId}, false)`;
@@ -149,7 +175,7 @@ export async function seedPricingForTenant(
 
   await sql`
     INSERT INTO pricing.tenant_config (tenant_id, currency, tax_rate_bps, updated_at)
-    VALUES (${fixture.tenantId}, 'USD', ${taxRateBps}, now())
+    VALUES (${fixture.tenantId}, ${currency}, ${taxRateBps}, now())
   `;
 
   // Themes belong to the branding module now. Written on the same connection,
@@ -208,7 +234,7 @@ export async function seedPricingForTenant(
 
   return {
     tenantId: fixture.tenantId,
-    currency: 'USD',
+    currency,
     taxRateBps,
     pricesUpserted: upserted,
     promotionsCreated: promosCreated,

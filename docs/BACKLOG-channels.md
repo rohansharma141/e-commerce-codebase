@@ -228,9 +228,23 @@ Also pinned: misses are **not** cached (caching a null makes a just-created chan
 
 `replaceAll` swaps the maps atomically rather than clear-then-fill, so no request ever observes a half-built replica and the reconciler cannot become the cause of a periodic latency spike.
 
-**C-16 — Orders and cart carry channel**
-`channel_id` on both; orders snapshot id, key, name, currency and exponent at checkout; carts are channel-bound.
-*Verification:* rename a channel after an order exists; the order still renders its original key and name. Without the snapshot it renders the new one.
+**C-16a — Orders carry and snapshot the channel** OK *verified on a cold database*
+`channel_id`, `channel_key`, `channel_name` and `currency_minor_units` on `orders.orders`, written at checkout from the resolved channel. A copy, not a reference — the same discipline as the price and promotion snapshots already in 0001.
+
+*Split from C-16 on discovery:* **carts live in Redis, not Postgres**, so "channel_id on both" is two different mechanisms and, by this file's own "needs the word *and*" rule, two items. Cart is C-16b.
+
+*Verified:* rename a channel after an order exists and the order still renders `Web Store` while the channel reads `Renamed Store` — re-read from storage, not from the in-memory object, which could hold a stale copy and pass regardless. Mutating the snapshot to store nulls fails 2 tests. The check also asserts the rename *actually happened*, so it cannot pass on a rename that silently failed.
+
+*Three things found by building it:*
+- **The boundary rule forced a better design.** Orders cannot import `CHANNEL_QUERY` from `channels/src` — `type:src` may depend only on `scope:shared` and `type:contracts`. The token moved to `contracts/`, beside the interface it provides, which is where a public DI token belongs anyway. `ChannelsModule` became `@Global`, matching Pricing and Cart.
+- **The migration needed a cold-boot guard.** It reads `channels.channels`, which may not exist yet when orders migrates first. Guarded on `to_regclass`, following branding's precedent — and *proven* by applying orders' migrations to a database with no channels schema and watching the columns appear anyway. Migration order is genuinely insignificant, rather than assumed to be.
+- **The fixtures contradicted each other, and the snapshot exposed it.** A live order read `currency: USD` next to `"key": "uk"` — because `pricing-seed` hardcoded USD for every tenant while `channels-seed` said `t-fashion` was GBP, and taxed `t-electronics` at 725 bps where its channel said 625. Two copies that had drifted with nothing comparing them. `pricing-seed` now derives both from the channel fixtures, so the class of problem is gone rather than the instance. **This does not unify currency *resolution* in the api** — checkout still charges in `pricing.tenant_config.currency`; that is C-18.
+
+*Backfill is honest about what it cannot know.* Existing orders get `channel_id` from the tenant default (the tenant had exactly one selling context, which is what the default represents) but `key` and `name` stay **null**: at purchase the channel did not exist, so there is no historical name, and copying today's would be indistinguishable from a real snapshot.
+
+**C-16b — Carts are channel-bound** *(S)*
+Cart is a Redis document, so this is a stored field on `StoredCart` plus binding at creation, not a migration.
+*Verification:* a cart created under one channel must not price under another — assert the resolved currency on a cart read follows the cart's channel, not the request's. Without binding, the same cart prices differently depending on which channel the *next* request names, which is the failure a customer sees as a price that changed by itself.
 
 **C-17 — `orders.created` sets `has_transacted`; currency frozen**
 *Verification:* place an order, then attempt a currency change; assert rejection. Before the consumer is wired, the change succeeds.

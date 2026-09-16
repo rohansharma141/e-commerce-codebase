@@ -21,6 +21,11 @@ import {
   type ICartService,
 } from '@platform/modules/cart/contracts';
 import {
+  CHANNEL_QUERY,
+  type ChannelConfig,
+  type IChannelsQuery,
+} from '@platform/modules/channels/contracts';
+import {
   PRICES_QUERY,
   PROMOTIONS_QUERY,
   TENANT_CONFIG_QUERY,
@@ -50,7 +55,41 @@ export class CheckoutService {
     @Inject(PROMOTIONS_QUERY) private readonly promotions: IPromotionsQuery,
     private readonly events: EventBus,
     private readonly hooks: HookRegistry,
+    /**
+     * Channel configuration, via the token in `channels/contracts` rather than
+     * the channels module itself — a module may not reach into another's `src`,
+     * and the composition root binds this to the event-fed read-model (C-14),
+     * so checkout does not query channels on the write path.
+     */
+    @Inject(CHANNEL_QUERY) private readonly channels: IChannelsQuery,
   ) {}
+
+  /**
+   * The channel this checkout is happening in.
+   *
+   * Explicit scope when the request carried one; otherwise the tenant default,
+   * which is what keeps the shipped storefront working until C-19 sends scope
+   * on every call. That fallback is the one ADR-0014 section 8 dates: it applies
+   * to an *absent* channel, never to an unknown one — the middleware has
+   * already answered 404 for those, and falling back here would undo it.
+   *
+   * A bound channel that no longer resolves is an error rather than a fallback.
+   * It means the channel was archived between the request being scoped and the
+   * order being placed; taking the default instead would charge the customer in
+   * a market they did not choose.
+   */
+  private async resolveChannel(tenantId: string): Promise<ChannelConfig> {
+    const { channelId } = currentTenantOrThrow();
+    if (!channelId) return this.channels.findDefault(tenantId);
+    const resolved = await this.channels.findById(tenantId, channelId);
+    if (!resolved) {
+      throw new BadRequestException(
+        `channel ${channelId} is no longer available for this tenant; the order was ` +
+          `not placed. It was archived between this request being scoped and checkout.`,
+      );
+    }
+    return resolved;
+  }
 
   /**
    * The transactional core. See the plan file's `checkout.service.ts` section
@@ -148,6 +187,11 @@ export class CheckoutService {
       currentTenantOrThrow(),
     );
 
+    // Resolved before the transaction opens: a read-through on a cold replica
+    // would otherwise happen with a BEGIN already held, holding the connection
+    // for the duration of someone else's query.
+    const channel = await this.resolveChannel(tenantId);
+
     const orderId = randomUUID();
     const createdNew = true;
 
@@ -180,6 +224,13 @@ export class CheckoutService {
         taxRateBps: totals.taxRateBps,
         taxCents: totals.taxCents,
         grandTotalCents: totals.grandTotalCents,
+        // Copied, not referenced. A later rename or archive must not rewrite
+        // what this order says it was -- the same reason the unit prices and
+        // the applied promotion are snapshotted a few lines down.
+        channelId: channel.channelId,
+        channelKey: channel.key,
+        channelName: channel.name,
+        currencyMinorUnits: channel.currencyMinorUnits,
       });
 
       if (pricedLines.length > 0) {
@@ -313,6 +364,10 @@ function buildOrder(
     taxRateBps: number;
     taxCents: number;
     grandTotalCents: number;
+    channelId: string | null;
+    channelKey: string | null;
+    channelName: string | null;
+    currencyMinorUnits: number | null;
     createdAt: Date;
   },
   lines: ReadonlyArray<{
@@ -343,6 +398,14 @@ function buildOrder(
     taxRateBps: o.taxRateBps,
     taxCents: o.taxCents,
     grandTotalCents: o.grandTotalCents,
+    channel: o.channelId
+      ? {
+          channelId: o.channelId,
+          key: o.channelKey,
+          name: o.channelName,
+          currencyMinorUnits: o.currencyMinorUnits,
+        }
+      : null,
     lines: lines.map(
       (l): OrderLine => ({
         id: l.id,
