@@ -850,6 +850,11 @@ export interface components {
         CartWithTotals: {
             /** Format: uuid */
             id: string;
+            /**
+             * Format: uuid
+             * @description The channel this cart was created in, and the only channel it may be used in. Using it under another channel is a 400. Null only for carts created before channel binding existed; treated as the tenant default.
+             */
+            channelId: string | null;
             /** @example t-fashion */
             tenantId: string;
             lines: components["schemas"]["CartLine"][];
@@ -880,6 +885,11 @@ export interface components {
         Cart: {
             /** Format: uuid */
             id: string;
+            /**
+             * Format: uuid
+             * @description The channel this cart was created in, and the only channel it may be used in. Using it under another channel is a 400. Null only for carts created before channel binding existed; treated as the tenant default.
+             */
+            channelId: string | null;
             /** @example t-fashion */
             tenantId: string;
             lines: components["schemas"]["CartLine"][];

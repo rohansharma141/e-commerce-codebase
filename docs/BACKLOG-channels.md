@@ -242,9 +242,26 @@ Also pinned: misses are **not** cached (caching a null makes a just-created chan
 
 *Backfill is honest about what it cannot know.* Existing orders get `channel_id` from the tenant default (the tenant had exactly one selling context, which is what the default represents) but `key` and `name` stay **null**: at purchase the channel did not exist, so there is no historical name, and copying today's would be indistinguishable from a real snapshot.
 
-**C-16b — Carts are channel-bound** *(S)*
-Cart is a Redis document, so this is a stored field on `StoredCart` plus binding at creation, not a migration.
-*Verification:* a cart created under one channel must not price under another — assert the resolved currency on a cart read follows the cart's channel, not the request's. Without binding, the same cart prices differently depending on which channel the *next* request names, which is the failure a customer sees as a price that changed by itself.
+**C-16b — Carts are channel-bound** OK
+A cart stores the concrete id of the channel it was created in, and every operation that loads it — read, add, requantify, coupon, and checkout via `get` — refuses a request in any other channel. Checkout snapshots the **cart's** channel rather than the request's.
+
+*The verification was rewritten, because the original could not fail.* It asked to assert that "the resolved currency on a cart read follows the cart's channel". Pricing is still tenant-level until C-18, so both of `t-fashion`'s channels price in GBP and that assertion passes whether or not binding exists. What *is* falsifiable today is the binding itself; the currency half moves to C-18.
+
+*Verified — 15 unit tests, run against the REAL `CartRepository` over an in-memory Redis:*
+- **Removing the check** fails 11, including each of the five operations **by name**. The 4 that survive are creation and the allowed-channel case, which do not depend on refusal.
+- **Dropping `channelId` in the repository's `save`** fails exactly `carries channelId through a save`. That is the bug a fake repository would have hidden: `save` rebuilds the stored object field by field, so an omission there unbinds a cart on its *first* mutation, after which every other check passes while the cart is usable from anywhere.
+- Rejections assert **no write happened**, not merely that an error was thrown.
+
+*Live over HTTP:* a cart created in `de` reads `200` in `de`, `400` in `uk`, and `400` with **no** channel header — absent means the tenant default, not "any channel". The `400` body carries both `cartChannelId` and `requestChannelId`.
+
+*Decisions recorded:*
+- **The concrete default id is stored, never "default".** A cart built on the default stays on *that* channel if another is later promoted, rather than silently changing market mid-basket. The cost: a headerless storefront's in-flight carts are refused after a default promotion, and must start again. Correct — pricing an existing basket under a new market is the failure — and rare, and carts expire in 24h.
+- **`400`, not `404` or `409`.** `404` would follow the cross-tenant precedent, but channels are deliberately not a trust boundary (ADR-0014 §1), and hiding the cart would make a dropped header look like data loss. `409` means a version conflict here and carries `currentVersion`; a client retrying 409s would loop on a mismatch no retry can fix.
+- **Legacy carts** (written before the field existed) read back as `channelId: null` — never `undefined`, which would make the key appear and vanish by cart age — and are treated as the default.
+
+*Conformance:* `channelId` added to the storefront's pinned cart keys **in the same commit that added the field** — the order the C-16a omission taught. Storefront 38/38, checkout integration 7/7, and after a re-seed the api live specs 45 conventions / 6 concurrency / 19 scoped-graphql.
+
+*Not tested, stated so nobody assumes it was:* "checkout snapshots the cart's channel rather than the request's" has no discriminating test, because binding makes the two equal by the time checkout runs — any test would pass either way. The change is defensive; it makes the agreement a design property rather than an accident of ordering.
 
 **C-17 — `orders.created` sets `has_transacted`; currency frozen**
 *Verification:* place an order, then attempt a currency change; assert rejection. Before the consumer is wired, the change succeeds.

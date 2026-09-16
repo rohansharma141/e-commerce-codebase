@@ -127,6 +127,15 @@ export class Cart implements Contract.Cart {
   @ApiProperty({ format: 'uuid' })
   readonly id!: string;
 
+  @ApiProperty({
+    type: String,
+    format: 'uuid',
+    nullable: true,
+    description:
+      'The channel this cart was created in, and the only channel it may be used in. Using it under another channel is a 400. Null only for carts created before channel binding existed; treated as the tenant default.',
+  })
+  readonly channelId!: string | null;
+
   @ApiProperty({ example: 't-fashion' })
   readonly tenantId!: string;
 

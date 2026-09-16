@@ -229,8 +229,23 @@ describeLive('storefront ↔ api contract', () => {
       const cart = fetched.body;
 
       expect(Object.keys(cart).sort()).toEqual(
-        ['couponCode', 'createdAt', 'id', 'lines', 'tenantId', 'totals', 'updatedAt'].sort(),
+        [
+          // Added deliberately in C-16b: the channel the cart is bound to.
+          // Widened in the same commit that added it, which is the order the
+          // C-16a omission taught.
+          'channelId',
+          'couponCode',
+          'createdAt',
+          'id',
+          'lines',
+          'tenantId',
+          'totals',
+          'updatedAt',
+        ].sort(),
       );
+      // This suite sends no channel header, so the cart must be bound to the
+      // tenant's default -- a concrete id, never null for a new cart.
+      expect(typeof cart.channelId).toBe('string');
       expect(cart.id).toBe(cartId);
       expect(cart.tenantId).toBe(TENANT);
       expect(cart.lines).toHaveLength(1);

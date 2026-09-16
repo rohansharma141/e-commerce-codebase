@@ -78,8 +78,16 @@ export class CheckoutService {
    * order being placed; taking the default instead would charge the customer in
    * a market they did not choose.
    */
-  private async resolveChannel(tenantId: string): Promise<ChannelConfig> {
-    const { channelId } = currentTenantOrThrow();
+  private async resolveChannel(
+    tenantId: string,
+    cartChannelId: string | null,
+  ): Promise<ChannelConfig> {
+    // The CART's channel, not the request's (C-16b). The cart is bound to the
+    // market it was built in and CartService has already refused a request in
+    // any other, so the two agree by the time we get here -- but the cart is the
+    // source of truth for which market these goods were chosen in, and taking
+    // it from the request would make that agreement an accident of ordering.
+    const channelId = cartChannelId ?? currentTenantOrThrow().channelId;
     if (!channelId) return this.channels.findDefault(tenantId);
     const resolved = await this.channels.findById(tenantId, channelId);
     if (!resolved) {
@@ -190,7 +198,7 @@ export class CheckoutService {
     // Resolved before the transaction opens: a read-through on a cold replica
     // would otherwise happen with a BEGIN already held, holding the connection
     // for the duration of someone else's query.
-    const channel = await this.resolveChannel(tenantId);
+    const channel = await this.resolveChannel(tenantId, cart.channelId);
 
     const orderId = randomUUID();
     const createdNew = true;

@@ -107,12 +107,14 @@ describeIf('orders checkout integration', () => {
     promotionsRepo = new PromotionsRepository(tenantDrizzleAccessor);
     const totalsService = new TotalsService(tenantConfigService, pricesRepo, promotionsRepo);
     const cartRepo = new CartRepository(new TenantRedisClient(redis));
-    cartService = new CartService(cartRepo, totalsService);
+    // CartService now needs channel resolution (C-16b). The channels stack is
+    // built further down, so the cart service is constructed after it.
     // The real channels stack, not a stub: this spec is composition-root work,
     // and the point of C-16a is that checkout snapshots what the channels
     // module actually resolves. A stub would pass whatever it was told.
     channelsRepo = new ChannelsRepository(tenantDrizzleAccessor);
     channelsService = new ChannelsService(channelsRepo, bus);
+    cartService = new CartService(cartRepo, totalsService, channelsService);
     checkout = new CheckoutService(
       tenantDrizzleAccessor,
       cartService,
