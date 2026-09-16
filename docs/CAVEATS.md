@@ -72,6 +72,65 @@ Every item has a **status**: *by design* (intentional, see linked ADR), *scoped 
 
 ---
 
+## Channels
+
+Added by the channels slice (ADR-0014). Every one of these is a *stated* simplification rather than something nobody thought about — which is the only thing that makes them defensible.
+
+### The missing-channel fallback has an expiry, and the expiry is the point
+- **Status:** open, with a deadline. This entry is the deadline.
+- **What:** a request that sends no `x-channel-id` resolves to the tenant's default channel. That is what keeps the shipped storefront working unchanged while the slice lands, and it is deliberately different from sending an *unknown* channel, which is a `404` and never falls back.
+- **Why it must not become permanent:** an undated fallback is indistinguishable from a feature. Once every caller sends scope, "unspecified" stops meaning "the default" and starts meaning "a misconfigured integration transacting in the wrong currency" — and it will look like it is working.
+- **Expiry:** the segment becomes **required** once C-19 lands and the storefront sends scope on every read. At that point the fallback is removed and an unscoped read is a `400`.
+- **Held down by:** `scoped-graphql.integration.spec.ts`, which asserts both halves — the three-segment URL still resolves the default, and an unknown channel `404`s rather than degrading to it.
+
+### One currency per channel — this is not multi-currency
+- **Status:** by design; the boundary is real and worth stating plainly.
+- **What:** a channel has exactly one `currency_code`. Selling in GBP and EUR means two channels, not one channel with two prices.
+- **What real multi-currency would need, none of which exists:** price rows per currency; an FX policy (the enterprise answer is almost always *no runtime conversion*, because a converted price is not a price anyone agreed); per-currency rounding rules; and defined behaviour when a price is missing in the requested currency — fall back, hide the product, or fail.
+- **Impact:** a tenant wanting one storefront that switches currency in place cannot have it. A tenant wanting a UK store and a German store can.
+- **Sharp edge:** `currency_code` **freezes** once the channel has transacted. Changing it afterwards would silently reinterpret every existing order's minor-unit integers — the orders store cents, not money. Snapshots protect how an order *renders*, not what it *aggregates to*.
+
+### Locales drive formatting, not translation
+- **Status:** by design; the naming invites the wrong expectation, so it is spelled out.
+- **What:** a channel's `default_locale` and `supported_locales` control number, date and currency formatting. They do **not** select translated content.
+- **Impact:** a `de-DE` channel renders `1.234,56 €` around **English** product copy. That is a strange-looking page, and it is the honest state.
+- **Why not more:** the catalog has no locale dimension at all. Translation means a locale axis on product name, description and attributes, a fallback chain, and a back-office editing surface for each — a catalog change touching the hero feature, not a channels change.
+- **Fix path:** localized content is its own slice with its own ADR. `supported_locales` is the seam it would hang from.
+
+### Tax is one flat rate per channel, with a named seam
+- **Status:** by design, and the least defensible item here if it were not stated.
+- **What:** `tax_rate_bps` is a single integer per channel. `tax_display` selects gross or net presentation, and the engine computes both (C-29).
+- **What it cannot express:** tax classes (food versus electronics), US destination-based tax (rate depends on the buyer's address, not the seller's), EU OSS thresholds, B2B reverse charge, or any exemption.
+- **Impact:** correct for a demo and for a single-rate jurisdiction. Not correct for anyone actually filing returns.
+- **The seam:** `tax_rate_bps` is nullable precisely so it can become null when a real tax provider (Avalara, TaxJar, Stripe Tax) is wired in. Rate resolution moves behind a provider interface; nothing else in the model changes.
+
+### Cache entries multiply by channels per tenant
+- **Status:** open; fine now, worth watching.
+- **What:** URL scoping puts the channel key in the path, so each channel gets its own cache entry for the same page. A tenant with four channels has four times the entries it had.
+- **Why that is the right trade:** the alternative is one entry keyed only on the URL, which is how a UK shopper gets served the German channel's EUR prices — demonstrated in `scoped-graphql.integration.spec.ts` against a proxy that keys on URL alone, and it reproduces against the unscoped path today.
+- **Impact:** at single-digit channels per tenant, nothing. It becomes a capacity question if channels ever proliferate, which is a product signal worth noticing rather than a bug.
+
+### The consuming-module read-model is unbounded
+- **Status:** open; deliberately unbounded, with the condition that would change it.
+- **What:** `ChannelReadModel` (C-14) holds resolved channel configuration in two `Map`s with no eviction and no size cap. Entries are removed only by an event or by tenant invalidation.
+- **Why unbounded is right today:** a tenant has single-digit channels, and the whole platform's set fits in memory many times over. An eviction policy would add a way to be wrong (evicting something still needed, then re-reading it) in exchange for solving a problem that does not exist.
+- **What would change it:** channels proliferating — per-store channels for a retailer with hundreds of locations, say. Then it needs a bound, and the natural one is an LRU per tenant, because a miss is already safe: it falls through to the source rather than failing.
+- **Not a leak:** the set is bounded by the number of channels that exist, not by traffic. It grows with data, not with requests.
+
+### Authentication is a prerequisite that has not been built
+- **Status:** open, and the only item here that blocks a phase.
+- **What:** gate G-1 decided the back office may not ship without a login. [ADR-0015](adr/0015-operator-authentication-at-the-api-edge.md) designs it — the four gateway behaviours ADR-0007 has specified since May, one operator role, IdP left as configuration — and none of it is built.
+- **Why it is a caveat and not just a backlog row:** the admin surface is *already* live and unauthenticated. Today that is the same posture as the rest of the api (ADR-0007: tenant id is the trust, a gateway is assumed in front), so it adds no new exposure. It stops being equivalent the moment a back-office deployable exists, because a console is a user-facing app and the manifests publish those through a wildcard Ingress.
+- **Sequencing:** the auth slice lands before C-20, not after. An admin console reachable without a credential is not a caveat anyone would accept.
+
+### Every channels claim is verified locally, not in CI
+- **Status:** open; the gap is process, not code.
+- **What:** CI triggers on `main` and on pull requests into it. The `channels` branch has neither, so nothing on it has run on a clean runner.
+- **Impact:** every "verified" statement in [BACKLOG-channels.md](BACKLOG-channels.md) rests on one machine with a warm Docker cache and an installed toolchain. This project has already been bitten by exactly that gap — the first real CI run found a migration concurrency race that was invisible locally, and the channels Dockerfile omission was invisible until a container was built.
+- **Fix:** open the PR, or add the branch to the workflow trigger. Roughly fifteen minutes either way.
+
+---
+
 ## API surface
 
 ### Capability features describe the deployment, not the tenant

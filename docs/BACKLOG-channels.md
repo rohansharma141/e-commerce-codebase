@@ -255,8 +255,12 @@ List, create, edit, archive, set default. Inherited values shown as inherited wi
 Read-through fallback rate, resolution latency, rejected writes, URL/header mismatch count. Designed and emitted; exporter still out of scope per ADR-0008.
 *Verification:* force a read-through and assert the counter moves. A counter that never moves is indistinguishable from a healthy system.
 
-**C-26 — CAVEATS entries**
-Missing-channel fallback expiry; auth posture per G-1; tax simplification; locale formatting ≠ localized content; multi-currency not delivered; cache cardinality.
+**C-26 — CAVEATS entries** ✅
+A `## Channels` section in [CAVEATS.md](CAVEATS.md) with eight entries: the missing-channel fallback and its expiry, one-currency-per-channel, formatting-not-translation, the flat tax rate and its named provider seam, cache cardinality, the unbounded read-model, auth as an unbuilt prerequisite, and the fact that nothing on this branch has run in CI.
+
+Two beyond the six the row asked for, both because a claim elsewhere depended on them: `ChannelReadModel`'s doc comment says *"CAVEATS records that"* about its unboundedness, which was false until now; and every "verified" line in this file rests on one machine, which is worth stating where someone reads the honest list rather than only here.
+
+*Verification:* the factual claims were checked against the source rather than written from memory — the CI trigger really is `push:[main]` + `pull_request:[main]`, `tax_rate_bps` really is nullable (the seam a tax provider would replace), both cited `scoped-graphql` assertions exist, and both document links resolve.
 
 **C-27 — Docs reconciled**
 ARCHITECTURE, RUNBOOK, README updated. Every documented command executed, not re-read.
