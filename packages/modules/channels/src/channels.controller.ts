@@ -115,14 +115,16 @@ export class ChannelsController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Res({ passthrough: true }) res: Response,
   ): Promise<ResolvedChannelResponse> {
-    const found = await this.service.get(tenant.tenantId, id);
+    const found = await this.service.getWithVersion(tenant.tenantId, id);
     // A channel belonging to another tenant is invisible rather than
     // forbidden — RLS never returned it, and "forbidden" would confirm it
     // exists.
     if (!found) throw new NotFoundException(`no channel ${id}`);
-    const raw = await this.service.getRawVersion(tenant.tenantId, id);
-    if (raw !== null) res.setHeader('ETag', String(raw));
-    return ChannelsController.present(found);
+    // The ETag describes the body being returned, because both came out of the
+    // same read. Fetching them separately would let a concurrent write make
+    // them disagree.
+    res.setHeader('ETag', String(found.version));
+    return ChannelsController.present(found.resolved);
   }
 
   @Post('channels')

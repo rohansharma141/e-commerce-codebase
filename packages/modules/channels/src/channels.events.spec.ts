@@ -113,6 +113,13 @@ class Fake implements ChannelStore {
     const c = this.rows.find((x) => x.id === id);
     return c ? this.r(c) : null;
   }
+  async getWithVersion(
+    _t: string,
+    id: string,
+  ): Promise<{ resolved: ResolvedChannel; version: number } | null> {
+    const c = this.rows.find((x) => x.id === id);
+    return c ? { resolved: this.r(c), version: c.version } : null;
+  }
   async getRaw(_t: string, id: string): Promise<Channel | null> {
     return this.rows.find((x) => x.id === id) ?? null;
   }

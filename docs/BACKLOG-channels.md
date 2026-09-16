@@ -126,9 +126,15 @@ Each rejection asserts `store.writes` is empty, not merely that an error was thr
 
 **Still outstanding, and needs a database:** the DDL guarantees that must not fail open — `unique (tenant_id, key)` and the partial `unique (tenant_id) where is_default` — plus the two-concurrent-promotions race. Those are written in `channels.integration.spec.ts` and have never run. An application-only guarantee of "exactly one default" is not a guarantee, so the index has to be asserted directly rather than inferred from the service refusing.
 
-**C-9 — Optimistic concurrency**
-`version` on write, `409` on mismatch, `ETag`/`If-Match` on REST, required input on GraphQL mutations.
-*Verification:* two writes with the same expected version; the second returns `409`. Without version checking, both succeed and the first change is lost silently.
+**C-9 — Optimistic concurrency** ✅ *(REST; the GraphQL half rides with C-19)*
+`version` on write, `409` carrying `currentVersion`, `ETag` on reads and `If-Match` required on writes. Most of this shipped inside C-7, C-8b and C-10 and was verified there; this row closed the gap between "the repository rejects a stale version" and "a client on the wire can actually use it".
+
+*A real bug found while closing it.* `GET /admin/channels/:id` fetched the body and the version in **two separate queries** — three round trips for one read, and a window between them. A write landing in that window yields an `ETag` describing a different version than the payload it is attached to, so a client doing exactly the right thing — read, then send back what it was handed — is either refused forever or overwrites an edit it never saw. A torn ETag inside a concurrency feature. Now one read returns both.
+*Verified:* mutating it back to two reads fails `takes ONE store read, not a separate one for the version`. 141 unit tests green.
+
+*Written, not yet run:* `admin-concurrency.integration.spec.ts` asserts the contract over HTTP — a read hands back an `ETag`, that `ETag` matches the body it came with, a stale `If-Match` is `409` **and the first operator's edit survives**, the `409` body lets a client retry without an intervening `GET`, a missing `If-Match` is `400`, and `/admin/tenant-defaults` obeys the same contract so it is a convention rather than a channels feature. Six tests, currently **skipped** — Docker is down.
+
+*GraphQL mutations:* none exist for channels. The row's "required input on GraphQL mutations" has no surface to attach to and lands with **C-19**, which is where the GraphQL half of C-10 was also deferred.
 
 **C-10 — Admin CRUD endpoints** ✅ *verified end to end*
 `GET/POST /admin/channels`, `GET/PATCH /admin/channels/:id`, `POST /admin/channels/:id/archive`, `POST /admin/channels/:id/promote-default`, `GET/PATCH /admin/tenant-defaults`. Cursor-paginated on `key`, the standard error envelope, `PATCH` merging with explicit-null meaning inherit, `If-Match` carrying the version and `409` returning `currentVersion`. `@ApiProperty` classes so `/docs-json` shows real schemas.

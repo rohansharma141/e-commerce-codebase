@@ -311,6 +311,34 @@ export class ChannelsRepository {
     };
   }
 
+  /**
+   * The resolved channel together with the version that produced it.
+   *
+   * One read, not two, and the reason is correctness rather than cost.
+   * Fetching the body and then fetching the version separately lets a
+   * concurrent write land between them, so the `ETag` would describe a
+   * different version than the payload it was attached to — and a client doing
+   * the correct thing (read, then `If-Match` with what it was given) would get
+   * a `409` it could never resolve, or worse, overwrite an edit it never saw.
+   *
+   * `ResolvedChannel` deliberately does not carry `version` — version belongs
+   * to the stored row, and putting it on a resolved view invites a client to
+   * treat that view as something it can write back — so the pair is returned
+   * separately rather than merged.
+   */
+  async getWithVersion(
+    tenantId: string,
+    channelId: string,
+  ): Promise<{ resolved: ResolvedChannel; version: number } | null> {
+    const [row] = await this.db
+      .select()
+      .from(channels)
+      .where(and(eq(channels.tenantId, tenantId), eq(channels.id, channelId)))
+      .limit(1);
+    if (!row) return null;
+    return { resolved: await this.resolve(row), version: row.version };
+  }
+
   async get(tenantId: string, channelId: string): Promise<ResolvedChannel | null> {
     const [row] = await this.db
       .select()

@@ -76,6 +76,8 @@ const channel = (over: Partial<Channel> = {}): Channel => ({
 /** Records every write, so "rejected" can be distinguished from "rejected after writing". */
 class FakeStore implements ChannelStore {
   readonly writes: string[] = [];
+  /** Reads are counted too, so "one query, not three" is assertable. */
+  readonly reads: string[] = [];
   activeCount = 2;
   conflictOnUpdate: number | null = null;
   constructor(private readonly rows: Channel[] = [channel()]) {}
@@ -122,7 +124,16 @@ class FakeStore implements ChannelStore {
     const c = this.rows.find((r) => r.id === id);
     return c ? this.resolved(c) : null;
   }
+  async getWithVersion(
+    _t: string,
+    id: string,
+  ): Promise<{ resolved: ResolvedChannel; version: number } | null> {
+    this.reads.push(`getWithVersion:${id}`);
+    const c = this.rows.find((r) => r.id === id);
+    return c ? { resolved: this.resolved(c), version: c.version } : null;
+  }
   async getRaw(_t: string, id: string): Promise<Channel | null> {
+    this.reads.push(`getRaw:${id}`);
     return this.rows.find((r) => r.id === id) ?? null;
   }
   async countActive(): Promise<number> {
@@ -325,5 +336,35 @@ describe('version conflicts become 409 with the current version', () => {
     const { svc, store } = make();
     await svc.updateTenantDefaults('t1', { taxRateBps: 100 }, DEFAULTS.version);
     expect(store.writes).toEqual(['updateTenantDefaults']);
+  });
+});
+
+describe('reading a channel with its ETag (C-9)', () => {
+  it('takes ONE store read, not a separate one for the version', () => {
+    // The shape this replaced fetched the body, then fetched the version. Three
+    // queries for one GET, and -- the part that actually matters -- a window
+    // between them. A write landing in that window produces an ETag for a
+    // different version than the body, so a client doing the correct thing
+    // (read, then If-Match with what it was handed) is either refused forever
+    // or silently overwrites an edit it never saw.
+    const { svc, store } = make([channel({ id: 'c1', version: 7 })]);
+    return svc.getWithVersion('t1', 'c1').then((found) => {
+      expect(found?.version).toBe(7);
+      expect(store.reads).toEqual(['getWithVersion:c1']);
+    });
+  });
+
+  it('the version belongs to the row that was returned', async () => {
+    const { svc } = make([channel({ id: 'c1', key: 'gb', version: 4 })]);
+    const found = await svc.getWithVersion('t1', 'c1');
+    expect(found?.resolved.config.key).toBe('gb');
+    expect(found?.version).toBe(4);
+  });
+
+  it('a missing channel yields null rather than a version of zero', async () => {
+    // A falsy-version bug would make the controller emit `ETag: 0` for a
+    // channel that does not exist.
+    const { svc } = make([]);
+    expect(await svc.getWithVersion('t1', 'nope')).toBeNull();
   });
 });

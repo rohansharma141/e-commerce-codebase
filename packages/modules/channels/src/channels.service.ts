@@ -66,6 +66,10 @@ export interface ChannelStore {
     opts?: { limit?: number; cursor?: string },
   ): Promise<{ items: readonly ResolvedChannel[]; nextCursor: string | null }>;
   get(tenantId: string, channelId: string): Promise<ResolvedChannel | null>;
+  getWithVersion(
+    tenantId: string,
+    channelId: string,
+  ): Promise<{ resolved: ResolvedChannel; version: number } | null>;
   getRaw(tenantId: string, channelId: string): Promise<Channel | null>;
   countActive(tenantId: string): Promise<number>;
   create(tenantId: string, dto: CreateChannelDto): Promise<Channel>;
@@ -154,14 +158,19 @@ export class ChannelsService implements IChannelsQuery, ChannelsAdmin {
   }
 
   /**
-   * The stored version, for an `ETag` on a read.
+   * A read plus the `ETag` value that describes exactly what was read.
    *
-   * `ResolvedChannel` deliberately does not carry it: version belongs to the
-   * stored row, and putting it on the resolved config would invite a client to
-   * treat a resolved view as something it can write back.
+   * One store call. The earlier shape fetched the body and the version
+   * separately, which is a race in the middle of a concurrency feature: a write
+   * landing between the two reads produces an `ETag` for a different version
+   * than the body, and the client that then sends it back is either refused
+   * forever or overwrites an edit it never saw.
    */
-  async getRawVersion(tenantId: string, channelId: string): Promise<number | null> {
-    return (await this.store.getRaw(tenantId, channelId))?.version ?? null;
+  getWithVersion(
+    tenantId: string,
+    channelId: string,
+  ): Promise<{ resolved: ResolvedChannel; version: number } | null> {
+    return this.store.getWithVersion(tenantId, channelId);
   }
 
   // ── writes ──────────────────────────────────────────────────────────────
