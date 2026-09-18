@@ -263,8 +263,23 @@ A cart stores the concrete id of the channel it was created in, and every operat
 
 *Not tested, stated so nobody assumes it was:* "checkout snapshots the cart's channel rather than the request's" has no discriminating test, because binding makes the two equal by the time checkout runs — any test would pass either way. The change is defensive; it makes the agreement a design property rather than an accident of ordering.
 
-**C-17 — `orders.created` sets `has_transacted`; currency frozen**
-*Verification:* place an order, then attempt a currency change; assert rejection. Before the consumer is wired, the change succeeds.
+**C-17 — `orders.created` sets `has_transacted`; currency frozen** OK *verified against a real database*
+`ChannelTransactedConsumer` subscribes to `orders.created` and marks the channel named in the order's snapshot. The rule it arms — C-8a's `currency.frozen` — already existed and was already tested; until this, the flag never became true and the rule could never fire.
+
+*The event is sufficient on its own.* Since C-16a the payload carries the channel snapshot, so no read back into orders is needed — which the architecture forbids anyway.
+
+*Verified — the stated check, in both directions:* before any order the currency edit **succeeds** (so the rule is not refusing everything); after an order in that channel it is rejected with `currency.frozen`, a rename still succeeds, `version` is unchanged, and a bystander channel nobody ordered in stays unfrozen. Two mutations:
+- **Unwiring the consumer** fails the freeze test — literally the row's "before the consumer is wired, the change succeeds".
+- **Removing `AND has_transacted = false`** fails exactly the redelivery test, which asserts `updated_at` does not move on a second delivery.
+A forged event — tenant `t2` naming one of `t1`'s channels — marks nothing: the tenant is bound from the event and RLS scopes the write.
+
+*What running it taught, which reading could not:* **the bus is asynchronous.** `publish()` schedules handlers on a microtask and returns, so `checkout()` resolves *before* the mark commits. The first run read the flag straight after checkout and saw `false` while the consumer's own log line said it had marked the channel — the test was wrong, not the consumer, and so was a sentence in the consumer's doc comment claiming the handler "happens to run within the request". Both corrected. It also vindicates binding the tenant **from the event** in the consumer's own transaction (the outbox precedent): the ambient request connection can be released before the handler runs, so using it would be a race that passes whenever the handler wins. The repository's ambient-context `markTransacted`, written speculatively in C-7, was retired so there is one way to do this, not two.
+
+*Decisions:* `version` is **not** bumped — this is not an operator edit, and a bump would 409 an in-flight rename for a change it did not conflict with, where the un-bumped path gives the far more useful `400 currency.frozen`. The freeze is **eventually consistent** with two stated windows (milliseconds after a first order; until the next order if an event is dropped — the conditional UPDATE makes every later order re-attempt the mark). Both are in CAVEATS, which the consumer's comment promised and which is now true.
+
+*Live over HTTP, against a rebuilt image:* on freshly-seeded `de`, `PATCH currencyCode` succeeds twice with `hasTransacted: false`; an order is placed in `de` through real checkout; the same `PATCH` is then `400 ["currency.frozen"]` while a rename is `200`, with `hasTransacted: true`. Fixture values restored afterwards.
+
+*What that live run also showed, and it is not C-17's to fix:* the order came back `channel = de | currency = GBP`. Checkout still charges in the tenant-level `pricing.tenant_config.currency`, so today the freeze protects a value checkout does not yet use. The freeze is still correct and still necessary — it is the precondition for charging per channel safely — but it only becomes *meaningful* once totals and checkout resolve currency from the channel. **No row in this backlog owned that**; see C-32.
 
 ---
 

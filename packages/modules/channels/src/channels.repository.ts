@@ -485,11 +485,9 @@ export class ChannelsRepository {
     });
   }
 
-  /** Set by the `orders.created` consumer (C-17). Freezes the channel's currency. */
-  async markTransacted(tenantId: string, channelId: string): Promise<void> {
-    await this.db
-      .update(channels)
-      .set({ hasTransacted: true, updatedAt: sql`now()` })
-      .where(and(eq(channels.tenantId, tenantId), eq(channels.id, channelId)));
-  }
+  // There is deliberately no `markTransacted` here. Setting `has_transacted` is
+  // done by ChannelTransactedConsumer on its own tenant-bound transaction,
+  // because a bus subscriber must not depend on the request's ambient
+  // connection (see that file). An ambient-context twin in this repository
+  // would be a second way to do it that works in tests and fails in production.
 }

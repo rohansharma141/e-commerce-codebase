@@ -12,6 +12,7 @@ import {
   channelReadModelProvider,
 } from './channel-read-model.provider';
 import { ChannelReconciler } from './channel-reconciler';
+import { ChannelTransactedConsumer } from './channel-transacted.consumer';
 
 export const CHANNELS_SCHEMA_NAME = 'channels';
 
@@ -57,6 +58,9 @@ function migrationsDir(): string {
     // Closes the stale-hit gap the feeder leaves: a dropped event is wrong for
     // at most CHANNELS_RECONCILE_MS. Set it to 0 to disable (tests do).
     ChannelReconciler,
+    // Connects C-8a's currency.frozen rule to real orders: until an order
+    // marks the channel, the rule can never fire.
+    ChannelTransactedConsumer,
   ],
   // CHANNEL_QUERY is the read surface other modules consume (C-16 onwards).
   // ChannelsService stays exported for the composition root only.

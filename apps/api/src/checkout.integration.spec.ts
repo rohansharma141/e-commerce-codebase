@@ -36,6 +36,7 @@ import type { Promotion } from '@platform/modules/pricing/contracts';
 import { CheckoutService } from '@platform/modules/orders/src/checkout.service';
 import { ChannelsRepository } from '@platform/modules/channels/src/channels.repository';
 import { ChannelsService } from '@platform/modules/channels/src/channels.service';
+import { ChannelTransactedConsumer } from '@platform/modules/channels/src/channel-transacted.consumer';
 
 /**
  * This spec lives in apps/api rather than in the orders module, because what
@@ -63,6 +64,7 @@ describeIf('orders checkout integration', () => {
   let tenantConfigService: TenantConfigService;
   let channelsRepo: ChannelsRepository;
   let channelsService: ChannelsService;
+  let transactedConsumer: ChannelTransactedConsumer;
 
   const productA = randomUUID();
   const productB = randomUUID();
@@ -115,6 +117,12 @@ describeIf('orders checkout integration', () => {
     channelsRepo = new ChannelsRepository(tenantDrizzleAccessor);
     channelsService = new ChannelsService(channelsRepo, bus);
     cartService = new CartService(cartRepo, totalsService, channelsService);
+    // Subscribed to the same bus checkout publishes on, as in production. It
+    // gets the RAW sql client, not the tenant-bound accessor: the consumer must
+    // bind its tenant from the event, and handing it an ambient connection here
+    // would hide exactly the dependency it is written to avoid.
+    transactedConsumer = new ChannelTransactedConsumer(sql, bus);
+    transactedConsumer.onModuleInit();
     checkout = new CheckoutService(
       tenantDrizzleAccessor,
       cartService,
@@ -349,6 +357,151 @@ describeIf('orders checkout integration', () => {
       const cartId = await newCart(t2);
       const { order } = await asT(t2, () => checkout.checkout(t2, cartId));
       expect(order.channel?.key).toBe('web');
+    });
+  });
+
+  describe('currency freezes once a channel has transacted (C-17)', () => {
+    /** A request scoped to a specific channel, as ChannelScopeMiddleware would bind it. */
+    const inChannel = <T>(tenantId: string, channelId: string, fn: () => Promise<T>): Promise<T> =>
+      runWithTenant({ tenantId, requestId: randomUUID(), channelId }, () =>
+        withTenantConnection(sql, tenantId, fn),
+      );
+
+    const freshChannel = (t: string, label: string) =>
+      asT(t, () =>
+        channelsService.create(t, {
+          key: `${label}-${randomUUID().slice(0, 6)}`,
+          name: label,
+          status: 'active',
+          currencyCode: 'USD',
+        }),
+      );
+
+    /**
+     * Polls until `ok`, or gives up and returns the last value so the caller's
+     * assertion fails on a real reading rather than on a timeout.
+     *
+     * Needed because the bus is genuinely asynchronous: `publish()` schedules
+     * handlers on a microtask and returns, so `checkout()` resolves BEFORE the
+     * consumer's transaction commits. The first draft of these tests read the
+     * flag immediately after checkout and saw `false` while the consumer's own
+     * log line said it had marked the channel -- the test was wrong, not the
+     * consumer. The freeze is eventually consistent, and a test of it has to be
+     * written that way.
+     */
+    const eventually = async <T>(
+      read: () => Promise<T>,
+      ok: (v: T) => boolean,
+      ms = 3000,
+    ): Promise<T> => {
+      const deadline = Date.now() + ms;
+      for (;;) {
+        const v = await read();
+        if (ok(v) || Date.now() > deadline) return v;
+        await new Promise((r) => setTimeout(r, 25));
+      }
+    };
+
+    const rawOf = (t: string, channelId: string) =>
+      asT(t, async () => (await channelsRepo.getRaw(t, channelId))!);
+
+    /**
+     * Places an order in a channel and waits for the consumer to have marked it,
+     * so every test leaves the bus quiescent instead of racing a pending handler
+     * against the next test or the pool being closed.
+     */
+    const orderIn = async (t: string, channelId: string) => {
+      const cartId = await inChannel(t, channelId, async () => {
+        const c = await cartService.create(t);
+        await cartService.addItem(t, c.id, { productId: productA, sku: 'A', name: 'A', qty: 1 });
+        return c.id;
+      });
+      const placed = await inChannel(t, channelId, () => checkout.checkout(t, cartId));
+      await eventually(() => rawOf(t, channelId), (c) => c.hasTransacted);
+      return placed;
+    };
+
+    it('an order freezes the currency of the channel it was placed in -- and only that one', async () => {
+      const fresh = await freshChannel(t1, 'c17');
+      const bystander = await freshChannel(t1, 'c17-bystander');
+      expect(fresh.hasTransacted).toBe(false);
+
+      // BEFORE any order: the currency is freely editable. Without this half, a
+      // rule that refused every currency change would pass the half below.
+      const edited = await asT(t1, () =>
+        channelsService.update(t1, fresh.id, { currencyCode: 'EUR' }, fresh.version),
+      );
+      expect(edited.currencyCode).toBe('EUR');
+
+      const { order } = await orderIn(t1, fresh.id);
+      expect(order.channel?.channelId).toBe(fresh.id);
+
+      // AFTER: marked, by the consumer, from the event alone -- eventually.
+      // If the consumer were not wired, `eventually` times out and this reads
+      // false, which is the "before the consumer is wired, the change succeeds"
+      // state the backlog describes.
+      const raw = await eventually(() => rawOf(t1, fresh.id), (c) => c.hasTransacted);
+      expect(raw.hasTransacted).toBe(true);
+
+      await expect(
+        asT(t1, () => channelsService.update(t1, fresh.id, { currencyCode: 'GBP' }, raw.version)),
+      ).rejects.toMatchObject({
+        response: {
+          violations: expect.arrayContaining([
+            expect.objectContaining({ code: 'currency.frozen' }),
+          ]),
+        },
+      });
+
+      // Freezing the currency freezes ONLY the currency. And the version was
+      // not bumped by the mark, so an operator's in-flight rename still lands
+      // rather than 409ing against a change they did not conflict with.
+      expect(raw.version).toBe(edited.version);
+      const renamed = await asT(t1, () =>
+        channelsService.update(t1, fresh.id, { name: 'Renamed after first order' }, raw.version),
+      );
+      expect(renamed.name).toBe('Renamed after first order');
+
+      // The channel nobody ordered in is untouched.
+      const other = (await asT(t1, () => channelsRepo.getRaw(t1, bystander.id)))!;
+      expect(other.hasTransacted).toBe(false);
+    });
+
+    it('a redelivered event changes nothing -- not even updated_at', async () => {
+      // The bus redelivers. The UPDATE is conditional on has_transacted = false,
+      // so a second delivery matches zero rows.
+      const fresh = await freshChannel(t1, 'c17-redeliver');
+      const { order } = await orderIn(t1, fresh.id);
+      const afterFirst = await rawOf(t1, fresh.id); // orderIn already waited
+      expect(afterFirst.hasTransacted).toBe(true);
+
+      expect(await transactedConsumer.handle(t1, { order })).toBe('unchanged');
+      expect(await transactedConsumer.handle(t1, { order })).toBe('unchanged');
+
+      const afterThird = (await asT(t1, () => channelsRepo.getRaw(t1, fresh.id)))!;
+      expect(afterThird.updatedAt).toBe(afterFirst.updatedAt);
+    });
+
+    it('the tenant comes from the event, and RLS scopes the write', async () => {
+      // A forged event: tenant t2 naming one of t1's channels. The consumer
+      // binds t2, RLS hides t1's row, and the UPDATE matches nothing. If the
+      // consumer used an unscoped connection this would mark another tenant's
+      // channel.
+      const victim = await freshChannel(t1, 'c17-victim');
+      const { order } = await orderIn(t1, (await freshChannel(t1, 'c17-source')).id);
+      const forged = { order: { ...order, channel: { ...order.channel!, channelId: victim.id } } };
+
+      expect(await transactedConsumer.handle(t2, forged)).toBe('unchanged');
+
+      const after = (await asT(t1, () => channelsRepo.getRaw(t1, victim.id)))!;
+      expect(after.hasTransacted).toBe(false);
+    });
+
+    it('an order that predates channels marks nothing and does not throw', async () => {
+      const { order } = await orderIn(t1, (await freshChannel(t1, 'c17-legacy')).id);
+      expect(await transactedConsumer.handle(t1, { order: { ...order, channel: null } })).toBe(
+        'no-channel',
+      );
     });
   });
 });

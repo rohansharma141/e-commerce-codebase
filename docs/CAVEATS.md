@@ -117,6 +117,14 @@ Added by the channels slice (ADR-0014). Every one of these is a *stated* simplif
 - **What would change it:** channels proliferating — per-store channels for a retailer with hundreds of locations, say. Then it needs a bound, and the natural one is an LRU per tenant, because a miss is already safe: it falls through to the source rather than failing.
 - **Not a leak:** the set is bounded by the number of channels that exist, not by traffic. It grows with data, not with requests.
 
+### The currency freeze is eventually consistent, and rides a bus with no durability
+- **Status:** by design; two small windows, both stated.
+- **What:** a channel's `currency_code` freezes once it has transacted, because orders store money as integers in that currency's minor units and changing it afterwards silently reinterprets every one of them. The flag is set by `ChannelTransactedConsumer` reacting to `orders.created` — not inside checkout, because a cross-module write in checkout's transaction is forbidden.
+- **Window 1 — milliseconds:** the bus is asynchronous (`publish()` schedules handlers on a microtask and returns), so checkout resolves before the mark commits. For a channel's very first order there is a brief moment in which its currency is still editable. It only matters if an operator's currency edit races that first order.
+- **Window 2 — until the next order:** handler failures are isolated by the bus, deliberately — a failed mark must never fail a customer's checkout — and the in-process bus has no retry or replay. A dropped or failed `orders.created` therefore leaves the channel unfrozen. The UPDATE is conditional on `has_transacted = false`, so *every* later order in that channel re-attempts it and the gap self-heals at the next order. The residual exposure is a channel whose only-ever order had its event dropped.
+- **Held down by:** `checkout.integration.spec.ts` — unwiring the consumer fails the freeze test, and removing the conditional fails the redelivery test (which asserts `updated_at` does not move on a second delivery).
+- **Fix if it ever matters:** a real broker with at-least-once delivery closes window 2 outright, and is the same change CAVEATS already lists under *In-process event bus, not a real broker*. Window 1 closes only with a synchronous cross-module write, which is the wrong trade.
+
 ### Authentication is a prerequisite that has not been built
 - **Status:** open, and the only item here that blocks a phase.
 - **What:** gate G-1 decided the back office may not ship without a login. [ADR-0015](adr/0015-operator-authentication-at-the-api-edge.md) designs it — the four gateway behaviours ADR-0007 has specified since May, one operator role, IdP left as configuration — and none of it is built.

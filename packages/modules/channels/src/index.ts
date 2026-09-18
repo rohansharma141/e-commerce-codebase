@@ -13,3 +13,4 @@ export * from './channels.schema';
 export * from './channel-scope.middleware';
 export * from './channel-read-model.provider';
 export * from './channel-reconciler';
+export * from './channel-transacted.consumer';

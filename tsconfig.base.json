@@ -35,6 +35,7 @@
       "@platform/modules/channels/src": ["packages/modules/channels/src/index.ts"],
       "@platform/modules/channels/src/channels.repository": ["packages/modules/channels/src/channels.repository.ts"],
       "@platform/modules/channels/src/channels.service": ["packages/modules/channels/src/channels.service.ts"],
+      "@platform/modules/channels/src/channel-transacted.consumer": ["packages/modules/channels/src/channel-transacted.consumer.ts"],
       "@platform/modules/catalog/contracts": ["packages/modules/catalog/contracts/src/index.ts"],
       "@platform/modules/catalog/src": ["packages/modules/catalog/src/catalog.module.ts"],
       "@platform/modules/search/contracts": ["packages/modules/search/contracts/src/index.ts"],
