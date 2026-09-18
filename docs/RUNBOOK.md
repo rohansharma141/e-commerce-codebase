@@ -37,11 +37,11 @@ SEED_PRODUCTS_PER_TENANT=3000 pnpm seed
 
 Learned by being bitten. Each of these produced a confusing symptom whose cause was several steps upstream.
 
-**Running the test suite empties the demo data.** The module integration suites `DROP SCHEMA` for catalog, pricing and orders to get a clean slate. A green suite followed by a storefront showing no products is both working exactly as designed. Re-run `pnpm seed` afterwards.
+**Running the test suite empties the demo data.** The module integration suites `DROP SCHEMA` for catalog, pricing, orders and — since the channels slice — `channels` to get a clean slate. `checkout.integration.spec.ts` alone drops orders, pricing and channels. A green suite followed by a storefront showing no products is both working exactly as designed. Re-run `pnpm seed` afterwards.
 
 **The storefront conformance suite wants the opposite.** It needs a *seeded* api, so it cannot share an invocation with the module suites. Order: module suites → `pnpm seed` → `TEST_API_URL=http://localhost:3000 pnpm nx test storefront`.
 
-**Migrations are verified only on an empty database.** The ledger records what has been applied, so a machine that has run them before never re-runs the failing path. Before pushing anything with a migration, `docker compose down -v`, bring the stack up, and watch all five schemas migrate from nothing.
+**Migrations are verified only on an empty database.** The ledger records what has been applied, so a machine that has run them before never re-runs the failing path. Before pushing anything with a migration, `docker compose down -v`, bring the stack up, and watch all six schemas migrate from nothing (`audit`, `catalog`, `pricing`, `branding`, `channels`, `orders`).
 
 **A migration checksum mismatch on a file you did not touch is line endings.** The runner hashes file bytes to enforce immutability. `.gitattributes` pins text to LF for exactly this reason; if it reappears, check what `git config core.autocrlf` did to the working tree.
 
@@ -55,7 +55,51 @@ Learned by being bitten. Each of these produced a confusing symptom whose cause 
 
 **The storefront container does not come back after a Docker restart.** No `restart:` policy in compose. `docker compose ps` before demoing; `docker compose up -d storefront` if it is missing.
 
+**A failed `docker compose build` leaves the old container serving.** `/ready` still answers 200, so "the api is up" proves nothing about which code it runs. After a rebuild, check a behavioural marker only the new code produces.
+
+**Every module's migrations are copied into the api image by hand.** `apps/api/Dockerfile` has one `COPY` line per module. A new module without its line boots fine under `nx serve` and in every test — they read migrations from the source tree — and the container dies at startup with *"<module> migrations directory not found"*. This happened to `channels`.
+
+**A migration may not assume another module migrated first.** Order depends on module initialisation. Guard cross-schema reads with `to_regclass('<schema>.<table>') IS NOT NULL`, as branding's `0001` and orders' `0003` do.
+
+**The event bus is asynchronous.** `publish()` returns before any handler runs. A handler's effect is not visible when the publishing call resolves, and a handler must bind its tenant from the event rather than borrowing the request's connection, which may already be released.
+
 **Webhook timings in compose are demo settings.** `STOREFRONT_WEBHOOK_MAX_ATTEMPTS=2` and `STOREFRONT_OUTBOX_SWEEP_MS=15000` make the give-up and dead-letter sweep observable within a minute. Production defaults are 6 attempts and a 60s sweep.
+
+## Running the live suites
+
+Five suites exercise a running, seeded stack rather than code in isolation. They are gated on environment variables and **skip** without them — which is correct, and also the trap below.
+
+| Suite | Command | Needs | Destroys |
+|---|---|---|---|
+| Admin conventions | `TEST_API_URL=http://localhost:3000 pnpm nx test api --skipNxCache -- --testPathPattern=admin-conventions` | seeded stack, **≥ 2 orders** for `t-fashion` | nothing |
+| Admin concurrency | `… --testPathPattern=admin-concurrency` | seeded stack | nothing (archives its own probe channels) |
+| Scoped GraphQL | `… --testPathPattern=scoped-graphql` | seeded stack with `t-fashion`'s `uk` and `de` | nothing |
+| Storefront conformance | `TEST_API_URL=http://localhost:3000 pnpm nx test storefront --skipNxCache` | seeded stack | nothing |
+| Checkout integration | `TEST_DATABASE_URL=postgres://platform:platform@localhost:5432/platform TEST_REDIS_URL=redis://localhost:6379 pnpm nx test api --skipNxCache -- --testPathPattern=checkout.integration` | Postgres + Redis | **drops `orders`, `pricing`, `channels`** |
+| Channels module | `TEST_DATABASE_URL=… pnpm nx test channels-src --skipNxCache` | Postgres | **drops `channels`** |
+
+**`--skipNxCache` is not optional.** Nx caches `test` on file inputs only; environment variables are not part of the key. Running a suite once without the variable caches a *skipped* run, and running it again *with* the variable replays that as a pass. The suite never executes and nothing says so.
+
+**Space them about a minute apart.** The api throttles at 200 requests per minute per tenant, and admin-conventions alone costs ~80. Back-to-back runs exhaust the budget. Admin-conventions and admin-concurrency throw a named `429 (rate limited)` error when that happens; the others simply fail, so a burst of unrelated-looking failures right after another suite is the throttle until proven otherwise — wait a minute and re-run before debugging.
+
+**Admin conventions needs two orders.** It pages through `/admin/orders`, and a `down -v` or the checkout suite leaves none; the seed does not create any. Its `beforeAll` refuses to run on fewer than two and says so. Create them through the real checkout flow:
+
+```bash
+API=http://localhost:3000; T=t-fashion
+P=$(curl -s -H "x-tenant-id: $T" -H 'content-type: application/json' -X POST $API/graphql \
+  -d '{"query":"{ search(input:{limit:1}) { items { id sku } } }"}')
+ID=$(echo "$P"  | python -c "import sys,json;print(json.load(sys.stdin)['data']['search']['items'][0]['id'])")
+SKU=$(echo "$P" | python -c "import sys,json;print(json.load(sys.stdin)['data']['search']['items'][0]['sku'])")
+for n in 1 2; do
+  C=$(curl -s -H "x-tenant-id: $T" -X POST $API/storefront/carts | python -c "import sys,json;print(json.load(sys.stdin)['cartId'])")
+  curl -s -o /dev/null -H "x-tenant-id: $T" -H 'content-type: application/json' -X POST \
+    $API/storefront/carts/$C/items -d "{\"productId\":\"$ID\",\"sku\":\"$SKU\",\"name\":\"probe\",\"qty\":1}"
+  curl -s -o /dev/null -w "order$n=%{http_code}\n" -H "x-tenant-id: $T" -H 'content-type: application/json' \
+    -H "idempotency-key: probe-$n-$RANDOM" -X POST $API/storefront/checkout -d "{\"cartId\":\"$C\"}"
+done
+```
+
+**Order:** destructive suites first, then `pnpm seed`, then the two orders, then the live suites — spaced.
 
 ## Inspecting webhook delivery
 
@@ -182,9 +226,13 @@ The `platform` role is intentionally non-superuser (this is what makes RLS bite)
 docker exec e-commerce-codebase-postgres-1 psql -U postgres -d platform -c "SELECT ..."
 ```
 
-### `db.transaction` fails RLS
+### `db.transaction` silently sees zero rows
 
-If you ever see `new row violates row-level security policy` during a write, you're probably opening a transaction on the singleton drizzle client instead of the request-scoped one. See `packages/modules/orders/src/checkout.service.ts` — it issues BEGIN/COMMIT manually on the request's reserved connection via `currentTenantBinding()`.
+**Never use Drizzle's `db.transaction()` on a tenant-scoped table. Use `withTenantTransaction` from `@platform/shared/database`.**
+
+The request-scoped Drizzle client wraps the request's reserved connection, but `db.transaction()` resolves to the parent client's `begin()` and takes a *fresh* pool connection with no `app.tenant_id`. RLS then hides every row. The usual symptom is **not** an error: reads return empty and `UPDATE … WHERE` affects zero rows, so the operation reports success having done nothing. An INSERT is the one case that fails loudly (`new row violates row-level security policy`), which is why this entry used to describe only that.
+
+`withTenantTransaction` issues BEGIN/COMMIT on the request's reserved connection, so every statement inside inherits both the transaction and the tenant. It was extracted after the second occurrence (checkout, then channel default-promotion).
 
 ### `seed: failed connect ECONNREFUSED`
 
@@ -217,7 +265,7 @@ If you only want to wipe Postgres but keep OpenSearch:
 ```bash
 docker exec e-commerce-codebase-postgres-1 \
   psql -U postgres -d platform \
-  -c "DROP SCHEMA catalog CASCADE; DROP SCHEMA pricing CASCADE; DROP SCHEMA orders CASCADE; DROP SCHEMA audit CASCADE;"
+  -c "DROP SCHEMA catalog CASCADE; DROP SCHEMA pricing CASCADE; DROP SCHEMA orders CASCADE; DROP SCHEMA audit CASCADE; DROP SCHEMA branding CASCADE; DROP SCHEMA channels CASCADE;"
 docker compose restart api
 ```
 

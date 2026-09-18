@@ -158,7 +158,7 @@ The remaining twelve entries are marked *by design*, *resolved* or *closed* — 
 
 ## 9. Current state and what remains
 
-- **`main` = `3a0eaf9`**, 59 commits, clean, CI green, `v0.1.0` tagged.
+- **`main` = `433f5b6`**, 61 commits, clean, CI green, `v0.1.0` tagged. *(This line previously named `3a0eaf9` and 59 commits — true when written, stale since.)*
 - **CI** runs three jobs on every push: lint/build/test with real Postgres, Redis and OpenSearch containers plus Kubernetes manifest validation; storefront↔API contract conformance against a seeded API; and an install-and-build on Node 24 with the side-effects cache disabled.
 - **Backlog: 29 of 30 rows done.** The only open row is recording a 2–3 minute walkthrough video — a human task.
 - Suggested-but-unbuilt from the most recent audit: delete a stale duplicate of the instruction file (`docs/CLAUDE-v2.md`, a 90-line copy contradicting the live 121-line one); write a production deployment guide, which the new manifests now give something concrete to explain; and mark a historical findings table in the backlog as closed so it stops reading as open work.
@@ -167,13 +167,19 @@ The remaining twelve entries are marked *by design*, *resolved* or *closed* — 
 
 ## 10. In flight: the channels slice
 
-Branch `channels`, designed and not yet built. It is the first slice aimed at **commerce depth** rather than consolidation — the deliberate turn toward what Intershop and commercetools provide, with an operator-facing back office as the artefact that surfaces it.
+Branch `channels` — **Phases A–C built and verified, 31 commits ahead of `main`, not merged.** It is the first slice aimed at **commerce depth** rather than consolidation — the deliberate turn toward what Intershop and commercetools provide, with an operator-facing back office as the artefact that surfaces it.
 
 A tenant today is a single market: one currency, one locale, one tax configuration, one implicit storefront. The slice makes a tenant a business selling into several — sales channels with their own currency, locales, country, timezone and tax, inheriting from tenant defaults — plus an admin console to configure them, an API that reports each channel's resolved configuration, and authentication as a prerequisite because a console without a login is not defensible.
 
-Roughly 9–11.5 weeks excluding auth. Three decision gates are closed; nothing blocks the first item.
+Roughly 9–11.5 weeks excluding auth, for one engineer.
 
-Read [docs/design/CHANNELS-OVERVIEW.md](design/CHANNELS-OVERVIEW.md) first — it carries the functionality, the full decision register with reasons, the honest limits, and the non-goals. [ADR-0014](adr/0014-channel-as-sales-channel.md) holds the arguments, [CHANNEL-MODEL](design/CHANNEL-MODEL.md) the mechanics, [BACKLOG-channels](BACKLOG-channels.md) the sequence.
+**Where it stands (2026-09-19).** Built: admin conventions, URL-scoped reads with the header as the trust input, the channels module (schema, RLS, repository, invariants, admin endpoints, seed fixtures), channel resolution on every request, domain events, a consuming-module read-model with periodic reconciliation, channel snapshots on orders, carts bound to their channel, currency freezing after a channel's first order, and tax-inclusive pricing in the engine. Every row carries a verification that was made to fail before it was trusted.
+
+**One gate is open, and it matters.** A channel's currency is *declared* but not *charged*: checkout still charges the tenant's price-list currency, so an order in the EUR channel is charged GBP. The design says a missing price in a channel's currency must fail rather than fall back, and defers per-channel price lists — so the choice is to refuse, or to build price lists. It is gate G-4, and it blocks the API-surface and storefront phases. The planning miss that hid it is recorded honestly in the build notes.
+
+Not started: operator authentication (ADR-0015) and the back office itself.
+
+Read [docs/design/CHANNELS-OVERVIEW.md](design/CHANNELS-OVERVIEW.md) first — it carries the functionality, the full decision register with reasons, the honest limits, and the non-goals. The top of [BACKLOG-channels](BACKLOG-channels.md) is the live status, and [CHANNELS-BUILD-NOTES](design/CHANNELS-BUILD-NOTES.md) records the traps hit and mistakes made while building it. [ADR-0014](adr/0014-channel-as-sales-channel.md) holds the arguments, [CHANNEL-MODEL](design/CHANNEL-MODEL.md) the mechanics, [BACKLOG-channels](BACKLOG-channels.md) the sequence.
 
 Two limits worth carrying into any discussion of it: a channel holds **one** currency, so this is not multi-currency; and locales drive **formatting, not translation**, because the catalog has no locale dimension.
 

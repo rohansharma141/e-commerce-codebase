@@ -75,6 +75,8 @@ The API MVP (steps 1–6) is **complete**. Active work begins at step 7.
      - 8c-5..7. Per-tenant locale, and a REST mirror of the capability endpoint
    - 8d. Ship the story: tag, CI badge, screenshots, cold clone-and-run, record the Loom
 
+9. **🚧 Channels slice — on branch `channels`, not yet merged.** Sales channels (a tenant selling into several markets) plus an operator back office, per ADR-0014 and ADR-0015. **Current status, the decisions waiting on the user, and the next buildable item are at the top of `docs/BACKLOG-channels.md`.** The traps and mistakes that cost time building it are in `docs/design/CHANNELS-BUILD-NOTES.md` — read both before resuming.
+
 **Before starting anything in step 8, read @docs/BACKLOG.md** — it decomposes the above into individually shippable increments with a stated verification for each. One item, one commit, one check. Anything that would take longer than about two hours gets split before it is started, not while it is being built.
 
 **The rule for step 8:** a claim in a doc, README, or ADR is part of the product. Fixing the claim to match reality counts as much as fixing the code — but where they disagree, the code is the contract and the doc is the bug.
@@ -82,7 +84,7 @@ The API MVP (steps 1–6) is **complete**. Active work begins at step 7.
 ## Out of scope — do not build (document as "designed, not built" if relevant)
 Back-office admin UI, CMS, MDM, job scheduler portal, omni-channel breadth, actual microservices deployment, Kubernetes cluster (write manifests, don't deploy).
 
-(Storefront moved into scope as build priority 7. Back-office admin UI remains out — the API has its own admin REST surface.)
+(Storefront moved into scope as build priority 7. Back-office admin UI remains out on `main` — the API has its own admin REST surface. **On the `channels` branch the user brought a back office into scope on 2026-08-28**, as Phase E of the channels slice, gated behind the auth slice in ADR-0015. It is designed, not built.)
 
 ## Conventions
 - TypeScript strict mode. No `any` without a comment justifying it.
@@ -99,7 +101,7 @@ Back-office admin UI, CMS, MDM, job scheduler portal, omni-channel breadth, actu
 - `pnpm nx run api-client:codegen-rest` — regenerate the REST half from the api's live `/docs-json` (api must be up)
 - `docker compose up` — full local stack (Postgres, Redis, OpenSearch, api, storefront)
 - `docker compose up api` — the api without the storefront; proves the api ships alone
-- `TEST_API_URL=http://localhost:3000 pnpm nx test storefront` — storefront↔API contract conformance
+- `TEST_API_URL=http://localhost:3000 pnpm nx test storefront --skipNxCache` — storefront↔API contract conformance. **`--skipNxCache` is required** for every env-gated suite: Nx does not key its test cache on environment variables, so a run without the variable caches a *skip* that a later run with it replays as a pass. All live suites: `docs/RUNBOOK.md#running-the-live-suites`
 - `pnpm nx test <module>` — test one module
 - `pnpm lint` — lint incl. boundary enforcement
 - `pnpm nx run-many -t build` — build all
@@ -115,6 +117,11 @@ Every rule here was paid for by a bug that got through. They are cheap to follow
 - **Execute documented commands, do not re-read them.** Extract the block from the README with `sed` and run it. That is how the claim-3 flow was found to be unrunnable, and how a stale promotion was found to be silently invalidating the proof it was part of.
 - **Local success says little about CI or a cold clone.** `pnpm nx` sets up an environment that a direct `node node_modules/nx/bin/nx.js` does not; a warm Docker cache hides a six-minute build; an installed toolchain hides an `engines` mismatch. When a claim is about a fresh environment, test it in one.
 - **A commit message is a claim about the code.** One commit here stated a fix that never landed, because the script making the edit aborted before writing. If the message says it, verify it is in the diff.
+- **Silent success is the dominant failure here.** Three channels bugs raised no error at all: Drizzle's `db.transaction()` took a fresh connection outside the tenant binding, so RLS hid every row and updates matched nothing (use `withTenantTransaction`); Drizzle's `.set()` dropped keys written as SQL column names instead of schema properties; and the api image lacked a new module's migrations. Assert that the new value is present — never only that nothing threw.
+- **A change to a cross-deployable contract owes both sides' suites.** C-16a changed `Order` and ran only the api's; the storefront conformance suite pins `Order`'s exact keys and was broken until its next run.
+- **The event bus is asynchronous.** `publish()` returns before any handler runs. Read a handler's effect by polling, and bind a handler's tenant from the event — the request's connection may already be released.
+- **A mutation that fails to compile proves nothing.** "Suite failed to run" is not a caught mutation.
+- **Two copies of one fact drift.** The seed held each tenant's currency twice and the copies disagreed for weeks; derive the second from the first.
 - **Prefer demonstrating over asserting.** "A broken endpoint fails the seed" was proved by breaking the endpoint and showing exit 0 versus exit 1. That contrast is worth more than any wording.
 
 ## When unsure

@@ -1,6 +1,6 @@
 # Channels slice — what it delivers, and why it is shaped this way
 
-Read this first. [ADR-0014](../adr/0014-channel-as-sales-channel.md) is for interrogating any single decision; [CHANNEL-MODEL](CHANNEL-MODEL.md) is for building; [BACKLOG-channels](../BACKLOG-channels.md) is for sequencing. This is the layer above all three.
+Read this first. [ADR-0014](../adr/0014-channel-as-sales-channel.md) is for interrogating any single decision; [CHANNEL-MODEL](CHANNEL-MODEL.md) is for building; [BACKLOG-channels](../BACKLOG-channels.md) is for sequencing — and its top section is the **current status**. [CHANNELS-BUILD-NOTES](CHANNELS-BUILD-NOTES.md) holds the traps and mistakes found while building. This is the layer above all of them.
 
 **The one-sentence version:** a tenant stops being a single market and becomes a business selling into several, with an admin console to configure them and an API that reports what each one is.
 
@@ -115,6 +115,33 @@ Every decision in this slice, with the reason compressed to one line. Full argum
 | Idempotency extraction is its own item (C-28) | The mechanism is private to `checkout.service.ts` with its own table — "reuse" means extract first |
 | Only Phase A is sized; later phases sized when next up | BACKLOG.md's rule is XS/S/M with nothing larger, split *before* starting |
 
+### Decided while building
+
+Made in code between 2026-08-28 and 2026-09-19, each recorded in its backlog row and commit. **Two are product decisions awaiting the user's confirmation** (marked ⚑); the rest follow from the design.
+
+| Decision | Why | Row |
+|---|---|---|
+| ⚑ Nothing returns to `draft` | Otherwise `key` immutability is circumventable: archive, redraft, rename, reactivate | C-8a |
+| ⚑ `archived → active` is allowed | A market can reopen, and forbidding it makes a mis-archive unrecoverable; safe because the key is already frozen | C-8a |
+| ⚑ `x-channel-id` carries the channel **key**, not its UUID | A header is an integration surface; `x-tenant-id` carries `t-fashion`, not a surrogate. The ADR's header name is kept | C-12 |
+| Invariant violations are returned **all at once** | The back office edits a whole channel in one form; first-error-wins turns one round trip into four | C-8a |
+| Invariants live in a **service above the repository**, behind a `ChannelStore` port | Rules and persistence meet in one place, and the rules are provable while the SQL is not | C-8b |
+| `If-Match` is **required**; absent is `400` | Optional optimistic concurrency stops applying to exactly the client that forgot it | C-10 |
+| An ETag comes from **the same read** as the body | Two reads let a concurrent write make them disagree | C-9 |
+| The `{channelKey}` URL segment waited for channels to exist | A segment that resolves against nothing accepts any key | C-2b |
+| `Vary` names `x-channel-id` even though scoped reads carry the key in the URL | The header-only `/graphql` path still exists and still honours the header | C-4 |
+| Events publish **after** commit; `archived` is its own event; tenant-defaults is **one** event, not one per channel | A consumer must find what it was told about; an `updated`-only subscriber must not keep serving a closed market; a fan-out is a thundering herd on one click | C-13 |
+| The read-model lives in `contracts/`; misses are **not** cached; `listActive` never answers from the replica | One implementation for every consumer; a cached null outlives the channel it hid; a partial replica cannot answer a completeness question | C-14 |
+| `CHANNEL_QUERY` is defined in `contracts/`; `ChannelsModule` is `@Global` | The boundary rule forbids a consumer importing the provider's `src` | C-16a |
+| Reconciliation binds `app.system_worker`, **refuses a zero-row reload**, and swaps atomically | A timer has no tenant; a blinded read must not wipe a warm replica; no request should see it half-built | C-15 |
+| Orders **copy** the channel's id, key, name and exponent | A rename or archive must not rewrite history | C-16a |
+| Backfilled orders get a `channel_id` but **null** key and name | There was no historical name to record; borrowing today's would be indistinguishable from a real snapshot | C-16a |
+| The pricing seed **derives** currency and tax from the channel fixtures | The two copies had drifted | C-16a |
+| A cart stores the **concrete** default channel id, never "default" | A basket must not change market when another channel is promoted | C-16b |
+| A cart used in the wrong channel is `400`, not `404` or `409` | Channels are not a trust boundary; `409` means a version conflict here | C-16b |
+| The transacted mark binds its tenant **from the event** and does **not** bump `version` | The bus is asynchronous; a bump would `409` an operator's unrelated edit | C-17 |
+| `taxMode` is an engine **input**, not a response field | `capabilities.taxDisplay` already says how to read prices | C-29 |
+
 ---
 
 ## 3. Gates — three closed 2026-08-28, one open
@@ -142,6 +169,10 @@ The three documents were written without repository access and said so. Reconcil
 - **Reconciliation would have read zero rows under RLS** and reported success.
 - The word `channel` is **unused** in the codebase — the collision worry was unfounded.
 
+And one thing the reconciliation itself missed, found only while building (2026-09-19):
+
+- **No row charged a channel's currency.** The drafts give a channel a `currency_code` and never assign anyone to make totals or checkout use it. The reconciliation did not notice, and the gap was then misattributed to C-18 (capabilities-only) in six places. An order in `t-fashion`'s EUR channel is charged GBP. Opened as gate **G-4**; see §3.
+
 ---
 
 ## 5. Honest limits
@@ -149,6 +180,7 @@ The three documents were written without repository access and said so. Reconcil
 Stated here so the back office does not ship a control implying a capability that does not exist.
 
 - **One currency per channel.** Not multi-currency.
+- **A channel's currency is declared, not yet charged.** Checkout charges the tenant's price-list currency regardless of channel, until gate G-4 closes and C-32 lands. For the two single-channel demo tenants the two agree; for `t-fashion`'s `de` they do not.
 - **Formatting, not translation.** A `de-DE` channel renders German number formats around English product copy.
 - **One tax rate per channel.** No tax classes, no destination-based US tax, no EU OSS, no B2B reverse charge.
 - **Cache entries multiply by channels per tenant.** Fine at single digits, worth watching if channels proliferate.

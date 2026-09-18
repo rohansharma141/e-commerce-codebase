@@ -1,8 +1,62 @@
 # Channels slice — build plan
 
-Work breakdown for [ADR-0014](../adr/0014-channel-as-sales-channel.md) and [CHANNEL-MODEL](../design/CHANNEL-MODEL.md). Start at [CHANNELS-OVERVIEW](../design/CHANNELS-OVERVIEW.md) for what this delivers and why.
+Work breakdown for [ADR-0014](adr/0014-channel-as-sales-channel.md) and [CHANNEL-MODEL](design/CHANNEL-MODEL.md). Start at [CHANNELS-OVERVIEW](design/CHANNELS-OVERVIEW.md) for what this delivers and why.
 
 House rules applied: one item, one commit, one stated verification. Anything needing the word "and" between deliverables is two items. Every verification states **what it prints if the change did nothing** — a check that cannot fail is not a check.
+
+## Status as of 2026-09-19
+
+**Read this section first when resuming.** Then [CHANNELS-BUILD-NOTES](design/CHANNELS-BUILD-NOTES.md) for the traps and mistakes that cost time, and the rows below for each item's verification record.
+
+`main` = `433f5b6` (61 commits, CI green, `v0.1.0`). `channels` = `05ff688`, 31 commits ahead of `main`, branched from it, clean and pushed. **CI has never run on this branch** — it triggers only on `main` and on PRs into it, so every "verified" below is local.
+
+### Done — 22 rows, all verified
+
+| Phase | Rows |
+|---|---|
+| A — conventions and scope | C-1, C-2, C-3, C-2b, C-4 *(api half)*, C-9 *(REST half)* |
+| B — the channels module | C-5, C-6, C-7, C-8a, C-8b, C-10, C-11a |
+| C — resolution and propagation | C-12, C-13, C-14, C-15, C-16a, C-16b, C-17 |
+| F / G | C-26, C-29 |
+
+Plus [ADR-0015](adr/0015-operator-authentication-at-the-api-edge.md) (operator auth, designed not built). Test counts at `05ff688`: channels 144 unit + 24 database-gated, cart 15, pricing 59; live suites 45 admin-conventions, 6 admin-concurrency, 19 scoped-graphql, 11 checkout integration, 38 storefront conformance.
+
+### Waiting on the user
+
+1. **Gate G-4 — what does a channel charge when its currency differs from the price list's?** Blocks C-32, and through it C-18, C-19, C-30, C-31. Seen live: an order in `t-fashion`'s EUR channel `de` is charged **GBP**, because nothing on the money path consults the channel.
+
+   | Option | What `de` does | Cost |
+   |---|---|---|
+   | **A. Refuse** | browsable; cart and checkout return a named error until prices exist in its currency | small (C-32 ≈ 2–3 h) |
+   | **B. Per-channel price lists** | charges EUR from real EUR prices | its own ADR and phase; changes the denormalised price in the search index |
+   | **C. Relabel** | same integer under a € symbol | **rejected** — ADR-0014 §9 names this as the money bug |
+
+   **Recommendation: A now, then B as its own phase.** A stops the demo tenant silently charging the wrong currency today; B makes the currency control real, which is the standing direction ("when a control needs engine work, scope the engine work").
+2. **Confirm two status rules that were derived in code, not designed** (C-8a): nothing returns to `draft` (otherwise `key` immutability is circumventable by archive → redraft → rename), and `archived → active` is allowed (a market can reopen; safe because the key is already frozen).
+3. **Confirm `x-channel-id` carries the channel *key*, not its UUID** (C-12). The header name is the ADR's; the value follows `x-tenant-id`'s precedent of a human identifier. Cheap to change now, expensive once the back office assumes it.
+4. **Go-ahead for Block 2** — the auth slice (ADR-0015) and the back office (C-20..C-24). Not started.
+5. **CI on this branch** — a PR into `main`, or widening the workflow trigger. Declined for now.
+
+### What can be built next without a decision
+
+| Row | Est. | Note |
+|---|---|---|
+| C-11 — safety backfill | 1–1.5 h | needs `down -v` to verify cold — ask before wiping the stack |
+| C-28 — shared idempotency | 1.5–2.5 h | touches `checkout.service.ts`; checkout must stay byte-identical |
+| C-25 — observability points | 1–1.5 h | counters only; the reconciler and C-17 consumer already return outcomes to count |
+| C-27 — docs reconciled | 1.5–2.5 h | last; runs the README cold |
+
+Blocked on G-4: C-32 (then C-18 ≈ 1.5–2.5 h, C-19 ≈ 2–3 h, C-30 ≈ 1–1.5 h, C-31 ≈ 1–1.5 h). C-19 also inherits C-9's GraphQL half, C-10's GraphQL half and C-4's client guard. Block 2 ≈ 15–20 h. All estimates are working hours at this build's observed pace, including red-first verification — not a human engineer's figure, which is [CHANNEL-MODEL §12](design/CHANNEL-MODEL.md#12-effort).
+
+### Resuming safely
+
+1. **Ask before starting Docker.** Then `docker compose up -d` — never `down -v` on the user's stack without asking.
+2. `curl -s -H 'x-tenant-id: t-fashion' 'http://localhost:3000/admin/channels?limit=10'` should list `de` and `uk`. If the stack is empty, `pnpm seed`, then place two orders through real checkout (the recipe is in [RUNBOOK — Running the live suites](RUNBOOK.md#running-the-live-suites)).
+3. After any api change, rebuild with `docker compose build api && docker compose up -d api`, and check a behavioural marker before trusting it — a failed build leaves the old container answering `/ready`.
+4. Live suites need `--skipNxCache` and about a minute between them (the api throttles at 200 requests per minute per tenant).
+5. `channels.integration` and `checkout.integration` drop schemas the demo depends on. Re-seed after either.
+
+---
 
 > ### ✅ Verified 2026-08-28 — and it found three real bugs
 >
@@ -29,7 +83,7 @@ Sizing: BACKLOG.md's rule applies — XS/S/M only, anything larger is split **be
 
 G-1 was the only one that could change the slice's size, and it did: an auth slice (~1–1.5 weeks) now precedes Phase E. G-2 settled a grammar. G-3 dissolved on inspection — it was careful data-preservation machinery for rows we generate ourselves.
 
-Nothing now blocks C-1.
+G-1..G-3 unblocked Phase A. **G-4** is open — see *Status* at the top of this file.
 
 ---
 
@@ -200,7 +254,7 @@ The segment is asserted against `x-channel-id` exactly as the tenant segment is 
 
 *A mistake worth recording:* the events contract already existed from C-6 and was overwritten on the assumption it was a stub, dropping `channels.default-changed` and `tenantId` from the archived payload. Caught by reading the diff before committing, and restored — the original's reasoning was better than the replacement's.
 
-**C-14 — Read-model in consuming modules** OK
+**C-14 — Read-model in consuming modules** ✅
 `ChannelReadModel` in `contracts/` -- framework-free, so every consuming module shares one implementation rather than three growing their own. Fed from the bus by `ChannelReadModelFeeder`, which lives in `src/` because a class in `contracts/` must not know about Nest.
 
 Consumers depend on the **`CHANNEL_QUERY` token**, never on `ChannelsService`. After extraction the token is backed by a read-model over an HTTP client and no consumer changes. Its first consumer is `ChannelScopeMiddleware`, which runs on every channel-scoped request -- the hot path the replica exists for, not a mechanism waiting for a user.
@@ -229,7 +283,7 @@ Also pinned: misses are **not** cached (caching a null makes a just-created chan
 
 `replaceAll` swaps the maps atomically rather than clear-then-fill, so no request ever observes a half-built replica and the reconciler cannot become the cause of a periodic latency spike.
 
-**C-16a — Orders carry and snapshot the channel** OK *verified on a cold database*
+**C-16a — Orders carry and snapshot the channel** ✅ *verified on a cold database*
 `channel_id`, `channel_key`, `channel_name` and `currency_minor_units` on `orders.orders`, written at checkout from the resolved channel. A copy, not a reference — the same discipline as the price and promotion snapshots already in 0001.
 
 *Split from C-16 on discovery:* **carts live in Redis, not Postgres**, so "channel_id on both" is two different mechanisms and, by this file's own "needs the word *and*" rule, two items. Cart is C-16b.
@@ -243,7 +297,7 @@ Also pinned: misses are **not** cached (caching a null makes a just-created chan
 
 *Backfill is honest about what it cannot know.* Existing orders get `channel_id` from the tenant default (the tenant had exactly one selling context, which is what the default represents) but `key` and `name` stay **null**: at purchase the channel did not exist, so there is no historical name, and copying today's would be indistinguishable from a real snapshot.
 
-**C-16b — Carts are channel-bound** OK
+**C-16b — Carts are channel-bound** ✅
 A cart stores the concrete id of the channel it was created in, and every operation that loads it — read, add, requantify, coupon, and checkout via `get` — refuses a request in any other channel. Checkout snapshots the **cart's** channel rather than the request's.
 
 *The verification was rewritten, because the original could not fail.* It asked to assert that "the resolved currency on a cart read follows the cart's channel". Pricing is still tenant-level until C-18, so both of `t-fashion`'s channels price in GBP and that assertion passes whether or not binding exists. What *is* falsifiable today is the binding itself; the currency half moves to C-32 (originally misattributed to C-18 — see G-4).
@@ -264,7 +318,7 @@ A cart stores the concrete id of the channel it was created in, and every operat
 
 *Not tested, stated so nobody assumes it was:* "checkout snapshots the cart's channel rather than the request's" has no discriminating test, because binding makes the two equal by the time checkout runs — any test would pass either way. The change is defensive; it makes the agreement a design property rather than an accident of ordering.
 
-**C-17 — `orders.created` sets `has_transacted`; currency frozen** OK *verified against a real database*
+**C-17 — `orders.created` sets `has_transacted`; currency frozen** ✅ *verified against a real database*
 `ChannelTransactedConsumer` subscribes to `orders.created` and marks the channel named in the order's snapshot. The rule it arms — C-8a's `currency.frozen` — already existed and was already tested; until this, the flag never became true and the rule could never fire.
 
 *The event is sufficient on its own.* Since C-16a the payload carries the channel snapshot, so no read back into orders is needed — which the architecture forbids anyway.
