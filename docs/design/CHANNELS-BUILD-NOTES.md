@@ -4,7 +4,7 @@ The companion to [CHANNELS-OVERVIEW](CHANNELS-OVERVIEW.md) (what the slice deliv
 
 It exists because these facts otherwise live in commit messages and one session's context, and both are easy to lose. Where an entry names a commit, the commit message has the full account.
 
-Written 2026-09-19, at `05ff688`.
+Written 2026-09-19; describes the code as of `05ff688`.
 
 ---
 
@@ -58,7 +58,7 @@ Every entry below produced a symptom whose cause was elsewhere. Most share one s
 
 **Git Bash on this machine breaks heredocs with heavy quoting,** and the Bash tool rejects commands containing control characters. Write multi-line content with the Write tool and commit with `git commit -F <file>`.
 
-**Backslash escapes in a tool call can arrive as the real control character.** The layer between an agent and the shell or file decodes one level of backslash escaping. So a doubled backslash meant to survive into a Python string reaches Python single, and Python turns it into a real byte. This produced a NUL byte three times: once in source, and twice in this file while documenting the first. Git then treats the file as binary and `grep` stops matching it, so the damage is quiet. Construct control bytes in code, with `bytes([0])` or `chr(92)`, rather than typing escapes, and before committing a new or heavily edited file check it: `python -c "import sys; print(open(sys.argv[1],'rb').read().count(bytes([0])))" <file>` must print `0`.
+**Backslash escapes in a tool call can arrive as the real control character.** The layer between an agent and the shell or file decodes one level of backslash escaping. So a doubled backslash meant to survive into a Python string reaches Python single, and Python turns it into a real byte. This produced a NUL byte three times: once in source, and twice in this file while documenting the first. A fourth time, while reviewing these notes, a backslash-n inside a regular expression arrived as a real line break and broke the checking script mid-string. Git then treats the file as binary and `grep` stops matching it, so the damage is quiet. Construct control bytes in code, with `bytes([0])` or `chr(92)`, rather than typing escapes, and before committing a new or heavily edited file check it: `python -c "import sys; print(open(sys.argv[1],'rb').read().count(bytes([0])))" <file>` must print `0`.
 
 ---
 

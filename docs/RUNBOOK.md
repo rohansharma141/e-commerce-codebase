@@ -72,11 +72,11 @@ Five suites exercise a running, seeded stack rather than code in isolation. They
 | Suite | Command | Needs | Destroys |
 |---|---|---|---|
 | Admin conventions | `TEST_API_URL=http://localhost:3000 pnpm nx test api --skipNxCache -- --testPathPattern=admin-conventions` | seeded stack, **≥ 2 orders** for `t-fashion` | nothing |
-| Admin concurrency | `… --testPathPattern=admin-concurrency` | seeded stack | nothing (archives its own probe channels) |
-| Scoped GraphQL | `… --testPathPattern=scoped-graphql` | seeded stack with `t-fashion`'s `uk` and `de` | nothing |
+| Admin concurrency | `TEST_API_URL=http://localhost:3000 pnpm nx test api --skipNxCache -- --testPathPattern=admin-concurrency` | seeded stack | nothing (archives its own probe channels) |
+| Scoped GraphQL | `TEST_API_URL=http://localhost:3000 pnpm nx test api --skipNxCache -- --testPathPattern=scoped-graphql` | seeded stack with `t-fashion`'s `uk` and `de` | nothing |
 | Storefront conformance | `TEST_API_URL=http://localhost:3000 pnpm nx test storefront --skipNxCache` | seeded stack | nothing |
 | Checkout integration | `TEST_DATABASE_URL=postgres://platform:platform@localhost:5432/platform TEST_REDIS_URL=redis://localhost:6379 pnpm nx test api --skipNxCache -- --testPathPattern=checkout.integration` | Postgres + Redis | **drops `orders`, `pricing`, `channels`** |
-| Channels module | `TEST_DATABASE_URL=… pnpm nx test channels-src --skipNxCache` | Postgres | **drops `channels`** |
+| Channels module | `TEST_DATABASE_URL=postgres://platform:platform@localhost:5432/platform pnpm nx test channels-src --skipNxCache` | Postgres | **drops `channels`** |
 
 **`--skipNxCache` is not optional.** Nx caches `test` on file inputs only; environment variables are not part of the key. Running a suite once without the variable caches a *skipped* run, and running it again *with* the variable replays that as a pass. The suite never executes and nothing says so.
 

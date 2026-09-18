@@ -167,7 +167,7 @@ The remaining twelve entries are marked *by design*, *resolved* or *closed* — 
 
 ## 10. In flight: the channels slice
 
-Branch `channels` — **Phases A–C built and verified, 31 commits ahead of `main`, not merged.** It is the first slice aimed at **commerce depth** rather than consolidation — the deliberate turn toward what Intershop and commercetools provide, with an operator-facing back office as the artefact that surfaces it.
+Branch `channels` — **Phases A–C built and verified, not merged into `main`.** It is the first slice aimed at **commerce depth** rather than consolidation — the deliberate turn toward what Intershop and commercetools provide, with an operator-facing back office as the artefact that surfaces it.
 
 A tenant today is a single market: one currency, one locale, one tax configuration, one implicit storefront. The slice makes a tenant a business selling into several — sales channels with their own currency, locales, country, timezone and tax, inheriting from tenant defaults — plus an admin console to configure them, an API that reports each channel's resolved configuration, and authentication as a prerequisite because a console without a login is not defensible.
 

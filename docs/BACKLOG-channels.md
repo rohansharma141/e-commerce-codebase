@@ -8,7 +8,7 @@ House rules applied: one item, one commit, one stated verification. Anything nee
 
 **Read this section first when resuming.** Then [CHANNELS-BUILD-NOTES](design/CHANNELS-BUILD-NOTES.md) for the traps and mistakes that cost time, and the rows below for each item's verification record.
 
-`main` = `433f5b6` (61 commits, CI green, `v0.1.0`). `channels` = `05ff688`, 31 commits ahead of `main`, branched from it, clean and pushed. **CI has never run on this branch** — it triggers only on `main` and on PRs into it, so every "verified" below is local.
+`main` = `433f5b6` (61 commits, CI green, `v0.1.0`). `channels` branched from it; **the code is as of `05ff688`** and every later commit is documentation only (check with `git diff --stat 05ff688 HEAD -- apps packages`, which should print nothing). **CI has never run on this branch** — it triggers only on `main` and on PRs into it, so every "verified" below is local.
 
 ### Done — 22 rows, all verified
 
@@ -19,7 +19,7 @@ House rules applied: one item, one commit, one stated verification. Anything nee
 | C — resolution and propagation | C-12, C-13, C-14, C-15, C-16a, C-16b, C-17 |
 | F / G | C-26, C-29 |
 
-Plus [ADR-0015](adr/0015-operator-authentication-at-the-api-edge.md) (operator auth, designed not built). Test counts at `05ff688`: channels 144 unit + 24 database-gated, cart 15, pricing 59; live suites 45 admin-conventions, 6 admin-concurrency, 19 scoped-graphql, 11 checkout integration, 38 storefront conformance.
+Plus [ADR-0015](adr/0015-operator-authentication-at-the-api-edge.md) (operator auth, designed not built). Test counts, measured 2026-09-19. Unit, at `05ff688`: channels 144 plus 24 database-gated, cart 15, pricing 59. Live, re-run against an api image built at `37d1a00` — which differs from `05ff688` only in four comment lines: 45 admin-conventions, 6 admin-concurrency, 19 scoped-graphql, 38 storefront conformance. Checkout integration 11, run at `37d1a00`. The order recipe in the RUNBOOK was run verbatim, extracted from the file, as part of the same check.
 
 ### Waiting on the user
 
@@ -434,6 +434,8 @@ C-15 before C-19: the storefront should not depend on a read-model whose stalene
 
 Phase E is preceded by the auth slice, which is its own ADR (0015) and its own sequence — not items here. It lands before C-20 because the console must not exist without a login.
 
-Phase G touches pricing, not channels plumbing, so it can run any time after Phase B — except C-30, which needs C-10 (channel `PATCH` exists).
+Phase G touches pricing, not channels plumbing, so it can run any time after Phase B — except C-30, which needs C-10 (channel `PATCH` exists) **and C-32**, because a per-channel `tax_display` is read on the same money path C-32 makes channel-aware.
+
+**G-4 → C-32 → C-18 → C-19.** Nothing that makes a channel's currency *visible* may land before something makes it *charged*: capabilities advertising EUR for `de` while checkout charges GBP would be a control wired to nothing, and a storefront rendering € around GBP integers is the money bug at display level. C-11, C-25, C-28 do not depend on G-4.
 
 **Total ≈ 9–11.5 weeks excluding authentication.**

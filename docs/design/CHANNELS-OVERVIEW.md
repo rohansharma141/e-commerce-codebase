@@ -117,7 +117,7 @@ Every decision in this slice, with the reason compressed to one line. Full argum
 
 ### Decided while building
 
-Made in code between 2026-08-28 and 2026-09-19, each recorded in its backlog row and commit. **Two are product decisions awaiting the user's confirmation** (marked ⚑); the rest follow from the design.
+Made in code between 2026-08-28 and 2026-09-19, each recorded in its backlog row and commit. **Three are product decisions awaiting the user's confirmation** (marked ⚑); the rest follow from the design.
 
 | Decision | Why | Row |
 |---|---|---|
