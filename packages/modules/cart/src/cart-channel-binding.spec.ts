@@ -12,11 +12,11 @@ import { CartService } from './cart.service';
  *
  * The row originally asked to "assert the resolved currency on a cart read
  * follows the cart's channel, not the request's". That check cannot fail yet:
- * pricing is still tenant-level until C-18, so both of t-fashion's channels
+ * pricing is still tenant-level until C-32 (gate G-4), so both of t-fashion's channels
  * price in GBP and the assertion would pass whether or not binding existed. A
  * check that cannot fail is not a check. What CAN fail today is the binding
  * itself — a cart built in one channel being used in another — so that is what
- * is tested, and C-18 inherits the currency half.
+ * is tested, and C-32 inherits the currency half.
  *
  * ── What each prints if the binding did nothing ───────────────────────────
  *

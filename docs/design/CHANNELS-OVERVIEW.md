@@ -4,7 +4,7 @@ Read this first. [ADR-0014](../adr/0014-channel-as-sales-channel.md) is for inte
 
 **The one-sentence version:** a tenant stops being a single market and becomes a business selling into several, with an admin console to configure them and an API that reports what each one is.
 
-Branch: `channels`. Status: designed, gates closed, nothing built yet.
+Branch: `channels`. Status: Phases A–C built and verified; **gate G-4 open** (see §3); Phases D–G pending.
 
 ---
 
@@ -117,13 +117,14 @@ Every decision in this slice, with the reason compressed to one line. Full argum
 
 ---
 
-## 3. Gates, closed 2026-08-28
+## 3. Gates — three closed 2026-08-28, one open
 
 | Gate | Question | Decision |
 |---|---|---|
 | **G-1** | Auth: prerequisite, or gate with expiry? | **Prerequisite, minimum scope.** Four gateway behaviours, one operator role, IdP left as configuration. Needs ADR-0015 before C-20 |
 | **G-2** | URL scoping shape? | **`/api/{tenant}/{channelKey}/graphql`**, segment omitted for the default, reads only |
 | **G-3** | Country/timezone for existing tenants? | **Neither option.** The seed writes real values; the migration keeps a trivial safety backfill |
+| **G-4** | What does a channel charge when its currency differs from the price list's? | **OPEN since 2026-09-19.** Prices are one currency-less integer per product and checkout charges the tenant's currency regardless of channel. ADR §9 says *fail*; §12 defers per-channel prices. Blocks C-32 and, through it, C-18/19/30/31 |
 
 G-1 was the only gate that could change the slice's size, and it did — an auth slice now precedes Phase E. G-3 went the other way: it removed machinery *and* improved the verification.
 

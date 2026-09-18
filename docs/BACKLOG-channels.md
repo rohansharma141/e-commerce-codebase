@@ -18,13 +18,14 @@ Sizing: BACKLOG.md's rule applies — XS/S/M only, anything larger is split **be
 
 ---
 
-## Decision gates — all closed 2026-08-28
+## Decision gates — G-1..G-3 closed 2026-08-28; **G-4 OPEN** since 2026-09-19
 
 | Gate | Question | Blocks |
 |---|---|---|
 | ~~**G-1**~~ | ~~Authentication: prerequisite slice, or gate with a written expiry?~~ **Closed 2026-08-28: prerequisite slice, minimum scope** — the four gateway behaviours ADR-0007 specifies, one operator role, IdP left as configuration. **[ADR-0015](adr/0015-operator-authentication-at-the-api-edge.md) written 2026-08-28** — designed, not built. | ~~C-20~~ |
 | ~~**G-2**~~ | ~~URL scoping shape?~~ **Closed 2026-08-28:** `/api/{tenant}/{channelKey}/graphql`, segment omitted for the tenant default, `/api` reserved because tenant ids may be `admin`. Reads only — admin and system stay header-only. | ~~C-2~~ |
 | ~~**G-3**~~ | ~~Country/timezone for existing tenants?~~ **Closed 2026-08-28: neither.** The tenants are fixtures we generate, so the seed writes real values and the migration keeps only a trivial safety backfill. No derivation, no review flag. | ~~C-11~~ |
+| **G-4** | **What does a channel charge when its currency differs from the price list's?** `pricing.prices` holds one currency-less integer per product. A channel can declare EUR while the tenant's prices are GBP — and today checkout charges the *tenant's* currency regardless (seen live: `channel = de \| currency = GBP`). ADR-0014 §9 says a missing price in a channel's currency must **fail** ("falling back to another currency's number is a money bug") while §12 defers per-channel prices — so the spec'd behaviours are *refuse* or *build price lists*, and the unspecified third (relabel the same integer) is the money bug itself. Found 2026-09-19 by C-17's live check; **no row owned it**, and four code comments had wrongly called it "C-18's job". | **C-32**, and through it C-18, C-19, C-30, C-31 |
 
 G-1 was the only one that could change the slice's size, and it did: an auth slice (~1–1.5 weeks) now precedes Phase E. G-2 settled a grammar. G-3 dissolved on inspection — it was careful data-preservation machinery for rows we generate ourselves.
 
@@ -238,14 +239,14 @@ Also pinned: misses are **not** cached (caching a null makes a just-created chan
 *Three things found by building it:*
 - **The boundary rule forced a better design.** Orders cannot import `CHANNEL_QUERY` from `channels/src` — `type:src` may depend only on `scope:shared` and `type:contracts`. The token moved to `contracts/`, beside the interface it provides, which is where a public DI token belongs anyway. `ChannelsModule` became `@Global`, matching Pricing and Cart.
 - **The migration needed a cold-boot guard.** It reads `channels.channels`, which may not exist yet when orders migrates first. Guarded on `to_regclass`, following branding's precedent — and *proven* by applying orders' migrations to a database with no channels schema and watching the columns appear anyway. Migration order is genuinely insignificant, rather than assumed to be.
-- **The fixtures contradicted each other, and the snapshot exposed it.** A live order read `currency: USD` next to `"key": "uk"` — because `pricing-seed` hardcoded USD for every tenant while `channels-seed` said `t-fashion` was GBP, and taxed `t-electronics` at 725 bps where its channel said 625. Two copies that had drifted with nothing comparing them. `pricing-seed` now derives both from the channel fixtures, so the class of problem is gone rather than the instance. **This does not unify currency *resolution* in the api** — checkout still charges in `pricing.tenant_config.currency`; that is C-18.
+- **The fixtures contradicted each other, and the snapshot exposed it.** A live order read `currency: USD` next to `"key": "uk"` — because `pricing-seed` hardcoded USD for every tenant while `channels-seed` said `t-fashion` was GBP, and taxed `t-electronics` at 725 bps where its channel said 625. Two copies that had drifted with nothing comparing them. `pricing-seed` now derives both from the channel fixtures, so the class of problem is gone rather than the instance. **This does not unify currency *resolution* in the api** — checkout still charges in `pricing.tenant_config.currency`. (This sentence originally ended "that is C-18". It is not: C-18 is capabilities-only, and no row owned it until C-32, which is blocked on gate G-4.)
 
 *Backfill is honest about what it cannot know.* Existing orders get `channel_id` from the tenant default (the tenant had exactly one selling context, which is what the default represents) but `key` and `name` stay **null**: at purchase the channel did not exist, so there is no historical name, and copying today's would be indistinguishable from a real snapshot.
 
 **C-16b — Carts are channel-bound** OK
 A cart stores the concrete id of the channel it was created in, and every operation that loads it — read, add, requantify, coupon, and checkout via `get` — refuses a request in any other channel. Checkout snapshots the **cart's** channel rather than the request's.
 
-*The verification was rewritten, because the original could not fail.* It asked to assert that "the resolved currency on a cart read follows the cart's channel". Pricing is still tenant-level until C-18, so both of `t-fashion`'s channels price in GBP and that assertion passes whether or not binding exists. What *is* falsifiable today is the binding itself; the currency half moves to C-18.
+*The verification was rewritten, because the original could not fail.* It asked to assert that "the resolved currency on a cart read follows the cart's channel". Pricing is still tenant-level until C-18, so both of `t-fashion`'s channels price in GBP and that assertion passes whether or not binding exists. What *is* falsifiable today is the binding itself; the currency half moves to C-32 (originally misattributed to C-18 — see G-4).
 
 *Verified — 15 unit tests, run against the REAL `CartRepository` over an in-memory Redis:*
 - **Removing the check** fails 11, including each of the five operations **by name**. The 4 that survive are creation and the allowed-channel case, which do not depend on refusal.
@@ -288,6 +289,11 @@ A forged event — tenant `t2` naming one of `t1`'s channels — marks nothing: 
 **C-18 — Capabilities becomes channel-aware**
 Stays in the composition root (ADR §7): it also reports `apiVersion` and the deployment feature map, which no domain module should own. What changes is its source — it composes from the `channels` contract instead of reading pricing config directly. Channel-scoped fields added; tenant-level fields kept as `@deprecated` aliases resolving the default channel.
 *Verification:* deprecated and new fields agree for the default channel, and **t-fashion's two channels** (GBP and EUR, via C-11a) make a constant-wired alias diverge — a single-channel tenant passes even if the alias ignores the channel entirely. Codegen drift check fails if the committed client copy is stale.
+
+**C-32 — Totals and checkout resolve money from the channel** *(blocked on G-4; not sized until it closes)*
+The missing half of the switch C-18 makes for capabilities. `TotalsService.compute` reads currency and tax rate from `pricing.tenant_config`; nothing consults the channel, so a cart or order in `de` is priced and charged as the tenant default. What it should do instead is exactly what G-4 decides — refuse a channel whose currency has no prices, or price from a per-channel list.
+*Verification (either outcome):* `t-fashion`'s two channels, identical cart contents. Today both orders read `currency: GBP`. After: `uk` charges GBP and `de` either charges EUR **from EUR prices** or is refused with a named error — and in neither case does `de` silently charge GBP-denominated integers. One channel per tenant cannot fail this, which is again why the two-channel fixture exists.
+*Must land before C-19.* A storefront that sends channel scope on every read would otherwise render `de` with € formatting around GBP integers — the money bug, at display level.
 
 **C-19 — Storefront migrated to channel-scoped reads**
 Scoped URL, both headers, channel-scoped capability fields.

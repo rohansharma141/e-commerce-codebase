@@ -87,8 +87,15 @@ Added by the channels slice (ADR-0014). Every one of these is a *stated* simplif
 - **Status:** by design; the boundary is real and worth stating plainly.
 - **What:** a channel has exactly one `currency_code`. Selling in GBP and EUR means two channels, not one channel with two prices.
 - **What real multi-currency would need, none of which exists:** price rows per currency; an FX policy (the enterprise answer is almost always *no runtime conversion*, because a converted price is not a price anyone agreed); per-currency rounding rules; and defined behaviour when a price is missing in the requested currency — fall back, hide the product, or fail.
-- **Impact:** a tenant wanting one storefront that switches currency in place cannot have it. A tenant wanting a UK store and a German store can.
+- **Impact:** a tenant wanting one storefront that switches currency in place cannot have it. A tenant wanting a UK store and a German store can *configure* both — but see the next entry: today only the one matching the price list's currency charges correctly.
 - **Sharp edge:** `currency_code` **freezes** once the channel has transacted. Changing it afterwards would silently reinterpret every existing order's minor-unit integers — the orders store cents, not money. Snapshots protect how an order *renders*, not what it *aggregates to*.
+
+### A channel's currency is declared, not charged
+- **Status:** **open — the most important gap in the slice as it stands.** Gate G-4 in [BACKLOG-channels.md](BACKLOG-channels.md).
+- **What:** a channel has a `currency_code`, validated on write, frozen after its first order, reported by the admin API. But `pricing.prices` holds one currency-less integer per product, and `TotalsService` reads currency and tax rate from the tenant-level `pricing.tenant_config`. Nothing on the money path consults the channel. Seen live on 2026-09-19: an order placed in `t-fashion`'s `de` channel (EUR) came back `currency: GBP`.
+- **Impact:** for a tenant whose channels share the price list's currency — `t-electronics`, `t-books` — none. For `t-fashion`'s `de`, the channel's currency is a label that does not describe what is charged. C-17's currency freeze is correct and necessary, but it currently protects a value checkout does not use.
+- **Why it is a decision and not a bug fix:** ADR-0014 §9 says a missing price in a channel's currency must *fail* — "falling back to another currency's number is a money bug" — and §12 defers per-channel prices. So the specified options are **refuse to transact** in a channel the price list cannot serve, or **build per-channel price lists** (its own ADR; it touches the denormalised price in the search index). The tempting third option — charge the same integer under the channel's symbol — is the money bug the ADR names.
+- **How it got here:** the design documents were written without repository access and never assigned this work to a row; reconciliation did not catch it; and four code comments then called it "C-18's job", which it is not. Found only because C-17's live check printed a channel and a currency on the same line.
 
 ### Locales drive formatting, not translation
 - **Status:** by design; the naming invites the wrong expectation, so it is spelled out.

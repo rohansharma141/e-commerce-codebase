@@ -22,7 +22,7 @@ export interface Cart {
    *
    * A basket belongs to a market. Adding to it, repricing it or checking it out
    * under a different channel would price goods chosen in one market under
-   * another's rules — once C-18 makes currency channel-aware, a different
+   * another's rules — once C-32 makes money channel-aware (gate G-4), a different
    * currency. So the binding is fixed at creation and every later operation is
    * checked against it.
    *

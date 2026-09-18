@@ -37,7 +37,7 @@ export interface PricingSeedSummary {
  *
  * Note this does NOT unify currency resolution in the api — checkout still
  * charges in `pricing.tenant_config.currency` while the channel carries its
- * own. That is C-18's job. What this guarantees is only that the two agree in
+ * own. That is C-32, blocked on gate G-4 -- not C-18, which is capabilities-only. What this guarantees is only that the two agree in
  * the fixtures, so the demo does not display a contradiction.
  */
 const defaultsFor = (tenantId: string): { currency: string; taxRateBps: number } => {
