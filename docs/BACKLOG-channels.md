@@ -31,7 +31,14 @@ Plus [ADR-0015](adr/0015-operator-authentication-at-the-api-edge.md) (operator a
 | **B. Per-channel price lists** | charges EUR from real EUR prices | **chosen, later** — its own ADR and phase ([Phase H](#phase-h--per-channel-price-lists-g-4-option-b)) |
 | **C. Relabel** | same integer under a € symbol | rejected — ADR-0014 §9 names this as the money bug |
 
-**A is wider than first written.** The first sizing (C-32 ≈ 2–3 h) counted carts and checkout only. Refusing has to cover **price reads in the channel** too: otherwise C-18 makes `de` report EUR while search still returns GBP integers, and C-19 renders € around them — the money bug at display level. C-32 is re-sized when it is next up.
+**A is wider than first written.** The first sizing (C-32 ≈ 2–3 h) counted carts and checkout only. Refusing has to cover reads in the channel too: otherwise C-18 makes `de` report EUR while search still returns GBP integers, and C-19 renders € around them — the money bug at display level. C-32 is therefore split into C-32a (the money path) and C-32b (reads).
+
+**C-32b's shape, decided 2026-09-22: refuse the channel outright.** The alternative offered — keep `de` browsable, omit the price and say why — was declined. The user's words: *"Refuse de, API should honor correct incoming request."* Recorded reading, ⚑ to confirm before C-32b is built:
+
+- every **storefront-facing** request — GraphQL and `/storefront/*` — scoped to a channel whose currency the price list cannot serve gets a named error, including reads that carry no price;
+- the **admin** surface keeps managing that channel (`GET`/`PATCH /admin/channels/:id` and the rest), so an operator can see and fix it;
+- a **correct request is honoured unchanged**: unscoped requests and requests in a servable channel (`uk`, every channel of the other tenants) behave exactly as today;
+- the rule follows the **currencies, not the key**: if the tenant default itself stops matching the price list (tenant defaults edited to another currency), unscoped requests are refused too, and once `de`'s currency matches, `de` is served.
 
 ### Waiting on the user
 
@@ -39,17 +46,34 @@ Plus [ADR-0015](adr/0015-operator-authentication-at-the-api-edge.md) (operator a
 2. **Confirm `x-channel-id` carries the channel *key*, not its UUID** (C-12). The header name is the ADR's; the value follows `x-tenant-id`'s precedent of a human identifier. Cheap to change now, expensive once the back office assumes it.
 3. **Go-ahead for Block 2** — the auth slice (ADR-0015) and the back office (C-20..C-24). Not started.
 4. **CI on this branch** — a PR into `main`, or widening the workflow trigger. Declined for now.
+5. **⚑ Confirm the reading of "refuse `de`"** recorded above, before C-32b.
+6. **How the storefront picks a channel** (C-19a). Storefront domain binding was left out of the design (CHANNEL-MODEL §13). Recommendation: a path prefix (`/de/…`), the default channel unprefixed, mirroring the api's grammar. The user deferred this until C-19a is next.
 
 ### What can be built next
 
-| Row | Est. | Note |
-|---|---|---|
-| C-32 — refuse to price a channel the price list cannot serve | re-size | unblocked by G-4 (A); must land before C-18 |
-| C-28 — shared idempotency | 1.5–2.5 h | touches `checkout.service.ts`; checkout must stay byte-identical |
-| C-25 — observability points | 1–1.5 h | counters only; the reconciler and C-17 consumer already return outcomes to count |
-| C-27 — docs reconciled | 1.5–2.5 h | last; runs the README cold |
+Re-sequenced 2026-09-22, after C-11 and C-33. Working hours at this build's observed pace, including red-first verification — not a human engineer's figure, which is [CHANNEL-MODEL §12](design/CHANNEL-MODEL.md#12-effort).
 
-After C-32: C-18 ≈ 1.5–2.5 h, C-19 ≈ 2–3 h, C-30 ≈ 1–1.5 h, C-31 ≈ 1–1.5 h. C-19 also inherits C-9's GraphQL half, C-10's GraphQL half and C-4's client guard. Block 2 ≈ 15–20 h. All estimates are working hours at this build's observed pace, including red-first verification — not a human engineer's figure, which is [CHANNEL-MODEL §12](design/CHANNEL-MODEL.md#12-effort).
+| # | Row | Delivers | Est. | Needs |
+|---|---|---|---|---|
+| **Ordered chain** | | | | |
+| 1 | C-32a | Carts and checkout refuse a channel whose currency the price list cannot serve | 2–2.5 h | — |
+| 2 | C-32b | Every storefront request scoped to such a channel is refused with a named error; admin unaffected; a second, servable `t-fashion` fixture channel | 2–3 h | C-32a; ⚑ the reading above |
+| 3 | C-18 | Capabilities per channel; tenant-level fields kept as deprecated aliases; the pricing locale copy stops mattering | 1.5–2.5 h | C-32b |
+| 4 | C-19a | The storefront picks a channel | 2–3 h | C-18; decision 6 |
+| 5 | C-19b | The storefront sends channel scope on every read and uses the channel's capabilities; C-4's client guard; the cross-channel cache test | 1.5–2 h | C-19a |
+| 6 | C-30 | `tax_display` editable per channel, honoured by carts and checkout, recorded on orders | 1.5–2 h | C-32a |
+| 7 | C-31 | The storefront renders gross or net per channel | 1–1.5 h | C-19b, C-30 |
+| **Independent** | | | | |
+| 8 | C-34 | Schema-dropping suites serialised by a shared lock — before CI runs on this branch | 0.5–1 h | — |
+| 9 | C-28 | Checkout's idempotency made reusable by admin creates; checkout byte-identical | 1.5–2.5 h | — |
+| 10 | C-25 | Observability counters | 1–1.5 h | — |
+| 11 | C-35 | Creating a tenant creates its default channel | 1–1.5 h | — |
+| 12 | C-36 | The search indexer's price scaling for currencies without two decimals — verify, then fix | 0.5–1.5 h | — |
+| **Last** | | | | |
+| 13 | C-27 | Docs reconciled; the README run cold | 1.5–2.5 h | all above |
+| | | **Total, excluding the gated items below** | **≈ 17.5–27 h** | |
+
+Gated on the user: **Block 2** — the auth slice (ADR-0015) and the back office (C-20..C-24), ≈ 15–20 h. **Phase H** — per-channel price lists, an ADR first (≈ 2–3 h), the build not sized. **CI on this branch** — ≈ 15 minutes plus whatever it finds.
 
 ### Resuming safely
 
@@ -376,14 +400,27 @@ A forged event — tenant `t2` naming one of `t1`'s channels — marks nothing: 
 Stays in the composition root (ADR §7): it also reports `apiVersion` and the deployment feature map, which no domain module should own. What changes is its source — it composes from the `channels` contract instead of reading pricing config directly. Channel-scoped fields added; tenant-level fields kept as `@deprecated` aliases resolving the default channel.
 *Verification:* deprecated and new fields agree for the default channel, and **t-fashion's two channels** (GBP and EUR, via C-11a) make a constant-wired alias diverge — a single-channel tenant passes even if the alias ignores the channel entirely. Codegen drift check fails if the committed client copy is stale.
 
-**C-32 — Totals and checkout resolve money from the channel** *(G-4 closed 2026-09-22 with option A; re-sized when next up)*
-The missing half of the switch C-18 makes for capabilities. `TotalsService.compute` reads currency and tax rate from `pricing.tenant_config`; nothing consults the channel, so a cart or order in `de` is priced and charged as the tenant default. G-4 decided: **refuse** a channel whose currency the price list cannot serve, with a named error — on carts, on checkout, **and on price reads in that channel**, or C-18 would advertise EUR over GBP integers. Per-channel price lists follow as Phase H.
-*Verification (either outcome):* `t-fashion`'s two channels, identical cart contents. Today both orders read `currency: GBP`. After: `uk` charges GBP and `de` either charges EUR **from EUR prices** or is refused with a named error — and in neither case does `de` silently charge GBP-denominated integers. One channel per tenant cannot fail this, which is again why the two-channel fixture exists.
-*Must land before C-19.* A storefront that sends channel scope on every read would otherwise render `de` with € formatting around GBP integers — the money bug, at display level.
+**C-32 — Split 2026-09-22 into C-32a and C-32b.** G-4 closed with option A: refuse a channel whose currency the price list cannot serve. `pricing.prices` holds one currency-less integer per product, in the currency of `pricing.tenant_config`; a channel is **servable** when its resolved currency equals that. Per-channel price lists, which would make every channel servable, are Phase H.
 
-**C-19 — Storefront migrated to channel-scoped reads**
-Scoped URL, both headers, channel-scoped capability fields.
-*Verification:* the existing contract-conformance job, plus a cache test: two channels, one tenant, same page, in sequence — the second must not return the first's currency.
+**C-32a — The money path refuses an unservable channel** *(M, 2–2.5 h)*
+`TotalsService.compute` reads currency and tax rate from `pricing.tenant_config` and consults no channel, so a cart or order in `de` is priced and charged as the tenant default. It gains the cart's channel currency as an input and refuses, with a named error, when that differs from the price list's; cart creation refuses early for the same reason. One check covers cart totals and checkout, because checkout re-runs the same function inside its transaction. It must also catch an unservable **default** — tenant defaults edited to another currency — which a header check alone would miss.
+*Verification:* `t-fashion`'s two channels, identical cart contents. Today both orders read `currency: GBP`. After: `uk` charges GBP; `de` is refused with the named error, **no order row and no cart write**. Removing the check brings back `de` charging GBP-denominated integers — the symptom seen on 2026-09-19. One channel per tenant cannot fail this.
+
+**C-32b — Every storefront request in an unservable channel is refused** *(M, 2–3 h; ⚑ the reading of the decision is recorded under Status)*
+A request edge check, after channel resolution, on the storefront surfaces only — GraphQL and `/storefront/*` — returning a named error that says why. Admin is untouched, so the channel can be fixed. Status code chosen at build, and not `409`, which means a version conflict here.
+*Verification:* for `de`: search, product detail, capabilities and `POST /storefront/carts` each return the named error; for `uk` and unscoped requests, the storefront conformance suite and scoped-graphql still pass unchanged — the correct request honoured; `GET /admin/channels/:id` for `de` still `200`. Then make `de` servable (its currency set to GBP, possible because nothing can have transacted in it) and the same reads succeed — proving the refusal follows the currencies, not the key. Removing the check lets a `de` search return GBP figures, the precondition for € around GBP.
+*Consequence for later rows:* `de` stops being usable as the second channel in positive tests. C-18's alias check and C-30/C-31's gross-versus-net control need two channels that are both servable and differ in configuration. C-32b adds one — proposed: a GBP `trade` channel for `t-fashion`, which is also the natural net-priced counterpart to a gross `uk` in C-30.
+*Both must land before C-18.* A storefront that sends channel scope on every read would otherwise render `de` with € formatting around GBP integers — the money bug, at display level.
+
+**C-19 — Split 2026-09-22 into C-19a and C-19b.** Too large for one row once its inherited pieces are counted, and part of it is undesigned.
+
+**C-19a — The storefront picks a channel** *(M, 2–3 h; waiting on the user's decision)*
+Storefront domain binding is outside the design (CHANNEL-MODEL §13), so nothing yet says how a shopper reaches `de` rather than `uk`. Recommendation: a path prefix (`/de/…`) with the default channel unprefixed, mirroring the api's `/api/{tenant}/{channelKey}/graphql`. Decided when this row is next.
+*Verification:* the same page under two prefixes resolves two channels; an unknown prefix is a `404`, never the default.
+
+**C-19b — Storefront migrated to channel-scoped reads** *(M, 1.5–2 h)*
+Scoped URL, both headers, channel-scoped capability fields. Carries C-4's client guard — `api-graphql.spec.ts` failing if the channel header stops being sent, which only now has something to guard — and renders C-32b's refusal as an honest "not available in this market" rather than an error page. C-9's and C-10's GraphQL halves stay deferred unless a consumer needs them: the storefront reads channels through capabilities and mutates none.
+*Verification:* the existing contract-conformance job, plus a cache test: two servable channels, one tenant, same page, in sequence — the second must not return the first's configuration.
 
 ---
 
@@ -421,6 +458,18 @@ A `## Channels` section in [CAVEATS.md](CAVEATS.md) with eight entries: the miss
 Two beyond the six the row asked for, both because a claim elsewhere depended on them: `ChannelReadModel`'s doc comment says *"CAVEATS records that"* about its unboundedness, which was false until now; and every "verified" line in this file rests on one machine, which is worth stating where someone reads the honest list rather than only here.
 
 *Verification:* the factual claims were checked against the source rather than written from memory — the CI trigger really is `push:[main]` + `pull_request:[main]`, `tax_rate_bps` really is nullable (the seam a tax provider would replace), both cited `scoped-graphql` assertions exist, and both document links resolve.
+
+**C-34 — Schema-dropping suites serialised** *(S, 0.5–1 h; added 2026-09-22)*
+CI runs every project's tests at once against one database, and jest runs spec files in parallel within a project. Nothing stops `checkout.integration` dropping `channels` while `channels.integration` is using it. Each destructive suite takes one shared Postgres advisory lock in `beforeAll` and releases it in `afterAll`. Found while writing C-11's spec; recorded in CAVEATS.
+*Verification:* two destructive suites started together run one after the other — their `beforeAll`/`afterAll` timestamps do not overlap. Without the lock they overlap.
+
+**C-35 — Creating a tenant creates its default channel** *(S, 1–1.5 h; added 2026-09-22)*
+C-11 gave a default channel to every tenant that existed when it ran. A tenant created afterwards through `PUT /admin/tenant-config` has none, and every cart request for it fails. Onboarding writes the tenant defaults and one default channel, through the channels contract rather than a cross-module write.
+*Verification:* a new tenant via `PUT /admin/tenant-config`, then `POST /storefront/carts` — `201`. Today it fails with *"has no default channel"*.
+
+**C-36 — Index prices scaled by the currency's minor units** *(S, 0.5–1.5 h; added 2026-09-22; predates this slice)*
+`product-indexer.service.ts` writes the denormalised `price` attribute as `unitPriceCents / 100` — two decimals whatever the currency. For JPY (zero decimals) or KWD (three) that reads as wrong by a factor of 100 or 10 after an admin price change. Not yet reproduced: verify first, then scale with `minorUnitsFor`. The seed's own price path needs the same check.
+*Verification:* a JPY tenant, a price set through `POST /admin/prices`, and the index holding the same number of yen. Today it would hold a hundredth of it, if the reading is right.
 
 **C-27 — Docs reconciled**
 ARCHITECTURE, RUNBOOK, README updated. Every documented command executed, not re-read.
@@ -472,8 +521,8 @@ C-15 before C-19: the storefront should not depend on a read-model whose stalene
 
 Phase E is preceded by the auth slice, which is its own ADR (0015) and its own sequence — not items here. It lands before C-20 because the console must not exist without a login.
 
-Phase G touches pricing, not channels plumbing, so it can run any time after Phase B — except C-30, which needs C-10 (channel `PATCH` exists) **and C-32**, because a per-channel `tax_display` is read on the same money path C-32 makes channel-aware.
+Phase G touches pricing, not channels plumbing, so it can run any time after Phase B — except C-30, which needs C-10 (channel `PATCH` exists) **and C-32a**, because a per-channel `tax_display` is read on the same money path C-32a makes channel-aware.
 
-**C-32 → C-18 → C-19** (G-4 closed with option A). Nothing that makes a channel's currency *visible* may land before something makes it *charged or refused*: capabilities advertising EUR for `de` while checkout charges GBP would be a control wired to nothing, and a storefront rendering € around GBP integers is the money bug at display level. C-11, C-25, C-28 and C-33 do not depend on it. Phase H (per-channel price lists) follows C-32 and replaces its refusal with real prices.
+**C-32a → C-32b → C-18 → C-19a → C-19b** (G-4 closed with option A; C-32 and C-19 split 2026-09-22). C-31 needs C-19b and C-30. Nothing that makes a channel's currency *visible* may land before something makes it *charged or refused*: capabilities advertising EUR for `de` while checkout charges GBP would be a control wired to nothing, and a storefront rendering € around GBP integers is the money bug at display level. C-11, C-25, C-28 and C-33 do not depend on it. Phase H (per-channel price lists) follows C-32 and replaces its refusal with real prices.
 
 **Total ≈ 9–11.5 weeks excluding authentication.**
