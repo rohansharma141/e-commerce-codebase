@@ -4,6 +4,7 @@ import type { ChannelConfig, IChannelsQuery } from '@platform/modules/channels/c
 import type { ITotalsService } from '@platform/modules/pricing/contracts';
 import { CartRepository } from './cart.repository';
 import { CartService } from './cart.service';
+import { inMemoryTenantRedis } from './testing/in-memory-redis';
 
 /**
  * Carts are bound to the channel they were created in (C-16b).
@@ -42,33 +43,26 @@ const DE = '22222222-2222-4222-8222-222222222222';
 const TENANT = 't-fashion';
 const PRODUCT = '33333333-3333-4333-8333-333333333333';
 
-/** Minimal stand-in for TenantRedisClient: a per-tenant key space in a Map. */
-function fakeRedis(): { client: never; store: Map<string, string> } {
-  const store = new Map<string, string>();
-  const client = {
-    forTenant: (t: string) => ({
-      get: async (k: string) => store.get(`${t}|${k}`) ?? null,
-      set: async (k: string, v: string) => {
-        store.set(`${t}|${k}`, v);
-      },
-      del: async (k: string) => {
-        store.delete(`${t}|${k}`);
-      },
-    }),
-  };
-  return { client: client as never, store };
-}
+// Both channels price in GBP here on purpose: this spec is about binding, and
+// C-32a's refusal of a channel the price list cannot serve has its own spec
+// (cart-servability.spec.ts). Giving `de` its real EUR would make every test
+// below fail for a reason that is not the one it is testing.
+const CONFIGS: Record<string, ChannelConfig> = {
+  [UK]: { channelId: UK, key: 'uk', isDefault: true, currencyCode: 'GBP' } as ChannelConfig,
+  [DE]: { channelId: DE, key: 'de', isDefault: false, currencyCode: 'GBP' } as ChannelConfig,
+};
 
 const channels: IChannelsQuery = {
   // `uk` is t-fashion's default, as in the seed.
-  findDefault: async () => ({ channelId: UK, key: 'uk', isDefault: true }) as ChannelConfig,
+  findDefault: async () => CONFIGS[UK] as ChannelConfig,
   findByKey: async () => null,
-  findById: async () => null,
+  findById: async (_tenantId, channelId) => CONFIGS[channelId] ?? null,
   listActive: async () => [],
 };
 
 const totals = {
   compute: async () => ({ currency: 'GBP' }),
+  assertServable: async () => undefined,
 } as unknown as ITotalsService;
 
 function setup(): {
@@ -77,7 +71,7 @@ function setup(): {
   store: Map<string, string>;
   saves: () => number;
 } {
-  const { client, store } = fakeRedis();
+  const { client, store } = inMemoryTenantRedis();
   const repo = new CartRepository(client);
   let saveCount = 0;
   const realSave = repo.save.bind(repo);

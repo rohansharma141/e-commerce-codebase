@@ -4,7 +4,7 @@ The companion to [CHANNELS-OVERVIEW](CHANNELS-OVERVIEW.md) (what the slice deliv
 
 It exists because these facts otherwise live in commit messages and one session's context, and both are easy to lose. Where an entry names a commit, the commit message has the full account.
 
-Written 2026-09-19; updated 2026-09-22 for C-11 and C-33.
+Written 2026-09-19; updated 2026-09-22 for C-11, C-33 and C-32a.
 
 ---
 
@@ -93,6 +93,7 @@ Recorded because the project's standing rule is to say plainly what failed, incl
 | 19 | **C-16a's fix for drifted seed fixtures derived currency and tax, but not locale.** `t-fashion`'s pricing locale stayed `en-US` against its channels' `en-GB`, and capabilities reports the pricing copy. | C-11's live run printed `GBP` next to `en-US` for `t-fashion`. | Recorded under C-11; C-18 removes the pricing copy. Not patched in the seed, which would add a third place holding the value. |
 | 20 | **`findDefault`'s error message claimed C-11's guarantee before C-11 existed** — the same shape as #13. | Planning C-11. | The message says what is true; the tenant-onboarding gap is in CAVEATS. |
 | 21 | **I proposed the C-11 plan with a "leak" mutation its design could not observe.** A rolled-back transaction reverts a session-level setting too. | Designing the spec. | C-11 lifts RLS with `NO FORCE` only, so it has no setting to leak; the leak test moved to C-33, whose spec commits. |
+| 22 | **The C-17 freeze test I wrote placed an order in a EUR channel against a USD price list** — G-4's bug, running inside a test, unnoticed because the test asserted the freeze and not the charge. | C-32a made it fail. | It now edits the currency away and back before ordering, which proves the same thing without selling in a mismatched currency. |
 
 ### Earlier in the same session, on `main`
 

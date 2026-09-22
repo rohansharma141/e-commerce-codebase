@@ -12,6 +12,7 @@ import type {
 } from '@platform/modules/cart/contracts';
 import {
   CHANNEL_QUERY,
+  type ChannelConfig,
   type IChannelsQuery,
 } from '@platform/modules/channels/contracts';
 import { currentTenant } from '@platform/shared/tenant-context';
@@ -43,16 +44,49 @@ export class CartService implements ICartService {
     return currentTenant()?.channelId ?? (await this.channels.findDefault(tenantId)).channelId;
   }
 
+  /**
+   * The resolved configuration of a channel id, or of the tenant default when
+   * there is none — a request that named no channel, or a cart written before
+   * carts carried one.
+   *
+   * A channel that no longer resolves is refused rather than replaced by the
+   * default, for the reason checkout gives: pricing the basket somewhere else
+   * would charge in a market nobody chose.
+   */
+  private async resolveChannel(
+    tenantId: string,
+    channelId: string | null | undefined,
+  ): Promise<ChannelConfig> {
+    if (!channelId) return this.channels.findDefault(tenantId);
+    const channel = await this.channels.findById(tenantId, channelId);
+    if (!channel) {
+      throw new BadRequestException(
+        `channel ${channelId} is no longer available for this tenant. Start a new cart ` +
+          `in an active channel.`,
+      );
+    }
+    return channel;
+  }
+
   async create(tenantId: string): Promise<Cart> {
+    const channel = await this.resolveChannel(tenantId, currentTenant()?.channelId);
+    // Refused before anything is written: a basket in a channel the price list
+    // cannot serve could never be priced, so it must not exist (C-32).
+    await this.totals.assertServable(tenantId, channel);
     // The concrete id, even for the default. See Cart.channelId for why a cart
     // must not follow a later default promotion.
-    return this.repo.create(tenantId, randomUUID(), await this.requestChannelId(tenantId));
+    return this.repo.create(tenantId, randomUUID(), channel.channelId);
   }
 
   async get(tenantId: string, cartId: string): Promise<CartWithTotals> {
     const cart = await this.requireCart(tenantId, cartId);
+    // Priced in the cart's own channel. Checkout reaches the money path only
+    // through here, so this is also what stops an order being charged in a
+    // channel that became unservable after its cart was built.
+    const channel = await this.resolveChannel(tenantId, cart.channelId);
     const totals = await this.totals.compute({
       tenantId,
+      scope: channel,
       lines: cart.lines,
       couponCode: cart.couponCode ?? undefined,
     });

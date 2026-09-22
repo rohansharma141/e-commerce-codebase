@@ -142,6 +142,7 @@ Made in code between 2026-08-28 and 2026-09-22, each recorded in its backlog row
 | The transacted mark binds its tenant **from the event** and does **not** bump `version` | The bus is asynchronous; a bump would `409` an operator's unrelated edit | C-17 |
 | `taxMode` is an engine **input**, not a response field | `capabilities.taxDisplay` already says how to read prices | C-29 |
 | A tenant with no channel gets one default keyed `web`, inheriting everything | It exists only so a database that skipped a re-seed still works; the seed replaces it | C-11 |
+| An unservable channel is refused with **`422`**, code `channel.unservable`, naming the channel and both currencies | The request is well formed and the channel real, so not `400` or `404`; `409` means a version conflict here, and a client retrying it would loop | C-32a |
 | Migrations lift RLS with `NO FORCE` on their own tables, and through `app.system_worker` on another module's | A migration runs as the owner and FORCE applies to the owner; where another module's policy already admits a system reader, its RLS is not altered from outside | C-11, C-33 |
 
 ---

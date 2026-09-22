@@ -8,15 +8,16 @@ House rules applied: one item, one commit, one stated verification. Anything nee
 
 **Read this section first when resuming.** Then [CHANNELS-BUILD-NOTES](design/CHANNELS-BUILD-NOTES.md) for the traps and mistakes that cost time, and the rows below for each item's verification record.
 
-`main` = `433f5b6` (61 commits, CI green, `v0.1.0`). `channels` branched from it. Code changed last in C-11 and C-33 (2026-09-22); `git log -1 --format='%h %s' -- apps packages` names the latest commit to touch code, so a docs-only commit cannot make this line stale. **CI has never run on this branch** — it triggers only on `main` and on PRs into it, so every "verified" below is local.
+`main` = `433f5b6` (61 commits, CI green, `v0.1.0`). `channels` branched from it. Code changed last in C-32a (2026-09-22); `git log -1 --format='%h %s' -- apps packages` names the latest commit to touch code, so a docs-only commit cannot make this line stale. **CI has never run on this branch** — it triggers only on `main` and on PRs into it, so every "verified" below is local.
 
-### Done — 24 rows, all verified
+### Done — 25 rows, all verified
 
 | Phase | Rows |
 |---|---|
 | A — conventions and scope | C-1, C-2, C-3, C-2b, C-4 *(api half)*, C-9 *(REST half)* |
 | B — the channels module | C-5, C-6, C-7, C-8a, C-8b, C-10, C-11a, C-11 |
 | C — resolution and propagation | C-12, C-13, C-14, C-15, C-16a, C-16b, C-17, C-33 |
+| D — API surface | C-32a |
 | F / G | C-26, C-29 |
 
 Plus [ADR-0015](adr/0015-operator-authentication-at-the-api-edge.md) (operator auth, designed not built). Test counts, measured 2026-09-22 with C-11 and C-33 in the api image, after a cold `down -v` boot and a fresh seed. Unit: channels 144 plus 24 database-gated, cart 15, pricing 59. Database, on a throwaway `platform_test`: checkout integration 11, C-11 backfill 7, C-33 backfill 6, run together. Live: 45 admin-conventions, 6 admin-concurrency, 38 storefront conformance, and scoped-graphql 19 on re-run. **scoped-graphql's first run had one failure:** `answers identically to the unscoped path` timed out at 30 s. It passed on two re-runs (14 ms, then 18 ms under the same CPU load as the first run), and the api logged no request slower than 73 ms and no error. The cause is not established; it is recorded as an unexplained timeout, not dismissed. The RUNBOOK's order recipe and its upgrade-path block were both run verbatim, extracted from the file.
@@ -56,7 +57,7 @@ Re-sequenced 2026-09-22, after C-11 and C-33. Working hours at this build's obse
 | # | Row | Delivers | Est. | Needs |
 |---|---|---|---|---|
 | **Ordered chain** | | | | |
-| 1 | C-32a | Carts and checkout refuse a channel whose currency the price list cannot serve | 2–2.5 h | — |
+| 1 | C-32a ✅ | Carts and checkout refuse a channel whose currency the price list cannot serve | done | — |
 | 2 | C-32b | Every storefront request scoped to such a channel is refused with a named error; admin unaffected; a second, servable `t-fashion` fixture channel | 2–3 h | C-32a; ⚑ the reading above |
 | 3 | C-18 | Capabilities per channel; tenant-level fields kept as deprecated aliases; the pricing locale copy stops mattering | 1.5–2.5 h | C-32b |
 | 4 | C-19a | The storefront picks a channel | 2–3 h | C-18; decision 6 |
@@ -402,9 +403,22 @@ Stays in the composition root (ADR §7): it also reports `apiVersion` and the de
 
 **C-32 — Split 2026-09-22 into C-32a and C-32b.** G-4 closed with option A: refuse a channel whose currency the price list cannot serve. `pricing.prices` holds one currency-less integer per product, in the currency of `pricing.tenant_config`; a channel is **servable** when its resolved currency equals that. Per-channel price lists, which would make every channel servable, are Phase H.
 
-**C-32a — The money path refuses an unservable channel** *(M, 2–2.5 h)*
+**C-32a — The money path refuses an unservable channel** ✅ *(M, 2–2.5 h)*
 `TotalsService.compute` reads currency and tax rate from `pricing.tenant_config` and consults no channel, so a cart or order in `de` is priced and charged as the tenant default. It gains the cart's channel currency as an input and refuses, with a named error, when that differs from the price list's; cart creation refuses early for the same reason. One check covers cart totals and checkout, because checkout re-runs the same function inside its transaction. It must also catch an unservable **default** — tenant defaults edited to another currency — which a header check alone would miss.
 *Verification:* `t-fashion`'s two channels, identical cart contents. Today both orders read `currency: GBP`. After: `uk` charges GBP; `de` is refused with the named error, **no order row and no cart write**. Removing the check brings back `de` charging GBP-denominated integers — the symptom seen on 2026-09-19. One channel per tenant cannot fail this.
+
+*Shipped 2026-09-22.* The rule is one pure function in `pricing/contracts` — `unservableChannel(priceListCurrency, scope)`, `null` or the reason — and one exception in `pricing/src`, `UnservableChannelException`: **`422`**, code `channel.unservable`, the envelope extended with `channel`, `channelCurrency` and `priceListCurrency` (ADMIN-API.md §2). `TotalsService.compute` now takes a required `scope` and refuses before reading a price; a new `assertServable` refuses before there is anything to price. The cart asks at creation, before writing, and prices a basket in **its own** channel. Checkout needed no code: it reaches money only through `cart.get`, which runs before a promotion is reserved — now said in a comment there, so nobody reorders it away. `PricingScope`'s fields match `ChannelConfig`'s names, so a resolved channel is passed as it is, with no mapping for each consumer to keep in step, and pricing still does not depend on channels.
+
+*Verified:*
+
+- **Unit:** pricing 10 new (the rule, `compute`, `assertServable`, each refusal paired with an allowed case, and "refuses before reading a single price or promotion"); cart 6 new, against the real `CartRepository` (a refused create writes nothing; the question is asked with the request's channel, or the default; a cart is priced in its own non-default channel; one whose channel stopped being servable, or stopped resolving, is refused).
+- **Integration, `checkout.integration`, 13/13:** identical baskets — the USD channel gets an order in USD, the EUR channel is refused before a cart exists, with the cart and order counts unchanged; and a cart built while its channel was servable is refused at checkout once it is not, with **no order, no promotion use, and the cart kept**.
+- **Five mutations, each failing named tests, none by failing to compile.** The one that matters most: with `compute`'s check removed, checkout wrote an order in the now-EUR channel **charged `"currency": "USD"`** and consumed the promotion — G-4's bug, reproduced and caught.
+- **Live, on a rebuilt image:** `POST /storefront/carts` in `de` → `422` with the body above; in `uk` and unscoped → `201`; the RUNBOOK recipe → orders in `uk`, `GBP`. REST client regenerated (three `422` entries, nothing else), storefront build and conformance 38/38.
+
+*Found by it:* the C-17 freeze test edited its channel's currency to EUR and then placed an order there against a USD price list — G-4's bug, inside a test about something else. It now edits away and back, which still proves the currency is editable before a first order.
+
+*Not refused here, on purpose:* adding or requantifying lines in a cart whose channel became unservable after creation. Nothing is priced by those, and reading or checking out the cart is refused. C-32b refuses the request itself.
 
 **C-32b — Every storefront request in an unservable channel is refused** *(M, 2–3 h; ⚑ the reading of the decision is recorded under Status)*
 A request edge check, after channel resolution, on the storefront surfaces only — GraphQL and `/storefront/*` — returning a named error that says why. Admin is untouched, so the channel can be fixed. Status code chosen at build, and not `409`, which means a version conflict here.

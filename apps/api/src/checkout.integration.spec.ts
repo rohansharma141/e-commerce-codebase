@@ -21,6 +21,7 @@ import { HookRegistry } from '@platform/shared/hooks';
 import { runWithTenant } from '@platform/shared/tenant-context';
 import {
   MigrationRunner,
+  currentTenantBinding,
   tenantDrizzleAccessor,
   withTenantConnection,
 } from '@platform/shared/database';
@@ -174,6 +175,40 @@ describeIf('orders checkout integration', () => {
       await cartService.addItem(t, c.id, { productId: productB, sku: 'SKU-B', name: 'B', qty: 1 });
       return c.id;
     });
+
+  /** A request scoped to a specific channel, as ChannelScopeMiddleware would bind it. */
+  const inChannel = <T>(tenantId: string, channelId: string, fn: () => Promise<T>): Promise<T> =>
+    runWithTenant({ tenantId, requestId: randomUUID(), channelId }, () =>
+      withTenantConnection(sql, tenantId, fn),
+    );
+
+  /**
+   * Polls until `ok`, or gives up and returns the last value so the caller's
+   * assertion fails on a real reading rather than on a timeout.
+   *
+   * Needed because the bus is genuinely asynchronous: `publish()` schedules
+   * handlers on a microtask and returns, so `checkout()` resolves BEFORE the
+   * consumer's transaction commits. The first draft of these tests read the
+   * flag immediately after checkout and saw `false` while the consumer's own
+   * log line said it had marked the channel -- the test was wrong, not the
+   * consumer. The freeze is eventually consistent, and a test of it has to be
+   * written that way.
+   */
+  const eventually = async <T>(
+    read: () => Promise<T>,
+    ok: (v: T) => boolean,
+    ms = 3000,
+  ): Promise<T> => {
+    const deadline = Date.now() + ms;
+    for (;;) {
+      const v = await read();
+      if (ok(v) || Date.now() > deadline) return v;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+  };
+
+  const rawOf = (t: string, channelId: string) =>
+    asT(t, async () => (await channelsRepo.getRaw(t, channelId))!);
 
   it('happy path: cart → order, totals snapshotted, cart cleared', async () => {
     const cartId = await newCart(t1);
@@ -361,12 +396,6 @@ describeIf('orders checkout integration', () => {
   });
 
   describe('currency freezes once a channel has transacted (C-17)', () => {
-    /** A request scoped to a specific channel, as ChannelScopeMiddleware would bind it. */
-    const inChannel = <T>(tenantId: string, channelId: string, fn: () => Promise<T>): Promise<T> =>
-      runWithTenant({ tenantId, requestId: randomUUID(), channelId }, () =>
-        withTenantConnection(sql, tenantId, fn),
-      );
-
     const freshChannel = (t: string, label: string) =>
       asT(t, () =>
         channelsService.create(t, {
@@ -376,34 +405,6 @@ describeIf('orders checkout integration', () => {
           currencyCode: 'USD',
         }),
       );
-
-    /**
-     * Polls until `ok`, or gives up and returns the last value so the caller's
-     * assertion fails on a real reading rather than on a timeout.
-     *
-     * Needed because the bus is genuinely asynchronous: `publish()` schedules
-     * handlers on a microtask and returns, so `checkout()` resolves BEFORE the
-     * consumer's transaction commits. The first draft of these tests read the
-     * flag immediately after checkout and saw `false` while the consumer's own
-     * log line said it had marked the channel -- the test was wrong, not the
-     * consumer. The freeze is eventually consistent, and a test of it has to be
-     * written that way.
-     */
-    const eventually = async <T>(
-      read: () => Promise<T>,
-      ok: (v: T) => boolean,
-      ms = 3000,
-    ): Promise<T> => {
-      const deadline = Date.now() + ms;
-      for (;;) {
-        const v = await read();
-        if (ok(v) || Date.now() > deadline) return v;
-        await new Promise((r) => setTimeout(r, 25));
-      }
-    };
-
-    const rawOf = (t: string, channelId: string) =>
-      asT(t, async () => (await channelsRepo.getRaw(t, channelId))!);
 
     /**
      * Places an order in a channel and waits for the consumer to have marked it,
@@ -428,10 +429,18 @@ describeIf('orders checkout integration', () => {
 
       // BEFORE any order: the currency is freely editable. Without this half, a
       // rule that refused every currency change would pass the half below.
-      const edited = await asT(t1, () =>
+      // Away and back again. Away alone would leave the channel selling in EUR
+      // against t1's USD price list, and C-32a refuses to price that. This test
+      // used to place exactly that order, charged in USD: gate G-4's bug, run
+      // inside a test that was about something else.
+      const away = await asT(t1, () =>
         channelsService.update(t1, fresh.id, { currencyCode: 'EUR' }, fresh.version),
       );
-      expect(edited.currencyCode).toBe('EUR');
+      expect(away.currencyCode).toBe('EUR');
+      const edited = await asT(t1, () =>
+        channelsService.update(t1, fresh.id, { currencyCode: 'USD' }, away.version),
+      );
+      expect(edited.currencyCode).toBe('USD');
 
       const { order } = await orderIn(t1, fresh.id);
       expect(order.channel?.channelId).toBe(fresh.id);
@@ -502,6 +511,108 @@ describeIf('orders checkout integration', () => {
       expect(await transactedConsumer.handle(t1, { order: { ...order, channel: null } })).toBe(
         'no-channel',
       );
+    });
+  });
+
+  describe('a channel the price list cannot serve is refused (C-32a)', () => {
+    /**
+     * t1's price list is USD. Before C-32a, a cart in a EUR channel was charged
+     * those USD integers -- on the demo tenant, `channel = de | currency = GBP`.
+     * Each refusal also asserts what was NOT written, because a service that
+     * threw after writing would pass an assertion on the throw alone.
+     */
+    const channelIn = (t: string, label: string, currencyCode: string) =>
+      asT(t, () =>
+        channelsService.create(t, {
+          key: `${label}-${randomUUID().slice(0, 6)}`,
+          name: label,
+          status: 'active',
+          currencyCode,
+        }),
+      );
+
+    const cartsStored = async (t: string): Promise<number> =>
+      (await redis.keys(`t:${t}:cart:*`)).length;
+
+    const ordersStored = (t: string): Promise<number> =>
+      asT(t, async () => {
+        const [row] = await currentTenantBinding()!.reserved<{ n: number }[]>`
+          SELECT count(*)::int AS n FROM orders.orders`;
+        return row!.n;
+      });
+
+    const refusal = (channelKey: string) => ({
+      status: 422,
+      response: {
+        code: 'channel.unservable',
+        channel: channelKey,
+        channelCurrency: 'EUR',
+        priceListCurrency: 'USD',
+      },
+    });
+
+    it('identical baskets: the servable channel is charged in the price list currency, the other is refused before a cart exists', async () => {
+      const usd = await channelIn(t1, 'c32-usd', 'USD');
+      const eur = await channelIn(t1, 'c32-eur', 'EUR');
+
+      const cartId = await inChannel(t1, usd.id, async () => {
+        const c = await cartService.create(t1);
+        await cartService.addItem(t1, c.id, { productId: productA, sku: 'A', name: 'A', qty: 2 });
+        return c.id;
+      });
+      const { order } = await inChannel(t1, usd.id, () => checkout.checkout(t1, cartId));
+      expect(order.currency).toBe('USD');
+      expect(order.channel?.channelId).toBe(usd.id);
+      // Leave the bus quiescent: the order's transacted mark lands asynchronously.
+      await eventually(() => rawOf(t1, usd.id), (c) => c.hasTransacted);
+
+      const carts = await cartsStored(t1);
+      const orders = await ordersStored(t1);
+      await expect(inChannel(t1, eur.id, () => cartService.create(t1))).rejects.toMatchObject(
+        refusal(eur.key),
+      );
+      expect(await cartsStored(t1)).toBe(carts);
+      expect(await ordersStored(t1)).toBe(orders);
+    });
+
+    it('a cart built while its channel was servable is refused at checkout once it is not: no order, no promotion use, the cart kept', async () => {
+      const channel = await channelIn(t1, 'c32-flip', 'USD');
+      const promo = await asT(t1, () =>
+        promotionsRepo.insert({
+          tenantId: t1,
+          kind: 'automatic',
+          code: null,
+          condition: { type: 'always', value: {} },
+          action: { type: 'fixed', value: 100 },
+          expiresAt: null,
+          maxUses: 5,
+          active: true,
+        }),
+      );
+      const cartId = await inChannel(t1, channel.id, async () => {
+        const c = await cartService.create(t1);
+        await cartService.addItem(t1, c.id, { productId: productA, sku: 'A', name: 'A', qty: 1 });
+        return c.id;
+      });
+
+      // Allowed: nothing has transacted in this channel yet.
+      const flipped = await asT(t1, () =>
+        channelsService.update(t1, channel.id, { currencyCode: 'EUR' }, channel.version),
+      );
+      expect(flipped.currencyCode).toBe('EUR');
+
+      const carts = await cartsStored(t1);
+      const orders = await ordersStored(t1);
+      await expect(
+        inChannel(t1, channel.id, () => checkout.checkout(t1, cartId)),
+      ).rejects.toMatchObject(refusal(channel.key));
+
+      expect(await ordersStored(t1)).toBe(orders);
+      const after = (await asT(t1, () => promotionsRepo.listActiveCandidates(t1))).find(
+        (p) => p.id === promo.id,
+      );
+      expect(after?.usesCount).toBe(0);
+      expect(await cartsStored(t1)).toBe(carts);
     });
   });
 });

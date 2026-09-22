@@ -120,6 +120,11 @@ export class CheckoutService {
       }
     }
 
+    // Also the channel gate (C-32). `get` prices the cart in its own channel and
+    // refuses one the price list cannot serve, so an unservable channel stops
+    // here — before a promotion use is reserved or an order row written. Keep
+    // it first: the order's currency below is the price list's, and it is only
+    // the channel's currency because this call has already checked.
     const cart = await this.cart.get(tenantId, cartId);
     if (cart.lines.length === 0) {
       throw new BadRequestException('cannot checkout an empty cart');

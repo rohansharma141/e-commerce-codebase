@@ -78,6 +78,7 @@ Deliberately not replaced. Every endpoint already returns it and the storefront 
 | `400` | Malformed input: a bad cursor, an unparseable uuid, a missing tenant header. |
 | `404` | No such resource **for this tenant**. A row belonging to another tenant reports as not-found rather than forbidden — RLS makes it invisible, and saying "forbidden" would confirm it exists. |
 | `409` | Optimistic-concurrency conflict. See below. |
+| `422` | Well formed, but not servable in its channel: the channel sells in a currency the tenant's price list cannot serve (C-32). See below. |
 
 ### The 409 body
 
@@ -88,6 +89,17 @@ Conflicts extend the envelope with the current version, so a client can re-read 
 ```
 
 Nothing returns `409` yet — versioned resources arrive with channels in C-9. The shape is fixed here so C-9 adopts it rather than inventing one.
+
+### The 422 body
+
+A channel whose currency differs from the tenant's price list is **unservable**: nothing is priced or sold in it until prices exist in its currency (C-32; per-channel price lists are Phase H). The refusal extends the envelope with a stable `code` and the facts a client needs to act without parsing the message:
+
+```json
+{ "message": "…", "error": "Unprocessable Entity", "statusCode": 422,
+  "code": "channel.unservable", "channel": "de", "channelCurrency": "EUR", "priceListCurrency": "GBP" }
+```
+
+`422` rather than `409`, because in this api `409` means a version conflict and a client that retries 409s would loop on something no retry can fix; rather than `400`, because the request is well formed and names a real channel.
 
 ---
 

@@ -1,6 +1,7 @@
-import type { ComputedTotals, LineInput } from './totals.dto';
+import type { ComputedTotals, TotalsComputeInput } from './totals.dto';
 import type { Price } from './price.dto';
 import type { Promotion } from './promotion.dto';
+import type { PricingScope } from './servability';
 import type { TenantConfig } from './tax.dto';
 
 /**
@@ -13,11 +14,23 @@ import type { TenantConfig } from './tax.dto';
 
 export const TOTALS_SERVICE = Symbol('TOTALS_SERVICE');
 export interface ITotalsService {
-  compute(input: {
-    readonly tenantId: string;
-    readonly lines: readonly LineInput[];
-    readonly couponCode?: string;
-  }): Promise<ComputedTotals>;
+  /**
+   * What these lines cost in `input.scope`. Refuses — HTTP 422, code
+   * `channel.unservable` — when the tenant's price list cannot price in the
+   * scope's currency, before any price is read.
+   */
+  compute(input: TotalsComputeInput): Promise<ComputedTotals>;
+
+  /**
+   * Resolves when the tenant's price list can price in `scope`; refuses with
+   * the same 422 as `compute` when it cannot.
+   *
+   * For callers that must refuse before there is anything to price — creating
+   * a cart, or serving any request in a channel. A tenant with no price list
+   * yet resolves: there is no currency to contradict, and that case already
+   * has its own answer where money is actually computed.
+   */
+  assertServable(tenantId: string, scope: PricingScope): Promise<void>;
 }
 
 export const PRICES_QUERY = Symbol('PRICES_QUERY');

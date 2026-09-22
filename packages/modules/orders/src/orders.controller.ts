@@ -19,6 +19,7 @@ import {
   ApiOperation,
   ApiQuery,
   ApiTags,
+  ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { CurrentTenant, type TenantContext } from '@platform/shared/tenant-context';
@@ -50,6 +51,12 @@ export class OrdersController {
     type: Order,
     description:
       'The idempotency key had already been used. This is the order that key created, unchanged — not a second one.',
+  })
+  @ApiUnprocessableEntityResponse({
+    description:
+      "The cart's channel sells in a currency the tenant's price list cannot serve (code " +
+      '`channel.unservable`). No order is written and no promotion use is consumed. See ' +
+      'ADMIN-API.md, section 2.',
   })
   async checkoutEndpoint(
     @CurrentTenant() tenant: TenantContext,

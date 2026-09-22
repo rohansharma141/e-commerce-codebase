@@ -1,4 +1,5 @@
 import type { AppliedPromotionSnapshot } from './promotion.dto';
+import type { PricingScope } from './servability';
 
 export interface LineInput {
   readonly productId: string;
@@ -69,6 +70,12 @@ export interface ComputedTotals {
 
 export interface TotalsComputeInput {
   readonly tenantId: string;
+  /**
+   * The channel these lines are being priced in. Required, so that no caller
+   * can price without saying where: a scope the price list cannot serve is
+   * refused before a single price is read (C-32).
+   */
+  readonly scope: PricingScope;
   readonly lines: readonly LineInput[];
   readonly couponCode?: string;
 }

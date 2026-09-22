@@ -9,7 +9,13 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
-import { ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+  ApiUnprocessableEntityResponse,
+} from '@nestjs/swagger';
 import { CurrentTenant, type TenantContext } from '@platform/shared/tenant-context';
 // Imported as values, not types. `@ApiProperty` metadata only reaches the
 // OpenAPI document if the class survives to runtime, and a `import type` here
@@ -25,6 +31,12 @@ import {
 } from './cart.schema';
 import { CartService } from './cart.service';
 
+/** The two operations that price or create a basket refuse an unservable channel (C-32). */
+const UNSERVABLE =
+  "This request's channel sells in a currency the tenant's price list cannot serve " +
+  '(code `channel.unservable`). Nothing is priced or sold there; the body names the ' +
+  'channel and both currencies. See ADMIN-API.md, section 2.';
+
 @ApiTags('Cart (storefront)')
 @Controller('storefront/carts')
 export class CartController {
@@ -34,6 +46,7 @@ export class CartController {
   @HttpCode(201)
   @ApiOperation({ summary: 'Create an empty cart' })
   @ApiCreatedResponse({ type: CreateCartResponse })
+  @ApiUnprocessableEntityResponse({ description: UNSERVABLE })
   async create(@CurrentTenant() tenant: TenantContext): Promise<CreateCartResponse> {
     const c = await this.cart.create(tenant.tenantId);
     return { cartId: c.id };
@@ -42,6 +55,7 @@ export class CartController {
   @Get(':id')
   @ApiOperation({ summary: 'Get cart by id with live totals' })
   @ApiOkResponse({ type: CartWithTotals })
+  @ApiUnprocessableEntityResponse({ description: UNSERVABLE })
   get(
     @CurrentTenant() tenant: TenantContext,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,

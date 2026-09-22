@@ -2,15 +2,19 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import {
   computeTotals,
   selectBest,
+  unservableChannel,
   type ComputedTotals,
   type ITotalsService,
   type LineInput,
   type PricedLine,
+  type PricingScope,
+  type TenantConfig,
   type TotalsComputeInput,
 } from '@platform/modules/pricing/contracts';
 import { PricesRepository } from '../prices/prices.repository';
 import { PromotionsRepository } from '../promotions/promotions.repository';
 import { TenantConfigService } from '../tenant-config/tenant-config.service';
+import { UnservableChannelException } from './unservable-channel.exception';
 
 @Injectable()
 export class TotalsService implements ITotalsService {
@@ -19,6 +23,13 @@ export class TotalsService implements ITotalsService {
     private readonly prices: PricesRepository,
     private readonly promotions: PromotionsRepository,
   ) {}
+
+  async assertServable(tenantId: string, scope: PricingScope): Promise<void> {
+    const cfg = await this.tenantConfig.findOptional(tenantId);
+    // No price list, nothing to contradict. `compute` answers that case where
+    // it matters, with its own 404.
+    if (cfg) refuseUnservable(cfg, scope);
+  }
 
   /**
    * Single entry point for "what does this set of lines cost right now?"
@@ -32,6 +43,9 @@ export class TotalsService implements ITotalsService {
         'tenant_config not set — admin must PUT /admin/tenant-config before pricing is available',
       );
     }
+    // Before any price is read: an unservable channel is refused, not priced
+    // and then discarded.
+    refuseUnservable(cfg, input.scope);
     validateLines(input.lines);
 
     const productIds = input.lines.map((l) => l.productId);
@@ -74,6 +88,12 @@ export class TotalsService implements ITotalsService {
       appliedPromotion,
     });
   }
+}
+
+/** The one enforcement of `unservableChannel`; both public methods call it. */
+function refuseUnservable(cfg: TenantConfig, scope: PricingScope): void {
+  const refusal = unservableChannel(cfg.currency, scope);
+  if (refusal) throw new UnservableChannelException(refusal);
 }
 
 function validateLines(lines: readonly LineInput[]): void {
