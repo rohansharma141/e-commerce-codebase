@@ -4,6 +4,7 @@ import { graphqlQuery } from '@/lib/api-graphql';
 import { getTenantId } from '@/lib/tenant';
 import { getMoneyFormat } from '@/lib/capabilities';
 import { browseAllTag, browseTag } from '@/lib/cache-tags';
+import { channelHref } from '@/lib/channel';
 import { ProductCard } from './product-card';
 
 interface RelatedProductsProps {
@@ -54,7 +55,7 @@ export async function RelatedProducts({ excludeProductId, filter }: RelatedProdu
         {items.map((p) => (
           <li key={p.id}>
             <Link
-              href={`/p/${p.id}`}
+              href={channelHref(`/p/${p.id}`)}
               prefetch={false}
               className="block rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
             >

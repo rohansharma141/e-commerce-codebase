@@ -6,6 +6,7 @@ import { Search, X } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { formatMajorUnits, type MoneyFormat } from '@/lib/money';
+import { withChannelPrefix } from '@/lib/channel-path';
 
 /**
  * Search input with debounced live suggestions.
@@ -32,12 +33,16 @@ interface SearchBarProps {
   /** Passed down because this is a client component and cannot reach the
    *  api itself — the server page resolves capabilities once per render. */
   money: MoneyFormat;
+  /** The channel the page was reached under, from the server — a client
+   *  component cannot read the request's headers. Suggestions link, and are
+   *  fetched, under the same prefix, so a click never leaves the channel. */
+  channelKey: string | null;
 }
 
 const DEBOUNCE_MS = 200;
 const MIN_QUERY = 2;
 
-export function SearchBar({ basePath, searchParams, money }: SearchBarProps) {
+export function SearchBar({ basePath, searchParams, money, channelKey }: SearchBarProps) {
   const initialQ =
     typeof searchParams['q'] === 'string'
       ? searchParams['q']
@@ -68,7 +73,7 @@ export function SearchBar({ basePath, searchParams, money }: SearchBarProps) {
     const timer = window.setTimeout(async () => {
       setLoading(true);
       try {
-        const res = await fetch(`/api/suggest?q=${encodeURIComponent(trimmed)}`, {
+        const res = await fetch(withChannelPrefix(channelKey, `/api/suggest?q=${encodeURIComponent(trimmed)}`), {
           signal: controller.signal,
         });
         if (!res.ok) throw new Error('suggest failed');
@@ -84,7 +89,7 @@ export function SearchBar({ basePath, searchParams, money }: SearchBarProps) {
       controller.abort();
       window.clearTimeout(timer);
     };
-  }, [value]);
+  }, [value, channelKey]);
 
   // Close on outside click.
   useEffect(() => {
@@ -166,7 +171,7 @@ export function SearchBar({ basePath, searchParams, money }: SearchBarProps) {
               {suggestions.map((s) => (
                 <li key={s.id}>
                   <Link
-                    href={`/p/${s.id}`}
+                    href={withChannelPrefix(channelKey, `/p/${s.id}`)}
                     prefetch={false}
                     onClick={() => setOpen(false)}
                     className="flex items-center justify-between gap-3 px-3 py-2 text-sm hover:bg-slate-100"

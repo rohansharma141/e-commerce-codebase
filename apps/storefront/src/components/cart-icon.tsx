@@ -6,15 +6,19 @@ import { getTenantId } from '@/lib/tenant';
  * Header cart icon. Server-renders the current line count from the api.
  * Cart-mutating server actions revalidate '/' as a layout to force this to
  * re-render on the next request.
+ *
+ * `href` comes from the root layout, which alone knows whether the page's
+ * channel exists: on the `404` for an unknown one, the link goes to the
+ * default channel's cart rather than back under the prefix that failed.
  */
-export async function CartIcon() {
+export async function CartIcon({ href }: { href: string }) {
   const tenantId = getTenantId();
   const cart = await getCart(tenantId);
   const count = cart?.lines.reduce((sum, l) => sum + l.qty, 0) ?? 0;
 
   return (
     <Link
-      href="/cart"
+      href={href}
       className="relative inline-flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-slate-600 hover:bg-slate-100 hover:text-slate-900"
       aria-label={`Cart (${count} item${count === 1 ? '' : 's'})`}
     >

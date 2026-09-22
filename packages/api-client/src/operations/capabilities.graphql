@@ -3,5 +3,10 @@ query TenantCapabilities {
     currency
     currencyMinorUnits
     defaultLocale
+    channel {
+      key
+      name
+      isDefault
+    }
   }
 }

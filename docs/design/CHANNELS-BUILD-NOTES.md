@@ -4,7 +4,7 @@ The companion to [CHANNELS-OVERVIEW](CHANNELS-OVERVIEW.md) (what the slice deliv
 
 It exists because these facts otherwise live in commit messages and one session's context, and both are easy to lose. Where an entry names a commit, the commit message has the full account.
 
-Written 2026-09-19; updated 2026-09-22 for C-11, C-33, C-32a, C-32b, C-18a and C-18b.
+Written 2026-09-19; updated 2026-09-22 for C-11, C-33, C-32a, C-32b, C-18a, C-18b and C-19a.
 
 ---
 
@@ -48,7 +48,19 @@ Every entry below produced a symptom whose cause was elsewhere. Most share one s
 
 **The storefront pins the exact key set of `Order` and `Cart`.** `apps/storefront/src/contract.integration.spec.ts` fails on any added field, deliberately — a regenerate would otherwise absorb it silently. Any change to a response shape owes a run of **this** suite, which lives in the storefront project, not the api. *(`a5b031b`)*
 
+### The storefront
+
+**`notFound()` in the root layout answers `404` with an empty page.** The root layout is outside its own not-found boundary, so the render fails over to Next's bare error document: correct status, no layout, no message. A status check passes; only rendering shows it. Throw from a nested layout — `(shop)/layout.tsx` — where the root's boundary catches it. Note that every storefront `404` on Next 14.2 arrives as an empty shell and is drawn from the RSC payload in the browser, so compare payloads (or render headlessly), not server HTML. *(C-19a)*
+
+**Next's data cache stores `200`s only** (`patch-fetch.js`, `res.status === 200`). A `404` from the api is asked again on every request, which is what lets a newly created channel be reachable at once — and why a refusal cannot be "cached away". *(C-19a)*
+
+**A route moved into a route group keeps its URL but not its import path.** `@/app/cart/actions` survived a search for relative imports and passed lint; only `next build` failed. Build after any move under `app/`. *(C-19a)*
+
 ### Tooling and environment
+
+**Moving directories can leave the Nx daemon's project graph stale:** every target fails with *"Failed to process project graph"*. `pnpm nx reset`, or `NX_DAEMON=false` for one run. *(C-19a)*
+
+**Git Bash rewrites arguments that start with `/` into Windows paths** — `/` arrives as `C:/Program Files/Git/`. Prefix `MSYS_NO_PATHCONV=1` when passing URL paths to a script. *(C-19a)*
 
 **Nx caches `test` on file inputs only; environment variables are not in the key.** `pnpm nx test api` followed by `TEST_API_URL=… pnpm nx test api` replays the cached *skipped* run as a pass. Always pass `--skipNxCache` to live suites.
 
@@ -100,6 +112,7 @@ Recorded because the project's standing rule is to say plainly what failed, incl
 | 24 | **My first server-side latency comparison timed Apollo's CSRF `400`s**, not reads: the probe sent no preflight header, and both builds "measured" 1.0 ms. A comparison that could not have differed. | The build-identity marker returned `400` where `200` was expected. | The probe now refuses to time anything but `200`s; the real figures are 4.5 ms against 4.0 ms. |
 | 25 | **The currency freeze I designed in C-8a checks only a channel's own `currency_code`.** An inherited currency can change after transacting, through the tenant defaults. | Wondering, during C-32b's live check, why editing the defaults' currency had been allowed; then demonstrating it with an order in `uk`. | C-37. CAVEATS corrected meanwhile. |
 | 26 | **I told the user C-32a was committed as a hash I had not seen** — 3c7d4fb, which is no commit at all; it was `48d784c`. The command's output had been cut before the hash. | The next `git log`, a minute later. | Corrected to the user at once. A hash is quoted from output, never recalled. |
+| 27 | **C-19a's first build resolved the channel in the root layout**, and an unknown prefix answered `404` — the check I had written asserted only the status, and passed. The page was empty. | Comparing the unknown channel's RSC payload with the product page's `404`, which carries the layout and message; then headless Edge. | The check moved to a route-group layout, and the verification now asserts what the `404` renders, not only its status. |
 
 ### Earlier in the same session, on `main`
 

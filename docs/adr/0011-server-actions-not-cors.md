@@ -16,7 +16,7 @@ Both work. They have very different security and operational profiles.
 
 Use Next.js server actions for every cart, coupon, and checkout mutation. The browser never makes a direct request to the api.
 
-`apps/storefront/src/app/cart/actions.ts` declares the mutators with `'use server'`. Client components import them like normal functions; React + Next handle the RPC wire format transparently.
+`apps/storefront/src/app/(shop)/cart/actions.ts` declares the mutators with `'use server'`. Client components import them like normal functions; React + Next handle the RPC wire format transparently.
 
 Each action:
 1. Reads the tenant id from headers (set by the storefront's middleware on each request).
@@ -55,7 +55,7 @@ The api remains pure REST without CORS. From the api's perspective, every storef
 
 ## Links
 
-- [apps/storefront/src/app/cart/actions.ts](../../apps/storefront/src/app/cart/actions.ts) — the action surface
+- [apps/storefront/src/app/(shop)/cart/actions.ts](../../apps/storefront/src/app/%28shop%29/cart/actions.ts) — the action surface
 - [apps/storefront/src/lib/api-rest.ts](../../apps/storefront/src/lib/api-rest.ts) — `server-only` fetch wrapper
 - [apps/storefront/src/lib/cart.ts](../../apps/storefront/src/lib/cart.ts) — cart cookie helpers
-- [apps/storefront/src/app/p/[id]/add-to-cart-button.tsx](../../apps/storefront/src/app/p/%5Bid%5D/add-to-cart-button.tsx) — example client component calling an action
+- [apps/storefront/src/app/(shop)/p/[id]/add-to-cart-button.tsx](../../apps/storefront/src/app/%28shop%29/p/%5Bid%5D/add-to-cart-button.tsx) — example client component calling an action

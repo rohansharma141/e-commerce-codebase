@@ -4,6 +4,7 @@ import type { Order } from '@platform/api-client';
 import { apiFetch } from '@/lib/api-rest';
 import { formatMinorUnitsIn } from '@/lib/money';
 import { getMoneyFormat } from '@/lib/capabilities';
+import { channelHref } from '@/lib/channel';
 
 /**
  * Order confirmation page — server-rendered. Reads via /admin/orders/:id
@@ -86,7 +87,7 @@ export default async function OrderConfirmationPage({ params }: PageProps) {
         </dl>
 
         <Link
-          href="/"
+          href={channelHref('/')}
           className="mt-8 inline-flex items-center text-sm text-brand hover:underline"
         >
           ← Continue shopping

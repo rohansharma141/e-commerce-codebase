@@ -1,7 +1,9 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { CHANNEL_KEY_HEADER, splitChannelPrefix } from '@/lib/channel-path';
 
 /**
- * Tenant resolution from the Host header.
+ * Tenant resolution from the Host header; channel from the path's first
+ * segment (C-19a, grammar in `@/lib/channel-path`).
  *
  * Production: `t-fashion.commerce.example.com` → tenant `t-fashion`.
  * Local dev:  `t-fashion.localhost:3001` → tenant `t-fashion`. Modern
@@ -95,7 +97,24 @@ export function middleware(req: NextRequest): NextResponse {
   headers.set('x-nonce', nonce);
   headers.set('content-security-policy', csp);
 
-  const res = NextResponse.next({ request: { headers } });
+  // The channel comes from the path and nowhere else (C-19a). An inbound copy
+  // of the internal header is dropped before anything reads it: otherwise an
+  // unprefixed request could name a channel its URL does not, and every cache
+  // keyed on the URL would file that answer under the default channel.
+  headers.delete(CHANNEL_KEY_HEADER);
+  const { channelKey, path } = splitChannelPrefix(req.nextUrl.pathname);
+
+  let res: NextResponse;
+  if (channelKey) {
+    // A rewrite, not a redirect: the shopper keeps `/trade/c/dresses` in the
+    // address bar, and the routes stay one tree with no per-channel copy.
+    headers.set(CHANNEL_KEY_HEADER, channelKey);
+    const url = req.nextUrl.clone();
+    url.pathname = path;
+    res = NextResponse.rewrite(url, { request: { headers } });
+  } else {
+    res = NextResponse.next({ request: { headers } });
+  }
   res.headers.set('content-security-policy', csp);
   return res;
 }

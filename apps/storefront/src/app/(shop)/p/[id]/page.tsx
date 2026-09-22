@@ -4,6 +4,7 @@ import { graphqlQuery } from '@/lib/api-graphql';
 import { browseTag } from '@/lib/cache-tags';
 import { getTenantId } from '@/lib/tenant';
 import { getMoneyFormat } from '@/lib/capabilities';
+import { channelHref } from '@/lib/channel';
 import { formatMajorUnits } from '@/lib/money';
 import { Breadcrumbs, type Crumb } from '@/components/breadcrumbs';
 import { RelatedProducts } from '@/components/related-products';
@@ -68,8 +69,8 @@ export default async function ProductPage({ params }: PageProps) {
   const rest = Object.entries(attrs).filter(([k]) => !featured.includes(k));
 
   // Breadcrumb trail. Category page exists at /c/[category] — link to it if present.
-  const crumbs: Crumb[] = [{ label: 'Home', href: '/' }];
-  if (category) crumbs.push({ label: category, href: `/c/${encodeURIComponent(category)}` });
+  const crumbs: Crumb[] = [{ label: 'Home', href: channelHref('/') }];
+  if (category) crumbs.push({ label: category, href: channelHref(`/c/${encodeURIComponent(category)}`) });
   crumbs.push({ label: product.name });
 
   // Related-products pin: prefer category, fall back to brand. If neither, no rail.

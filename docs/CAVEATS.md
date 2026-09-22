@@ -38,9 +38,14 @@ Every item has a **status**: *by design* (intentional, see linked ADR), *scoped 
 
 ### No customer auth — order reads go through admin endpoint
 - **Status:** scoped out (CLAUDE.md: real auth is the gateway's job, ADR-0007).
-- **What:** [/orders/[id]](../apps/storefront/src/app/orders/[id]/page.tsx) reads via `GET /admin/orders/:id`. There's no `/storefront/orders/:id` and no per-customer scoping.
+- **What:** [/orders/[id]](../apps/storefront/src/app/%28shop%29/orders/[id]/page.tsx) reads via `GET /admin/orders/:id`. There's no `/storefront/orders/:id` and no per-customer scoping.
 - **Impact:** any browser knowing an order id (which is a uuid v4) can fetch any other customer's order in that tenant. Not a real-world threat for a demo; not acceptable for production.
 - **Fix:** customer JWT auth at the gateway (per ADR-0007), a `customers` table tying orders to a customer id, a `/storefront/orders/:id` endpoint that verifies `order.customer_id === current_customer.id` before returning. The api would also drop `/admin/orders/:id` from storefront use.
+
+### The price filter shows `$` whatever the currency
+- **Status:** open — C-40. Predates the channels slice; also on `main`.
+- **What:** the facet sidebar prints a hardcoded `$` beside its minimum and maximum price inputs ([facet-sidebar.tsx](../apps/storefront/src/components/facet-sidebar.tsx)), so `t-fashion`, which sells in GBP, shows `$`. [STOREFRONT.md](STOREFRONT.md#theming-and-money--both-come-from-the-api) says money is formatted from the api's descriptor "and nothing else"; this is the exception. Found 2026-09-22 while rendering C-19a's pages in a headless browser.
+- **Fix:** take the symbol from the same `MoneyFormat` the prices are formatted with.
 
 ### Storefront dev secret is checked in
 - **Status:** open; only a dev concern.
@@ -146,6 +151,13 @@ Added by the channels slice (ADR-0014). Every one of these is a *stated* simplif
 - **Reads are unaffected:** C-32b's refusal passes a tenant with no default channel through, so such a tenant browses as it did before channels. Only its baskets fail.
 - **Also:** a backfilled channel is not marked `has_transacted`, even where the tenant already had orders — those predate the channel, and the backfill does not read orders. Its currency is editable until the next order marks it through C-17's consumer. The orders themselves carry their own `currency` and render as charged.
 - **Fix:** tenant onboarding creates the tenant defaults and a default channel in one step — C-35.
+
+### The storefront's channel prefix has two costs
+- **Status:** open; the first by design, the second worth a small fix.
+- **What:** a shopper reaches a channel as `/{channelKey}/…` (C-19a). A channel keyed like one of the storefront's own first segments — `c`, `p`, `cart`, `orders`, `api` — is unreachable by prefix, although the api's key grammar admits all five. And the default channel also answers under its own key, so `/uk/c/dresses` and `/c/dresses` are one page at two URLs with no canonical link between them.
+- **Why the first is accepted:** the api avoids the same collision by putting tenants under a reserved `/api`, which a URL meant for shoppers cannot afford. The api is deliberately not taught the storefront's routes — it ships without the storefront.
+- **Held down by:** `channel-path.spec.ts`, which fails when a top-level route is added without being reserved.
+- **Fix for the second:** a `<link rel="canonical">` to the unprefixed URL when the named channel is the default.
 
 ### Authentication is a prerequisite that has not been built
 - **Status:** open, and the only item here that blocks a phase.

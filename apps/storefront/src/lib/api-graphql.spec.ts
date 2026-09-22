@@ -133,4 +133,63 @@ describe('graphqlQuery', () => {
 
     await expect(graphqlQuery(DOC, {}, { tags: ['x'] })).rejects.toBeInstanceOf(GraphqlError);
   });
+
+  it('keeps the status of a refused request, so a 404 can be told from a failure', async () => {
+    mockFetch({ message: 'no active channel' }, 404);
+
+    // `resolveChannel` turns exactly this into the storefront's own 404. With
+    // the status dropped, an unknown channel would render as a server error.
+    await expect(graphqlQuery(DOC, {}, { channelKey: 'nope' })).rejects.toMatchObject({
+      name: 'GraphqlError',
+      status: 404,
+    });
+  });
+});
+
+describe('graphqlQuery channel scope (C-19a)', () => {
+  const callOf = (fetchMock: jest.Mock) => {
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    return { path: new URL(url).pathname, headers: (init.headers ?? {}) as Record<string, string> };
+  };
+
+  beforeEach(() => {
+    currentTenant = 't-fashion';
+  });
+
+  it('names the channel in both the URL and the header', async () => {
+    const fetchMock = mockFetch({ data: { ok: true } });
+
+    await graphqlQuery(DOC, {}, { channelKey: 'trade' });
+
+    // The api refuses a channel URL without the matching header (C-2b), and a
+    // cache keys on the URL alone, so dropping either half is a bug: the first
+    // fails every scoped read, the second lets channels share cache entries.
+    const { path, headers } = callOf(fetchMock);
+    expect(path).toBe('/api/t-fashion/trade/graphql');
+    expect(headers['x-channel-id']).toBe('trade');
+    expect(headers['x-tenant-id']).toBe('t-fashion');
+  });
+
+  it('stays on the unscoped path when no channel is named', async () => {
+    const fetchMock = mockFetch({ data: { ok: true } });
+
+    await graphqlQuery(DOC, {}, { channelKey: null });
+
+    const { path, headers } = callOf(fetchMock);
+    expect(path).toBe('/graphql');
+    expect(headers['x-channel-id']).toBeUndefined();
+  });
+
+  it('sends the key exactly as the path carried it, so URL and header agree byte for byte', async () => {
+    const fetchMock = mockFetch({ data: { ok: true } });
+
+    // A key outside the channel grammar has to reach the api intact, where it
+    // is a 404. Encoding the URL half again would make it `%2574rade` against
+    // a header of `%74rade`: a mismatch 400, and a server error here.
+    await graphqlQuery(DOC, {}, { channelKey: '%74rade' });
+
+    const { path, headers } = callOf(fetchMock);
+    expect(path).toBe('/api/t-fashion/%74rade/graphql');
+    expect(headers['x-channel-id']).toBe('%74rade');
+  });
 });

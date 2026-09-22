@@ -23,11 +23,12 @@ Everything below is a longer treatment of how those rules are realised in code.
 │  apps/storefront  (Next.js 14 App Router)                                │
 │                                                                          │
 │   src/middleware.ts  ── Host → x-tenant-id ──► request headers           │
+│                      ── /{channel}/… → x-channel-key (C-19a)             │
 │        │                                                                 │
 │        ▼                                                                 │
 │   ┌───────── App Router pages ─────────┐    ┌──── Server actions ────┐   │
 │   │  RSC (server components)           │    │  'use server' in       │   │
-│   │  ├─ /          home (browse)       │    │  src/app/cart/actions  │   │
+│   │  ├─ /          home (browse)       │    │  (shop)/cart/actions   │   │
 │   │  ├─ /c/[cat]   category browse     │    │  ├─ addToCart          │   │
 │   │  ├─ /p/[id]    product detail      │    │  ├─ setLineQty         │   │
 │   │  ├─ /cart      cart shell          │    │  ├─ applyCoupon        │   │
@@ -87,6 +88,20 @@ Behaviour:
 | `example.com` (prod, no subdomain) | 400 |
 
 Server Components and server actions read the header via `headers()` from `next/headers`. The tenant id flows from middleware → `getTenantId()` (`src/lib/tenant.ts`) → urql `fetchOptions` and REST wrapper `apiFetch`. The api header is set automatically; the storefront code never spells "t-fashion" anywhere outside of the dev default fallback.
+
+## Channel resolution
+
+A channel is named by the path's first segment, and the tenant's default channel by its absence (C-19a). That is the api's own grammar — `/api/{tenant}/{channelKey}/graphql`, default omitted rather than reserved — carried into the shopper's URL. The middleware strips the prefix and rewrites, so the routes stay one tree with no per-channel copy, and passes the key on as an internal `x-channel-key` header after deleting any copy the client sent.
+
+| Path on `t-fashion.localhost:3001` | Outcome |
+|---|---|
+| `/c/dresses` | the default channel, `uk` |
+| `/trade/c/dresses` | channel `trade`; every link on the page stays under `/trade` |
+| `/uk/c/dresses` | channel `uk`, named explicitly |
+| `/xx/c/dresses`, or an archived channel's key | `404` — never the default |
+| `/c/…`, `/p/…`, `/cart`, `/orders/…`, `/api/…` | the storefront's own routes, never read as a channel |
+
+Whether a key names a channel is the api's answer: `(shop)/layout.tsx` asks for the channel's capabilities under the scoped URL and turns the api's `404` into the storefront's. That layout rather than the root one, because a `notFound()` thrown by the root layout falls outside the root's own not-found boundary and renders an empty page — the status is still `404`, which is why only rendering it showed the difference. Reads other than this one stay unscoped until C-19b. The cost of spending the first segment on the channel is in [CAVEATS](CAVEATS.md#the-storefronts-channel-prefix-has-two-costs).
 
 ## The two data paths
 
@@ -154,8 +169,10 @@ That last part is the point of the arrangement. Because the storefront asks rath
 
 ## Tests
 
-`pnpm nx test storefront` runs two suites:
+`pnpm nx test storefront` runs seven suites, among them:
 
+- `src/middleware.spec.ts` and `src/lib/channel-path.spec.ts` — channel resolution (C-19a): which paths name a channel, that a client-sent `x-channel-key` never survives the middleware, and that every top-level route is reserved so none is mistaken for a channel key.
+- `src/lib/api-graphql.spec.ts` — the read path is a GET carrying the tenant, and a channel-scoped read names the channel in both URL and header.
 - `src/lib/search-params.spec.ts` — the URL contract. Browse pages are a pure function of the URL, and those URLs get shared and bookmarked, so the page/cursor, facet, price-range, sort and view parsing are pinned. Runs anywhere, no infrastructure.
 - `src/contract.integration.spec.ts` — storefront↔API conformance. Every operation the storefront issues in production is issued against a live api and checked against the shape the storefront relies on, including exact key sets for the hand-mirrored REST types so a drifted mirror fails loudly. Skipped unless `TEST_API_URL` is set:
 
@@ -199,14 +216,15 @@ pnpm codegen                          # rebuild typed documents
 | Concern | File |
 |---|---|
 | Tenant from Host | [apps/storefront/src/middleware.ts](../apps/storefront/src/middleware.ts) |
+| Channel from path | [lib/channel-path.ts](../apps/storefront/src/lib/channel-path.ts) (grammar), [lib/channel.ts](../apps/storefront/src/lib/channel.ts) (asking the api), [(shop)/layout.tsx](../apps/storefront/src/app/%28shop%29/layout.tsx) (the `404`) |
 | urql RSC client | [apps/storefront/src/lib/urql.ts](../apps/storefront/src/lib/urql.ts) |
 | REST fetch wrapper | [apps/storefront/src/lib/api-rest.ts](../apps/storefront/src/lib/api-rest.ts) |
 | Cart cookie helpers | [apps/storefront/src/lib/cart.ts](../apps/storefront/src/lib/cart.ts) |
-| Server actions | [apps/storefront/src/app/cart/actions.ts](../apps/storefront/src/app/cart/actions.ts) |
-| Browse page | [apps/storefront/src/app/page.tsx](../apps/storefront/src/app/page.tsx) |
-| Product detail | [apps/storefront/src/app/p/[id]/page.tsx](../apps/storefront/src/app/p/%5Bid%5D/page.tsx) |
-| Cart shell + view | [apps/storefront/src/app/cart/page.tsx](../apps/storefront/src/app/cart/page.tsx), [cart-view.tsx](../apps/storefront/src/app/cart/cart-view.tsx) |
-| Order confirmation | [apps/storefront/src/app/orders/[id]/page.tsx](../apps/storefront/src/app/orders/%5Bid%5D/page.tsx) |
+| Server actions | [apps/storefront/src/app/(shop)/cart/actions.ts](../apps/storefront/src/app/%28shop%29/cart/actions.ts) |
+| Browse page | [apps/storefront/src/app/(shop)/page.tsx](../apps/storefront/src/app/%28shop%29/page.tsx) |
+| Product detail | [apps/storefront/src/app/(shop)/p/[id]/page.tsx](../apps/storefront/src/app/%28shop%29/p/%5Bid%5D/page.tsx) |
+| Cart shell + view | [apps/storefront/src/app/(shop)/cart/page.tsx](../apps/storefront/src/app/%28shop%29/cart/page.tsx), [cart-view.tsx](../apps/storefront/src/app/%28shop%29/cart/cart-view.tsx) |
+| Order confirmation | [apps/storefront/src/app/(shop)/orders/[id]/page.tsx](../apps/storefront/src/app/%28shop%29/orders/%5Bid%5D/page.tsx) |
 | Security headers | [apps/storefront/next.config.mjs](../apps/storefront/next.config.mjs) |
 | ESLint boundary | [.eslintrc.cjs](../.eslintrc.cjs) (search for `scope:storefront`) |
 | api-client REST types | [packages/api-client/src/index.ts](../packages/api-client/src/index.ts) — curated names, aliased from [generated/rest-api.ts](../packages/api-client/src/generated/rest-api.ts) |

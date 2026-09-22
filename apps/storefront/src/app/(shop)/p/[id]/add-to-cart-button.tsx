@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { addToCart } from '@/app/cart/actions';
+import { addToCart } from '@/app/(shop)/cart/actions';
 
 interface AddToCartButtonProps {
   productId: string;

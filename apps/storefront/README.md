@@ -31,11 +31,11 @@ Modern browsers resolve `*.localhost` natively. No `/etc/hosts` edits.
 | Read path (GraphQL) | `src/lib/urql.ts` | `@urql/next/rsc` client. Attaches the tenant header per request. |
 | Write path (REST) | `src/lib/api-rest.ts` | `server-only` fetch wrapper. Used by server actions. |
 | Cart cookie | `src/lib/cart.ts` | `cart_id_<tenantId>` HTTP cookie. |
-| Mutations | `src/app/cart/actions.ts` | `'use server'` — addToCart, setLineQty, applyCoupon, removeCoupon, checkout. |
-| Browse | `src/app/page.tsx` | Server-rendered grid + facets via `Query.search`. |
-| PDP | `src/app/p/[id]/page.tsx` | Server-rendered detail via `Query.product`. |
-| Cart shell + view | `src/app/cart/` | RSC reads, client view mutates via actions. |
-| Order confirmation | `src/app/orders/[id]/page.tsx` | Server-rendered post-checkout. |
+| Mutations | `src/app/(shop)/cart/actions.ts` | `'use server'` — addToCart, setLineQty, applyCoupon, removeCoupon, checkout. |
+| Browse | `src/app/(shop)/page.tsx` | Server-rendered grid + facets via `Query.search`. |
+| PDP | `src/app/(shop)/p/[id]/page.tsx` | Server-rendered detail via `Query.product`. |
+| Cart shell + view | `src/app/(shop)/cart/` | RSC reads, client view mutates via actions. |
+| Order confirmation | `src/app/(shop)/orders/[id]/page.tsx` | Server-rendered post-checkout. |
 | Security headers | `next.config.mjs` | CSP / X-Frame-Options / Referrer-Policy. |
 
 ## Boundary rule

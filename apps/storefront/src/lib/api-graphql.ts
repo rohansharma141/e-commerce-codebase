@@ -51,7 +51,12 @@ import { getTenantId } from './tenant';
 const API_ORIGIN = process.env['API_ORIGIN'] ?? 'http://localhost:3000';
 
 export class GraphqlError extends Error {
-  constructor(message: string, readonly errors: unknown) {
+  constructor(
+    message: string,
+    readonly errors: unknown,
+    /** The HTTP status when the api refused the request outright. */
+    readonly status?: number,
+  ) {
     super(message);
     this.name = 'GraphqlError';
   }
@@ -66,6 +71,16 @@ interface QueryOptions {
    * leave stale content forever.
    */
   revalidate?: number | false;
+  /**
+   * Scope the read to this channel: `/api/{tenant}/{channelKey}/graphql` with
+   * `x-channel-id`, the api's own grammar (C-2b). The header is what the api
+   * trusts and the URL is what caches key on; the api refuses the request if
+   * they disagree, so both are always sent together.
+   *
+   * Omitted, the read is unscoped and the api answers for the tenant default.
+   * Only channel resolution passes it until C-19b scopes every read.
+   */
+  channelKey?: string | null;
 }
 
 export async function graphqlQuery<TData, TVars>(
@@ -79,14 +94,26 @@ export async function graphqlQuery<TData, TVars>(
     params.set('variables', JSON.stringify(variables));
   }
 
-  const res = await fetch(`${API_ORIGIN}/graphql?${params.toString()}`, {
-    headers: {
-      'x-tenant-id': tenantId,
-      // Apollo Server refuses GET queries without evidence that the request
-      // was not a simple cross-origin form post. Without this the api answers
-      // 400 and every page fails to render.
-      'apollo-require-preflight': 'true',
-    },
+  const headers: Record<string, string> = {
+    'x-tenant-id': tenantId,
+    // Apollo Server refuses GET queries without evidence that the request
+    // was not a simple cross-origin form post. Without this the api answers
+    // 400 and every page fails to render.
+    'apollo-require-preflight': 'true',
+  };
+  // The key is used as it arrived in the storefront's own path — already a
+  // valid, percent-encoded path segment — and is not encoded again. The api
+  // compares the URL segment with the header byte for byte, so encoding one
+  // and not the other would turn an unknown channel's `404` into a mismatch
+  // `400`.
+  let path = '/graphql';
+  if (options.channelKey) {
+    path = `/api/${tenantId}/${options.channelKey}/graphql`;
+    headers['x-channel-id'] = options.channelKey;
+  }
+
+  const res = await fetch(`${API_ORIGIN}${path}?${params.toString()}`, {
+    headers,
     next: {
       tags: options.tags,
       revalidate: options.revalidate ?? 3600,
@@ -98,6 +125,7 @@ export async function graphqlQuery<TData, TVars>(
     throw new GraphqlError(
       `api graphql HTTP ${res.status}: ${body.slice(0, 200)}`,
       null,
+      res.status,
     );
   }
 

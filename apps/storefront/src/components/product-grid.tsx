@@ -3,6 +3,7 @@ import { ProductCard } from './product-card';
 import { ProductRow } from './product-row';
 import type { ViewMode } from '@/lib/search-params';
 import type { MoneyFormat } from '@/lib/money';
+import { channelHref } from '@/lib/channel';
 
 interface ProductHit {
   id: string;
@@ -43,7 +44,7 @@ export function ProductGrid({ items, view, money }: ProductGridProps) {
       <ul className="flex flex-col gap-3" role="list">
         {items.map((p) => (
           <li key={p.id}>
-            <Link href={`/p/${p.id}`} prefetch={false} className={linkClass}>
+            <Link href={channelHref(`/p/${p.id}`)} prefetch={false} className={linkClass}>
               <ProductRow money={money} product={p} />
             </Link>
           </li>
@@ -56,7 +57,7 @@ export function ProductGrid({ items, view, money }: ProductGridProps) {
     <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4" role="list">
       {items.map((p) => (
         <li key={p.id}>
-          <Link href={`/p/${p.id}`} prefetch={false} className={linkClass}>
+          <Link href={channelHref(`/p/${p.id}`)} prefetch={false} className={linkClass}>
             <ProductCard money={money} product={p} />
           </Link>
         </li>

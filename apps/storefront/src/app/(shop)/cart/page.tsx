@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { getCart } from '@/lib/cart';
 import { getTenantId } from '@/lib/tenant';
 import { getMoneyFormat } from '@/lib/capabilities';
+import { channelHref } from '@/lib/channel';
 import { CartView } from './cart-view';
 
 /**
@@ -32,7 +33,7 @@ export default async function CartPage() {
             Find something to buy and we&apos;ll keep it here.
           </p>
           <Link
-            href="/"
+            href={channelHref('/')}
             className="mt-6 inline-flex items-center rounded-md bg-brand px-4 py-2 text-sm font-semibold text-brand-fg hover:opacity-90"
           >
             Browse the catalog

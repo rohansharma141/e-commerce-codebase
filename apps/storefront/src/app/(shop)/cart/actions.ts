@@ -11,6 +11,7 @@ import {
   readCartIdCookie,
 } from '@/lib/cart';
 import { getTenantId } from '@/lib/tenant';
+import { channelHref } from '@/lib/channel';
 
 /**
  * Server actions are the mutation surface for the storefront. They run on
@@ -103,5 +104,5 @@ export async function checkout(): Promise<never> {
   });
   clearCartIdCookie(tenantId);
   revalidatePath('/', 'layout');
-  redirect(`/orders/${order.id}`);
+  redirect(channelHref(`/orders/${order.id}`));
 }

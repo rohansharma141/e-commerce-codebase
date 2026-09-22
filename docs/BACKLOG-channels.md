@@ -8,19 +8,19 @@ House rules applied: one item, one commit, one stated verification. Anything nee
 
 **Read this section first when resuming.** Then [CHANNELS-BUILD-NOTES](design/CHANNELS-BUILD-NOTES.md) for the traps and mistakes that cost time, and the rows below for each item's verification record.
 
-`main` = `433f5b6` (61 commits, CI green, `v0.1.0`). `channels` branched from it. Code changed last in C-18b (2026-09-22); `git log -1 --format='%h %s' -- apps packages` names the latest commit to touch code, so a docs-only commit cannot make this line stale. **CI has never run on this branch** — it triggers only on `main` and on PRs into it, so every "verified" below is local.
+`main` = `433f5b6` (61 commits, CI green, `v0.1.0`). `channels` branched from it. Code changed last in C-19a (2026-09-22); `git log -1 --format='%h %s' -- apps packages` names the latest commit to touch code, so a docs-only commit cannot make this line stale. **CI has never run on this branch** — it triggers only on `main` and on PRs into it, so every "verified" below is local.
 
-### Done — 28 rows, all verified
+### Done — 29 rows, all verified
 
 | Phase | Rows |
 |---|---|
 | A — conventions and scope | C-1, C-2, C-3, C-2b, C-4 *(api half)*, C-9 *(REST half)* |
 | B — the channels module | C-5, C-6, C-7, C-8a, C-8b, C-10, C-11a, C-11 |
 | C — resolution and propagation | C-12, C-13, C-14, C-15, C-16a, C-16b, C-17, C-33 |
-| D — API surface | C-32a, C-32b, C-18a, C-18b |
+| D — API surface | C-32a, C-32b, C-18a, C-18b, C-19a |
 | F / G | C-26, C-29 |
 
-Plus [ADR-0015](adr/0015-operator-authentication-at-the-api-edge.md) (operator auth, designed not built). Test counts, measured 2026-09-22 with C-18b in both images. Unit: channels 144 plus 24 database-gated, pricing 69, cart 21, api 27, storefront 8 beyond conformance. Database, on a throwaway `platform_test`: channels 168, and checkout integration 13, C-11 backfill 7, C-33 backfill 6 and the C-32b middleware 7, run together (at C-32b; unchanged since). Live: 45 admin-conventions, 6 admin-concurrency, 19 scoped-graphql, 46 storefront (38 conformance and 8 route); C-32b's live script 28 expectations and C-18a's 24, 0 failures each; C-18b's freshness check, before and after. scoped-graphql's one unexplained 30 s timeout, in the first run after C-33, has not recurred in four runs since; it stays recorded as unexplained. The RUNBOOK's order recipe and upgrade-path block were run verbatim, extracted from the file.
+Plus [ADR-0015](adr/0015-operator-authentication-at-the-api-edge.md) (operator auth, designed not built). Test counts, measured 2026-09-22 with C-18b in both images. Unit: channels 144 plus 24 database-gated, pricing 69, cart 21, api 27; storefront 77 at C-19a. Database, on a throwaway `platform_test`: channels 168, and checkout integration 13, C-11 backfill 7, C-33 backfill 6 and the C-32b middleware 7, run together (at C-32b; unchanged since). Live: 45 admin-conventions, 6 admin-concurrency, 19 scoped-graphql, storefront 84 at C-19a — its 77 unit tests and the 7-test conformance suite. (Recorded until C-19a as "46 storefront (38 conformance and 8 route)", a mislabel found by counting per suite: 46 was the whole suite, and 7 of it conformance.) C-32b's live script 28 expectations and C-18a's 24, 0 failures each; C-18b's freshness check, before and after. scoped-graphql's one unexplained 30 s timeout, in the first run after C-33, has not recurred in four runs since; it stays recorded as unexplained. The RUNBOOK's order recipe and upgrade-path block were run verbatim, extracted from the file.
 
 ### Decided 2026-09-22
 
@@ -41,13 +41,14 @@ Plus [ADR-0015](adr/0015-operator-authentication-at-the-api-edge.md) (operator a
 - a **correct request is honoured unchanged**: unscoped requests and requests in a servable channel (`uk`, every channel of the other tenants) behave exactly as today;
 - the rule follows the **currencies, not the key**: if the tenant default itself stops matching the price list (tenant defaults edited to another currency), unscoped requests are refused too, and once `de`'s currency matches, `de` is served.
 
+**C-19a's shape, decided 2026-09-22: a path prefix.** The storefront reaches a channel as `/{channelKey}/…` (`/trade/c/dresses`), and the default channel stays unprefixed, mirroring the api's `/api/{tenant}/{channelKey}/graphql`. Accepted as recommended; domain binding stays out of scope (CHANNEL-MODEL §13).
+
 ### Waiting on the user
 
 1. **Confirm two status rules that were derived in code, not designed** (C-8a): nothing returns to `draft` (otherwise `key` immutability is circumventable by archive → redraft → rename), and `archived → active` is allowed (a market can reopen; safe because the key is already frozen).
 2. **Confirm `x-channel-id` carries the channel *key*, not its UUID** (C-12). The header name is the ADR's; the value follows `x-tenant-id`'s precedent of a human identifier. Cheap to change now, expensive once the back office assumes it.
 3. **Go-ahead for Block 2** — the auth slice (ADR-0015) and the back office (C-20..C-24). Not started.
 4. **CI on this branch** — a PR into `main`, or widening the workflow trigger. Declined for now.
-5. **How the storefront picks a channel** (C-19a). Storefront domain binding was left out of the design (CHANNEL-MODEL §13). Recommendation: a path prefix (`/de/…`), the default channel unprefixed, mirroring the api's grammar. The user deferred this until C-19a is next.
 
 ### What can be built next
 
@@ -60,7 +61,7 @@ Re-sequenced 2026-09-22, after C-11 and C-33. Working hours at this build's obse
 | 2 | C-32b ✅ | Every storefront request scoped to such a channel is refused with a named error; admin unaffected; a second, servable `t-fashion` fixture channel | done | — |
 | 3 | C-18a ✅ | Capabilities per channel; tenant-level fields kept as deprecated aliases; the pricing locale copy stops mattering | done | — |
 | 3a | C-18b ✅ | The storefront's cached capabilities invalidated by channel events, not only pricing ones | done | — |
-| 4 | C-19a | The storefront picks a channel | 2–3 h | C-18; decision 5 |
+| 4 | C-19a ✅ | The storefront picks a channel from a path prefix; an unknown prefix is a `404` | done | — |
 | 5 | C-19b | The storefront sends channel scope on every read and uses the channel's capabilities; C-4's client guard; the cross-channel cache test | 1.5–2 h | C-19a |
 | 6 | C-30 | `tax_display` editable per channel, honoured by carts and checkout, recorded on orders | 1.5–2 h | C-32a |
 | 7 | C-31 | The storefront renders gross or net per channel | 1–1.5 h | C-19b, C-30 |
@@ -74,6 +75,7 @@ Re-sequenced 2026-09-22, after C-11 and C-33. Working hours at this build's obse
 | 12b | C-38 | Totals and checkout charge the channel's tax rate, and capabilities report it per channel | 1.5–2 h | — |
 | 12c | C-39 | CI fails when the committed GraphQL schema or client drifts from the api | 0.5–1 h | — |
 | 12d | C-19c | Remove the deprecated tenant-level capability fields (ADR-0014 §7, step 3) | 0.5 h | C-19b |
+| 12e | C-40 | The price filter shows the currency's symbol instead of a hardcoded `$` | 0.5–1 h | — |
 | **Last** | | | | |
 | 13 | C-27 | Docs reconciled; the README run cold | 1.5–2.5 h | all above |
 | | | **Remaining, excluding the gated items below** | **≈ 14–22 h** | |
@@ -476,12 +478,25 @@ A request edge check, after channel resolution, on the storefront surfaces only 
 
 **C-19 — Split 2026-09-22 into C-19a and C-19b.** Too large for one row once its inherited pieces are counted, and part of it is undesigned.
 
-**C-19a — The storefront picks a channel** *(M, 2–3 h; waiting on the user's decision)*
-Storefront domain binding is outside the design (CHANNEL-MODEL §13), so nothing yet says how a shopper reaches `de` rather than `uk`. Recommendation: a path prefix (`/de/…`) with the default channel unprefixed, mirroring the api's `/api/{tenant}/{channelKey}/graphql`. Decided when this row is next.
+**C-19a — The storefront picks a channel** ✅ *(M, 2–3 h; shape decided 2026-09-22)*
+Storefront domain binding is outside the design (CHANNEL-MODEL §13), so nothing yet said how a shopper reaches `trade` rather than `uk`. **Decided: a path prefix** — `/{channelKey}/…`, the default channel unprefixed, mirroring the api's `/api/{tenant}/{channelKey}/graphql`. The middleware takes the key from the path beside the tenant from the host; links keep the prefix the page was reached under. The storefront's own first segments (`c`, `p`, `cart`, `orders`, `api`) are never read as a channel key.
 *Verification:* the same page under two prefixes resolves two channels; an unknown prefix is a `404`, never the default.
+
+*Shipped 2026-09-22.* The middleware reads the first path segment as a channel key unless it is one of the storefront's own routes, rewrites to the unprefixed route, and passes the key on as `x-channel-key` after deleting any inbound copy. Every page moved into a `(shop)` route group — URLs unchanged — whose layout asks the api for the channel's capabilities under the scoped URL, `/api/{tenant}/{key}/graphql` with `x-channel-id`, and turns the api's `404` into the storefront's. Links, form actions, the checkout redirect and the suggestions fetch keep the prefix; the footer names the resolved channel. Reads other than that one stay unscoped: C-19b.
+
+- **Unit, 38 new:** channel grammar 27, including one that fails when a top-level route is added without being reserved; middleware 7; read path 4. Four mutations, each failing its tests: the inbound-header delete removed (1 failure), the key re-encoded in the api URL (1), the error's status dropped (1), `orders` unreserved (3).
+- **Live, production build against the api:** `/`, `/c/dresses`, `/p/…` and `/cart` resolve `uk`; the same four under `/trade` resolve `trade`, with every link and form action on the page under `/trade` (60 on the home page); `/uk/c/dresses` resolves `uk`; `/xx`, `/xx/c/dresses` and an archived probe channel's key answer `404`; a client-sent `x-channel-key: trade` on `/c/dresses` still resolves `uk`. Suggestions, a client-side navigation (an RSC request) and an order page all answer under the prefix. The same probe repeated against the rebuilt storefront image (`docker compose build storefront`, 3 min 14 s) gave the same answers. Conformance 7/7; build and lint clean.
+- **What it printed with the change doing nothing:** before C-19a, `/trade/c/dresses` was a `404` exactly like `/xx/c/dresses` — no such route — and no page named a channel. The contrast that proves resolution is `/trade` answering `200` in `trade` while `/xx` answers `404`.
+- **`de` answers `500`.** The api refuses it with `422 channel.unservable` and nothing renders that refusal yet; that is C-19b's.
+
+*Found building it:*
+- **`notFound()` in the root layout answers `404` with an empty page.** The first build resolved the channel there. The status was right, so a status check passed; the page carried no layout and no message, because the root layout sits outside its own not-found boundary. Found by comparing the RSC payload against the product page's `404`, which carries both, then confirmed by rendering both in headless Edge. Hence the route group: thrown one level down, the `404` is drawn inside the layout like any other.
+- **The price filter hardcodes `$`**, seen in the same browser render: **C-40**.
+- The two costs of the prefix — channels keyed `c`, `p`, `cart`, `orders` or `api` are unreachable by it, and `/uk/…` duplicates the default's unprefixed pages — are in [CAVEATS](CAVEATS.md#the-storefronts-channel-prefix-has-two-costs).
 
 **C-19b — Storefront migrated to channel-scoped reads** *(M, 1.5–2 h)*
 Scoped URL, both headers, channel-scoped capability fields. Carries C-4's client guard — `api-graphql.spec.ts` failing if the channel header stops being sent, which only now has something to guard — and renders C-32b's refusal as an honest "not available in this market" rather than an error page. C-9's and C-10's GraphQL halves stay deferred unless a consumer needs them: the storefront reads channels through capabilities and mutates none.
+*Carried from C-19a:* `graphqlQuery` already takes a `channelKey` and sends both halves; C-19b makes it the default from `getChannelKey()`. `getMoneyFormat` and `lookupChannel` issue the same `TenantCapabilities` document, so once both are scoped they are one memoised fetch. The refusal hooks into `lookupChannel`, which today rethrows the `422`. And the REST half needs the channel too: carts are bound to the channel they were created in (C-16b), but the `cart_id` cookie is per tenant, so a cart started under `/trade` would be reused under `/` — the cookie needs the channel in its name.
 *Verification:* the existing contract-conformance job, plus a cache test: two servable channels, one tenant, same page, in sequence — the second must not return the first's configuration.
 
 ---
@@ -544,6 +559,10 @@ A channel's `taxRateBps` — its own, or inherited from the tenant defaults — 
 **C-39 — CI fails when the GraphQL schema or client drifts** *(S, 0.5–1 h; added 2026-09-22)*
 R-4 fails CI when the REST client drifts from the api's OpenAPI document. Nothing does the same for the GraphQL half: `schema.graphql` and `generated/graphql.ts` are regenerated by hand (`fetch-schema`, `codegen`) and a stale copy passes. C-18's row assumed this check existed. Add it beside R-4's step, in the job that already runs the api.
 *Verification:* a hand-edit to the committed schema fails the step — proved on a real runner, since R-4's local proof once passed a hand-edit that regeneration had silently overwritten.
+
+**C-40 — The price filter shows the currency's symbol** *(XS, 0.5–1 h; added 2026-09-22; predates this slice)*
+`facet-sidebar.tsx` prints a hardcoded `$` beside the price inputs, so `t-fashion` (GBP) shows `$`. 8c-2 and STOREFRONT.md both claim the storefront stopped hardcoding the currency; this is the one place it did not. Found rendering C-19a's pages in a headless browser. Take the symbol from the `MoneyFormat` the prices already use.
+*Verification:* `t-fashion`'s price filter shows `£`, and a tenant switched to JPY shows `¥`. Today both show `$`.
 
 **C-19c — Remove the deprecated capability fields** *(XS, 0.5 h; added 2026-09-22)*
 ADR-0014 §7's third step: once the storefront reads `capabilities.channel` (C-19b), drop the tenant-level `currency`, `currencyMinorUnits`, `defaultLocale` and `locales`, in a commit of its own.
