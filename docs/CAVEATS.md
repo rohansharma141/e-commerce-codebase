@@ -85,8 +85,8 @@ Added by the channels slice (ADR-0014). Every one of these is a *stated* simplif
 - **Status:** open, with a deadline. This entry is the deadline.
 - **What:** a request that sends no `x-channel-id` resolves to the tenant's default channel. That is what keeps the shipped storefront working unchanged while the slice lands, and it is deliberately different from sending an *unknown* channel, which is a `404` and never falls back.
 - **Why it must not become permanent:** an undated fallback is indistinguishable from a feature. Once every caller sends scope, "unspecified" stops meaning "the default" and starts meaning "a misconfigured integration transacting in the wrong currency" — and it will look like it is working.
-- **Expiry:** the segment becomes **required** once C-19 lands and the storefront sends scope on every read. At that point the fallback is removed and an unscoped read is a `400`.
-- **Held down by:** `scoped-graphql.integration.spec.ts`, which asserts both halves — the three-segment URL still resolves the default, and an unknown channel `404`s rather than degrading to it.
+- **Expiry, decided 2026-09-22:** a channel is **required everywhere** on the storefront surfaces — GraphQL on every path, and `/storefront/*`. The default is named by its key like any other channel; a caller learns that key from `GET /system/capabilities`, the one exempt, unscoped read. Admin is not channel-scoped and is unaffected. The order is fixed so nothing breaks: the storefront names its channel on every call (C-19b, C-19e), every documented command and spec does (C-41), and only then does the api answer `400` to a request that names none (C-42). [ADR-0014](adr/0014-channel-as-sales-channel.md) §2 and §8 carry the amendment and the options weighed.
+- **Held down by:** `scoped-graphql.integration.spec.ts`, which asserts both halves — the three-segment URL still resolves the default, and an unknown channel `404`s rather than degrading to it. C-42 turns the first half into a `400`.
 
 ### One currency per channel — this is not multi-currency
 - **Status:** by design; the boundary is real and worth stating plainly.

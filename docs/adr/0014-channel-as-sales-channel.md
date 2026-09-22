@@ -65,6 +65,8 @@ Three properties, each chosen against a specific failure.
 
 The channel segment is **omitted, not sentinelled**, for the default. §4 argues against reserving the literal `default` as a key because an operator may legitimately want it; making the segment optional removes the reserved word entirely, so "unspecified" is structural rather than a magic value.
 
+*Amended 2026-09-22 — the segment becomes required.* Decided by the user when C-19b was next, choosing among three options: keep the omitted segment as the permanent spelling of the default (recommended at the time), require a channel everywhere, or keep the fallback for good. **Required everywhere** was chosen. Once the fallback expires (§8), `GET /api/{tenant}/graphql` and a `GET /graphql` that names no channel answer `400`, and the default channel is named by its key like any other. What survives of "omitted, not sentinelled" is its purpose — there is still no reserved word — not the optional segment. A caller learns the default's key from `GET /system/capabilities`, which stays header-only and, when no channel is named, answers for the tenant default with `channel.key` included. It is the one unscoped read left on the storefront side, exempt because discovery cannot require what it discovers.
+
 The segment carries the **`key`, not the id**. §4 already makes `key` immutable *because* it appears in URLs; putting the UUID there instead would make that reasoning false and the logs unreadable.
 
 **Scope segments appear only where they scope something.** Reads are channel-scoped and take the path. `/admin/*` is *not* — it manages channels, and scoping a channel-management call to a channel is theatre — so admin stays header-only, as does `/system/*`. Tenant-prefixing admin for a uniform external grammar is available at the gateway as a rewrite plus header injection, which costs no change to a published contract; doing it in the api would break 16 documented paths, regenerate every client type, and double the surface the mismatch assertion below has to cover. The grammar matches commercetools, where `{projectKey}` leads the path and store scope is an explicit segment.
@@ -133,6 +135,8 @@ The migration creates one channel per tenant from its current configuration, mar
 An unknown, archived, or cross-tenant channel **fails loudly (`404`) and never falls back** — silent fallback means a typo serves the wrong market's prices and looks like it worked.
 
 The *missing-channel* fallback is a migration affordance with a stated expiry: once the storefront sends channel scope, it becomes required. An undated fallback becomes permanent, and permanent means a misconfigured integration silently transacts in the wrong currency.
+
+*Amended 2026-09-22 — "required" means everywhere on the storefront surfaces* (see §2's amendment for the options weighed). GraphQL on every path, and `/storefront/*`: a request that names no channel is a `400`, not the default. `/admin/*` is unaffected, because it manages channels and is not channel-scoped (§2). `/system/capabilities` is the exempt discovery point. The expiry lands in the api (C-42) only after every caller already names its channel — the storefront's reads and carts (C-19b, C-19e) and every documented command and spec (C-41) — so enforcing it breaks no deployable and no documented command. Until 2026-09-22 no backlog row owned the expiry at all; that is how an undated fallback becomes permanent without anyone deciding it should.
 
 ### 9. This decision does not deliver multi-currency
 

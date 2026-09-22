@@ -43,6 +43,13 @@ Plus [ADR-0015](adr/0015-operator-authentication-at-the-api-edge.md) (operator a
 
 **C-19a's shape, decided 2026-09-22: a path prefix.** The storefront reaches a channel as `/{channelKey}/…` (`/trade/c/dresses`), and the default channel stays unprefixed, mirroring the api's `/api/{tenant}/{channelKey}/graphql`. Accepted as recommended; domain binding stays out of scope (CHANNEL-MODEL §13).
 
+**A request that names no channel, decided 2026-09-22: required everywhere.** Found while starting C-19b: ADR-0014 §2 made the omitted URL segment the permanent spelling of the default, while §8 and CAVEATS said the fallback expires and "the segment becomes required" — they could not both hold, and no row owned the expiry. Offered: keep the omitted segment as the default for good and expire only header-only absence (recommended), require a channel everywhere, or keep the fallback for good. The user chose **required everywhere**. Consequences, recorded in ADR-0014 §2 and §8:
+
+- every GraphQL path and `/storefront/*` names a channel, the default included; absence becomes a `400` (C-42);
+- `GET /system/capabilities` stays unscoped as the discovery point — with no channel named it answers for the default, `channel.key` included;
+- the storefront's unprefixed pages therefore learn the default's key there and send it (C-19b), and carts do the same (C-19e);
+- enforcement lands last, after every documented command and spec already names its channel (C-41).
+
 ### Waiting on the user
 
 1. **Confirm two status rules that were derived in code, not designed** (C-8a): nothing returns to `draft` (otherwise `key` immutability is circumventable by archive → redraft → rename), and `archived → active` is allowed (a market can reopen; safe because the key is already frozen).
@@ -62,9 +69,11 @@ Re-sequenced 2026-09-22, after C-11 and C-33. Working hours at this build's obse
 | 3 | C-18a ✅ | Capabilities per channel; tenant-level fields kept as deprecated aliases; the pricing locale copy stops mattering | done | — |
 | 3a | C-18b ✅ | The storefront's cached capabilities invalidated by channel events, not only pricing ones | done | — |
 | 4 | C-19a ✅ | The storefront picks a channel from a path prefix; an unknown prefix is a `404` | done | — |
-| 5 | C-19b | Every read in the channel: scoped GraphQL, money from the channel's capabilities, C-4's client guard, the cross-channel cache test | 1–1.5 h | C-19a |
+| 5 | C-19b | Every read in the channel — the default's key discovered from `/system/capabilities` for unprefixed pages; money from the channel's capabilities; C-4's client guard; the cross-channel cache test | 1.5–2 h | C-19a |
 | 5a | C-19d | An unservable channel renders "not available in this market", not a `500` | 0.5–1 h | C-19b |
-| 5b | C-19e | Carts and checkout in the channel, with a cart cookie per channel | 1–1.5 h | C-19a |
+| 5b | C-19e | Carts and checkout in the channel, the default's key included, with a cart cookie per channel | 1–1.5 h | C-19b |
+| 5c | C-41 | Every documented command and spec names its channel on the storefront surfaces | 1–1.5 h | — |
+| 5d | C-42 | The api answers `400` to a storefront-surface request that names no channel | 1–1.5 h | C-19b, C-19e, C-41 |
 | 6 | C-30 | `tax_display` editable per channel, honoured by carts and checkout, recorded on orders | 1.5–2 h | C-32a |
 | 7 | C-31 | The storefront renders gross or net per channel | 1–1.5 h | C-19b, C-30 |
 | **Independent** | | | | |
@@ -80,7 +89,7 @@ Re-sequenced 2026-09-22, after C-11 and C-33. Working hours at this build's obse
 | 12e | C-40 | The price filter shows the currency's symbol instead of a hardcoded `$` | 0.5–1 h | — |
 | **Last** | | | | |
 | 13 | C-27 | Docs reconciled; the README run cold | 1.5–2.5 h | all above |
-| | | **Remaining, excluding the gated items below** | **≈ 15–24 h** | |
+| | | **Remaining, excluding the gated items below** | **≈ 17.5–27.5 h** | |
 
 Gated on the user: **Block 2** — the auth slice (ADR-0015) and the back office (C-20..C-24), ≈ 15–20 h. **Phase H** — per-channel price lists, an ADR first (≈ 2–3 h), the build not sized. **CI on this branch** — ≈ 15 minutes plus whatever it finds.
 
@@ -498,8 +507,8 @@ Storefront domain binding is outside the design (CHANNEL-MODEL §13), so nothing
 
 **C-19b split 2026-09-22, before it was started.** As written it carried three deliverables — scoped reads, the refusal page, and carts in the channel — and the third was not in its 1.5–2 h estimate at all: it surfaced while building C-19a. Split by the sizing rule into C-19b, C-19d and C-19e, together 2.5–4 h.
 
-**C-19b — Every read in the channel** *(M, 1–1.5 h)*
-Every GraphQL read goes to the scoped URL with both headers, for the request's channel: `graphqlQuery` reads the channel as it reads the tenant, rather than each caller passing it. Money is formatted from `capabilities.channel`, falling back to the tenant-level fields only for a tenant with no channel at all. Carries C-4's client guard — `api-graphql.spec.ts` failing if the channel header stops being sent, which only now has something to guard. `getMoneyFormat` and `lookupChannel` then issue one memoised fetch. C-9's and C-10's GraphQL halves stay deferred unless a consumer needs them: the storefront reads channels through capabilities and mutates none.
+**C-19b — Every read in the channel** *(M, 1.5–2 h; widened 2026-09-22 by the required-everywhere decision)*
+Every GraphQL read goes to the scoped URL with both headers, for the request's channel: `graphqlQuery` reads the channel as it reads the tenant, rather than each caller passing it. An unprefixed page reads in the default channel **by its key**, learned from `GET /system/capabilities` and cached under the capabilities tag, so no read relies on the fallback C-42 removes. Money is formatted from `capabilities.channel`, falling back to the tenant-level fields only for a tenant with no channel at all. Carries C-4's client guard — `api-graphql.spec.ts` failing if the channel header stops being sent, which only now has something to guard. `getMoneyFormat` and `lookupChannel` then issue one memoised fetch. C-9's and C-10's GraphQL halves stay deferred unless a consumer needs them: the storefront reads channels through capabilities and mutates none.
 *Verification:* the contract-conformance job, plus a cache test: `uk` and `trade` made to differ for the duration (`trade` given `de-DE`), the same page requested in sequence — each renders its own formatting, and the second never returns the first's. With the change doing nothing, `/trade` renders `uk`'s `en-GB`.
 
 **C-19d — An unservable channel says so** *(S, 0.5–1 h)*
@@ -507,7 +516,7 @@ C-32b's `422 channel.unservable` rendered as an honest "not available in this ma
 *Verification:* `/de/c/dresses` renders the message; today it is a `500`. `/trade` is untouched, so the message is not shown to every channel.
 
 **C-19e — Carts and checkout in the channel** *(S, 1–1.5 h)*
-The REST calls — cart create, add, coupon, checkout — carry `x-channel-id`, and the `cart_id` cookie gains the channel in its name. Carts are bound to the channel they were created in (C-16b); a per-tenant cookie carries a cart started under `/trade` into `/`.
+The REST calls — cart create, add, coupon, checkout — carry `x-channel-id`, the default's key included (C-19b's discovery), and the `cart_id` cookie gains the channel in its name. Carts are bound to the channel they were created in (C-16b); a per-tenant cookie carries a cart started under `/trade` into `/`.
 *Verification:* a cart started under `/trade` is a `trade` cart in the api, and `/` starts its own. Today both pages share one cart, bound to `uk`.
 
 ---
@@ -571,6 +580,14 @@ A channel's `taxRateBps` — its own, or inherited from the tenant defaults — 
 R-4 fails CI when the REST client drifts from the api's OpenAPI document. Nothing does the same for the GraphQL half: `schema.graphql` and `generated/graphql.ts` are regenerated by hand (`fetch-schema`, `codegen`) and a stale copy passes. C-18's row assumed this check existed. Add it beside R-4's step, in the job that already runs the api.
 *Verification:* a hand-edit to the committed schema fails the step — proved on a real runner, since R-4's local proof once passed a hand-edit that regeneration had silently overwritten.
 
+**C-41 — Every documented command and spec names its channel** *(S, 1–1.5 h; added 2026-09-22)*
+The first half of the required-everywhere decision, and the half that breaks nothing: README, RUNBOOK and every other documented `curl` against GraphQL or `/storefront/*`, the api's integration specs and the storefront conformance suite send `x-channel-id` (and the scoped URL for GraphQL). Each works under today's fallback, so this lands before enforcement and C-42 cannot strand a reader mid-tour.
+*Verification:* every storefront-surface command extracted from the docs with `sed` and run, each naming a channel; a search for storefront-surface calls without one finds none. Re-run after C-42, where the same search would have found the breakage.
+
+**C-42 — The api requires a channel on the storefront surfaces** *(S, 1–1.5 h; added 2026-09-22)*
+A request to GraphQL (any path) or `/storefront/*` that names no channel answers `400`, with a message naming `GET /system/capabilities` as the way to learn the default's key. `/system/capabilities` and `/admin/*` are exempt. Checkout's default-channel fallback goes with it. ADR-0014 §8's expiry, executed.
+*Verification:* header-less `GET /graphql`, `GET /api/{tenant}/graphql` and `POST /storefront/carts` answer `400`; today all three answer for `uk`. `GET /system/capabilities` with no channel still answers `200` naming `uk`, so discovery was not refused with the rest. The storefront, the conformance suite and C-41's extracted commands all still pass.
+
 **C-40 — The price filter shows the currency's symbol** *(XS, 0.5–1 h; added 2026-09-22; predates this slice)*
 `facet-sidebar.tsx` prints a hardcoded `$` beside the price inputs, so `t-fashion` (GBP) shows `$`. 8c-2 and STOREFRONT.md both claim the storefront stopped hardcoding the currency; this is the one place it did not. Found rendering C-19a's pages in a headless browser. Take the symbol from the `MoneyFormat` the prices already use.
 *Verification:* `t-fashion`'s price filter shows `£`, and a tenant switched to JPY shows `¥`. Today both show `$`.
@@ -631,6 +648,6 @@ Phase E is preceded by the auth slice, which is its own ADR (0015) and its own s
 
 Phase G touches pricing, not channels plumbing, so it can run any time after Phase B — except C-30, which needs C-10 (channel `PATCH` exists) **and C-32a**, because a per-channel `tax_display` is read on the same money path C-32a makes channel-aware.
 
-**C-32a → C-32b → C-18a → C-18b → C-19a → C-19b → C-19c** (G-4 closed with option A; C-32, C-18 and C-19 split 2026-09-22). C-19d follows C-19b; C-19e needs only C-19a. C-31 needs C-19b and C-30. C-38 makes a channel's tax rate charged; until it lands, capabilities keep reporting the tenant-level rate that is. Nothing that makes a channel's currency *visible* may land before something makes it *charged or refused*: capabilities advertising EUR for `de` while checkout charges GBP would be a control wired to nothing, and a storefront rendering € around GBP integers is the money bug at display level. C-11, C-25, C-28 and C-33 do not depend on it. Phase H (per-channel price lists) follows C-32 and replaces its refusal with real prices.
+**C-32a → C-32b → C-18a → C-18b → C-19a → C-19b → C-19c** (G-4 closed with option A; C-32, C-18 and C-19 split 2026-09-22). C-19d follows C-19b; C-19e follows C-19b, whose discovery it uses. C-42 comes after C-19b, C-19e and C-41 — enforcing before every caller names its channel would break the storefront and the documented commands. C-31 needs C-19b and C-30. C-38 makes a channel's tax rate charged; until it lands, capabilities keep reporting the tenant-level rate that is. Nothing that makes a channel's currency *visible* may land before something makes it *charged or refused*: capabilities advertising EUR for `de` while checkout charges GBP would be a control wired to nothing, and a storefront rendering € around GBP integers is the money bug at display level. C-11, C-25, C-28 and C-33 do not depend on it. Phase H (per-channel price lists) follows C-32 and replaces its refusal with real prices.
 
 **Total ≈ 9–11.5 weeks excluding authentication.**
