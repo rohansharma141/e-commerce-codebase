@@ -4,22 +4,22 @@ Work breakdown for [ADR-0014](adr/0014-channel-as-sales-channel.md) and [CHANNEL
 
 House rules applied: one item, one commit, one stated verification. Anything needing the word "and" between deliverables is two items. Every verification states **what it prints if the change did nothing** — a check that cannot fail is not a check.
 
-## Status as of 2026-09-19
+## Status as of 2026-09-22
 
 **Read this section first when resuming.** Then [CHANNELS-BUILD-NOTES](design/CHANNELS-BUILD-NOTES.md) for the traps and mistakes that cost time, and the rows below for each item's verification record.
 
-`main` = `433f5b6` (61 commits, CI green, `v0.1.0`). `channels` branched from it. Code changed last in C-11 (2026-09-22); `git log -1 --format='%h %s' -- apps packages` names the latest commit to touch code, so a docs-only commit cannot make this line stale. **CI has never run on this branch** — it triggers only on `main` and on PRs into it, so every "verified" below is local.
+`main` = `433f5b6` (61 commits, CI green, `v0.1.0`). `channels` branched from it. Code changed last in C-11 and C-33 (2026-09-22); `git log -1 --format='%h %s' -- apps packages` names the latest commit to touch code, so a docs-only commit cannot make this line stale. **CI has never run on this branch** — it triggers only on `main` and on PRs into it, so every "verified" below is local.
 
-### Done — 23 rows, all verified
+### Done — 24 rows, all verified
 
 | Phase | Rows |
 |---|---|
 | A — conventions and scope | C-1, C-2, C-3, C-2b, C-4 *(api half)*, C-9 *(REST half)* |
 | B — the channels module | C-5, C-6, C-7, C-8a, C-8b, C-10, C-11a, C-11 |
-| C — resolution and propagation | C-12, C-13, C-14, C-15, C-16a, C-16b, C-17 |
+| C — resolution and propagation | C-12, C-13, C-14, C-15, C-16a, C-16b, C-17, C-33 |
 | F / G | C-26, C-29 |
 
-Plus [ADR-0015](adr/0015-operator-authentication-at-the-api-edge.md) (operator auth, designed not built). Test counts, measured 2026-09-19. Unit, at `05ff688`: channels 144 plus 24 database-gated, cart 15, pricing 59. Live, re-run against an api image built at `37d1a00` — which differs from `05ff688` only in four comment lines: 45 admin-conventions, 6 admin-concurrency, 19 scoped-graphql, 38 storefront conformance. Checkout integration 11, run at `37d1a00`. The order recipe in the RUNBOOK was run verbatim, extracted from the file, as part of the same check.
+Plus [ADR-0015](adr/0015-operator-authentication-at-the-api-edge.md) (operator auth, designed not built). Test counts, measured 2026-09-22 with C-11 and C-33 in the api image, after a cold `down -v` boot and a fresh seed. Unit: channels 144 plus 24 database-gated, cart 15, pricing 59. Database, on a throwaway `platform_test`: checkout integration 11, C-11 backfill 7, C-33 backfill 6, run together. Live: 45 admin-conventions, 6 admin-concurrency, 38 storefront conformance, and scoped-graphql 19 on re-run. **scoped-graphql's first run had one failure:** `answers identically to the unscoped path` timed out at 30 s. It passed on two re-runs (14 ms, then 18 ms under the same CPU load as the first run), and the api logged no request slower than 73 ms and no error. The cause is not established; it is recorded as an unexplained timeout, not dismissed. The RUNBOOK's order recipe and its upgrade-path block were both run verbatim, extracted from the file.
 
 ### Decided 2026-09-22
 
@@ -44,7 +44,6 @@ Plus [ADR-0015](adr/0015-operator-authentication-at-the-api-edge.md) (operator a
 
 | Row | Est. | Note |
 |---|---|---|
-| C-33 — orders' channel backfill that actually runs | 1–1.5 h | in progress, with C-11 |
 | C-32 — refuse to price a channel the price list cannot serve | re-size | unblocked by G-4 (A); must land before C-18 |
 | C-28 — shared idempotency | 1.5–2.5 h | touches `checkout.service.ts`; checkout must stay byte-identical |
 | C-25 — observability points | 1–1.5 h | counters only; the reconciler and C-17 consumer already return outcomes to count |
@@ -236,10 +235,20 @@ For any tenant in `pricing.tenant_config` without a channel: `tenant_defaults` f
 
 *Found while running it:* the pricing seed never writes `locale`, so `t-fashion`'s `pricing.tenant_config.locale` is the column default `en-US` while its channel fixtures say `en-GB`, and `capabilities.defaultLocale` reads the pricing copy. The backfill copies what pricing holds, so a backfilled `t-fashion` says `en-US` too. Another drifted copy of one fact; C-18 removes it by composing capabilities from channels, and until then it is recorded here rather than patched in the seed.
 
-**C-33 — Orders' channel backfill that actually runs** *(S; fixes C-16a — placed beside C-11 because both are the pre-channels upgrade path)*
+**C-33 — Orders' channel backfill that actually runs** ✅ *(S; fixes C-16a — placed beside C-11 because both are the pre-channels upgrade path)*
 Orders' `0003_channel_snapshot.sql` backfills `channel_id` on existing orders from the tenant's default channel. Its comment says the migration "runs as the table owner, so it is not subject to the FORCE RLS policy". FORCE means the opposite — it applies policies to the owner — and `platform` is NOSUPERUSER NOBYPASSRLS, and nothing binds a tenant or `app.system_worker`. So the `UPDATE` sees no rows on either table and matches nothing, without an error. Branding's `0001` handles the same trap correctly with `NO FORCE`. Nothing ever checked it against existing orders: C-16a was verified on a cold database, and `checkout.integration` drops `orders` before migrating. Found by reading, 2026-09-22.
 The false comment cannot be corrected in place — the runner checksums applied files and refuses to boot on a change — so the fix is a new migration, `0004`.
 *Verification:* orders existing before the migration, a default channel for their tenant. "THE BUG": `0003` alone leaves them null — kept green on purpose, because `0003` is immutable and the test says why `0004` exists. "THE FIX": after `0004` they carry the default's id. If `0004` did nothing, the fix test prints `null`.
+
+*Shipped 2026-09-22* as `orders/0004_channel_backfill.sql`, with `0003`'s intent unchanged: an order placed before the tenant had channels is attributed to its default, and `channel_key`/`channel_name` stay null because there was no name at purchase. RLS is lifted explicitly for the transaction — `NO FORCE` on `orders.orders`, which is orders' own table and has no worker clause, and the `app.system_worker` clause for reading `channels.channels`, set transaction-local, so this module does not alter another module's RLS. Only rows whose `channel_id` is null are touched. Guarded on `channels.channels` existing.
+
+*Verified three ways:*
+
+- **Red first.** The spec (`apps/api/src/orders-channel-backfill.integration.spec.ts`, 6 tests) was run against a placeholder `0004` that did nothing: THE BUG green (`0003` leaves the order null, with the default demonstrably present), THE FIX red with `Received: null`. Then the real file: 6/6 on a freshly created database. This spec commits, unlike C-11's: `0004` touches only null-`channel_id` orders, which only this spec creates, and committing is the only way to see a setting outlive its transaction.
+- **Seven mutations, each failing it by name:** doing nothing, dropping `NO FORCE` and dropping the worker setting all print `Received: null` — the silent shape of `0003`'s bug, from either side of the join; dropping the FORCE restore → `false`; dropping `channel_id IS NULL` → an order that already named a channel is overwritten; a session-level `set_config` → `Received: "on"` on the pooled connection afterwards, a cross-tenant leak; no guard → *"relation channels.channels does not exist"*.
+- **The real image, on the upgrade path**, after C-11's: same pre-channels state, carts `201` and **4 of 4** orders attributed to `web`, key and name null, FORCE back on all four tables. The three images in turn: `500` / 0 of 4 → `201` / 0 of 4 → `201` / 4 of 4.
+
+*`0003` is left as it is.* Its comment is wrong and cannot be changed without breaking every database that applied it; `0004`'s header is the correction, and the build notes record it as a mistake.
 
 
 

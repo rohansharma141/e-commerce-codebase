@@ -59,7 +59,9 @@ Learned by being bitten. Each of these produced a confusing symptom whose cause 
 
 **Every module's migrations are copied into the api image by hand.** `apps/api/Dockerfile` has one `COPY` line per module. A new module without its line boots fine under `nx serve` and in every test — they read migrations from the source tree — and the container dies at startup with *"<module> migrations directory not found"*. This happened to `channels`.
 
-**A migration may not assume another module migrated first.** Order depends on module initialisation. Guard cross-schema reads with `to_regclass('<schema>.<table>') IS NOT NULL`, as branding's `0001` and orders' `0003` do.
+**A migration may not assume another module migrated first.** Order depends on module initialisation. Guard cross-schema reads with `to_regclass('<schema>.<table>') IS NOT NULL`, as branding's `0001` and orders' `0003` do. The order observed today is audit, catalog, channels, pricing, branding, orders — a fact about the composition root, not a guarantee.
+
+**A migration cannot see tenant rows unless it lifts RLS.** It runs as `platform`, the owner, and FORCE ROW LEVEL SECURITY is what makes policies apply to the owner. A backfill with no tenant bound matches nothing and reports nothing: orders' `0003` did exactly that, and its comment says otherwise. Lift it inside the migration's transaction, as channels' `0003` and orders' `0004` do, and check the backfill against rows that exist before it runs.
 
 **The event bus is asynchronous.** `publish()` returns before any handler runs. A handler's effect is not visible when the publishing call resolves, and a handler must bind its tenant from the event rather than borrowing the request's connection, which may already be released.
 
@@ -78,6 +80,7 @@ These suites exercise real services — a running, seeded stack, or a real Postg
 | Checkout integration | `TEST_DATABASE_URL=postgres://platform:platform@localhost:5432/platform TEST_REDIS_URL=redis://localhost:6379 pnpm nx test api --skipNxCache -- --testPathPattern=checkout.integration` | Postgres + Redis | **drops `orders`, `pricing`, `channels`** |
 | Channels module | `TEST_DATABASE_URL=postgres://platform:platform@localhost:5432/platform pnpm nx test channels-src --skipNxCache` | Postgres | **drops `channels`** |
 | Channels backfill (C-11) | `TEST_DATABASE_URL=postgres://platform:platform@localhost:5432/platform_test pnpm nx test api --skipNxCache -- --testPathPattern=channels-backfill` | Postgres | nothing — every test rolls back |
+| Orders channel backfill (C-33) | `TEST_DATABASE_URL=postgres://platform:platform@localhost:5432/platform_test pnpm nx test api --skipNxCache -- --testPathPattern=orders-channel-backfill` | Postgres | nothing — commits only its own probe rows, and deletes them |
 
 **Destructive suites belong on a throwaway database.** CLAUDE.md forbids running them against the database you demo from, and they work unchanged against another one: the migrations create their own schemas and `pgcrypto` as `platform`. Create it once — it survives restarts, and a `down -v` removes it with everything else:
 
@@ -110,6 +113,18 @@ done
 ```
 
 **Order:** destructive suites first, then `pnpm seed`, then the two orders, then the live suites — spaced.
+
+## Checking the upgrade path from `main`
+
+A cold boot never exercises a backfill — on an empty database there is nothing to backfill. To see what an existing `main` database does on this branch, make the demo database look as `main` left it and boot the api onto it. As the superuser, which bypasses RLS:
+
+```bash
+docker compose stop api
+docker compose exec -T postgres psql -U postgres -d platform -v ON_ERROR_STOP=1 -c "DROP SCHEMA IF EXISTS channels CASCADE" -c "ALTER TABLE orders.orders DROP COLUMN IF EXISTS channel_id, DROP COLUMN IF EXISTS channel_key, DROP COLUMN IF EXISTS channel_name, DROP COLUMN IF EXISTS currency_minor_units" -c "DELETE FROM orders.__migrations WHERE filename >= '0003'"
+docker compose up -d --wait api
+```
+
+Then, with no channel header, `POST /storefront/carts` should answer `201` for every tenant; `GET /admin/channels` should list one `web` default per tenant; and every existing order should carry that channel's id, with `channel_key` and `channel_name` null. Before C-11 the carts answered `500`, and before C-33 no order was attributed. Re-seed afterwards to restore the fixtures.
 
 ## Inspecting webhook delivery
 

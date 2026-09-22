@@ -4,7 +4,7 @@ The companion to [CHANNELS-OVERVIEW](CHANNELS-OVERVIEW.md) (what the slice deliv
 
 It exists because these facts otherwise live in commit messages and one session's context, and both are easy to lose. Where an entry names a commit, the commit message has the full account.
 
-Written 2026-09-19; describes the code as of `05ff688`.
+Written 2026-09-19; updated 2026-09-22 for C-11 and C-33.
 
 ---
 
@@ -20,7 +20,9 @@ Every entry below produced a symptom whose cause was elsewhere. Most share one s
 
 **Every module's migrations must be copied into the api image by hand.** `apps/api/Dockerfile` has one `COPY` line per module, and there is no glob that preserves the per-module directory names. Forget one and the container dies at boot with *"<module> migrations directory not found"* — invisible to `nx serve` and to every test, which read migrations from the source tree. The Dockerfile now carries a warning. *(`b279598`)*
 
-**Module migration order is not guaranteed.** Modules migrate in whatever order Nest initialises them. A migration that reads another schema must guard on `to_regclass('<schema>.<table>') IS NOT NULL`, following branding's `0001`. Orders' `0003` does, and the guard was **proven** by applying orders' migrations to a throwaway database that had no channels schema at all — rather than by observing one lucky ordering. *(`24f8f11`)*
+**Module migration order is not guaranteed.** Modules migrate in whatever order Nest initialises them. A migration that reads another schema must guard on `to_regclass('<schema>.<table>') IS NOT NULL`, following branding's `0001`. Orders' `0003` does, and the guard was **proven** by applying orders' migrations to a throwaway database that had no channels schema at all — rather than by observing one lucky ordering. *(`24f8f11`)* Observed 2026-09-22 in the boot log: audit, catalog, channels, pricing, branding, orders — so on a cold database channels migrates before pricing exists.
+
+**A migration is subject to RLS, because FORCE applies to the owner.** Migrations run as `platform`, which owns every table and is NOSUPERUSER NOBYPASSRLS, and FORCE ROW LEVEL SECURITY exists precisely to make policies apply to the owner. A backfill with no tenant bound therefore reads no rows and updates none, and nothing errors. Orders' `0003` claimed the opposite in its comment and was a no-op for three weeks. Lift RLS explicitly inside the migration's transaction: `NO FORCE` on the module's own tables, restored before the block ends; for another module's table, its `app.system_worker` clause set transaction-local, or `NO FORCE` if its policy has none (branding's `0001`). Then verify the backfill against rows that exist **before** it runs — a cold database has none, which is how this hid. *(C-11, C-33)*
 
 **A raw postgres-js connection may return `timestamptz` as a string.** The Drizzle path hides this; raw `sql` in the reconciler threw `toISOString is not a function` on its first run. Coerce with `new Date(v).toISOString()`, which is correct for either. *(`3028b92`)*
 
@@ -56,6 +58,8 @@ Every entry below produced a symptom whose cause was elsewhere. Most share one s
 
 **The destructive suites drop more than they used to.** `channels.integration.spec.ts` drops the `channels` schema; `checkout.integration.spec.ts` now drops `orders`, `pricing` **and** `channels`. After either, re-run `pnpm seed` and recreate at least two orders through real checkout — `admin-conventions` pages through `/admin/orders` and its `beforeAll` refuses to run on fewer than two.
 
+**Mutating an applied migration trips the checksum guard before the mutation is tested.** The runner refuses a changed file, so a mutation run against a database that already applied the original fails in `beforeAll` — "suite failed to run", which proves nothing. Rebuild the throwaway database before each mutation run, as C-11's and C-33's were.
+
 **Git Bash on this machine breaks heredocs with heavy quoting,** and the Bash tool rejects commands containing control characters. Write multi-line content with the Write tool and commit with `git commit -F <file>`.
 
 **Backslash escapes in a tool call can arrive as the real control character.** The layer between an agent and the shell or file decodes one level of backslash escaping. So a doubled backslash meant to survive into a Python string reaches Python single, and Python turns it into a real byte. This produced a NUL byte three times: once in source, and twice in this file while documenting the first. A fourth time, while reviewing these notes, a backslash-n inside a regular expression arrived as a real line break and broke the checking script mid-string. Git then treats the file as binary and `grep` stops matching it, so the damage is quiet. Construct control bytes in code, with `bytes([0])` or `chr(92)`, rather than typing escapes, and before committing a new or heavily edited file check it: `python -c "import sys; print(open(sys.argv[1],'rb').read().count(bytes([0])))" <file>` must print `0`.
@@ -85,6 +89,10 @@ Recorded because the project's standing rule is to say plainly what failed, incl
 | 15 | **Two stated verifications could not fail**, and I nearly ran them as written: C-16b's "currency follows the cart's channel" (currency is still tenant-level), and C-4's "guard fails if the channel header stops being sent" (the storefront does not send it yet). | Asking what each would print if the feature were absent. | C-16b tests the binding instead; the currency half moved to C-32. C-4's client guard moved to C-19. Both recorded. |
 | 16 | **On resuming, I proposed `docker compose down -v` against the stack the user had just started.** The tool call was rejected. | The user. | Resumed with a non-destructive `up -d`. Wiping someone's running environment needs their explicit consent, even mid-task. |
 | 17 | **After being asked to keep Docker down, my own `docker ps` woke the WSL backend.** | Memory measurement. | `wsl --shutdown` again. Even read-only Docker commands start the VM on Windows. |
+| 18 | **I wrote a false claim into orders' `0003` (C-16a) — that the migration "runs as the table owner, so it is not subject to the FORCE RLS policy" — and its backfill never updated a row.** FORCE means the opposite. The checks I ran could not reach it: a cold database has no orders to backfill. | Reading it while planning C-11, three weeks later. Then proven: a spec (THE BUG) and the real image, 0 of 4 orders attributed. | `0004` does the backfill with RLS lifted explicitly (C-33). `0003`'s comment is immutable and stays wrong; `0004`'s header is the correction. |
+| 19 | **C-16a's fix for drifted seed fixtures derived currency and tax, but not locale.** `t-fashion`'s pricing locale stayed `en-US` against its channels' `en-GB`, and capabilities reports the pricing copy. | C-11's live run printed `GBP` next to `en-US` for `t-fashion`. | Recorded under C-11; C-18 removes the pricing copy. Not patched in the seed, which would add a third place holding the value. |
+| 20 | **`findDefault`'s error message claimed C-11's guarantee before C-11 existed** — the same shape as #13. | Planning C-11. | The message says what is true; the tenant-onboarding gap is in CAVEATS. |
+| 21 | **I proposed the C-11 plan with a "leak" mutation its design could not observe.** A rolled-back transaction reverts a session-level setting too. | Designing the spec. | C-11 lifts RLS with `NO FORCE` only, so it has no setting to leak; the leak test moved to C-33, whose spec commits. |
 
 ### Earlier in the same session, on `main`
 
@@ -129,3 +137,5 @@ Each is general, and each was paid for above.
 10. **Put verified logic behind a port when its persistence is unverified.** `ChannelStore` let the invariant guards be proven against a fake while the SQL underneath had never run, so a SQL bug could not be mistaken for a rule bug.
 11. **Two copies of one fact drift.** Derive the second from the first.
 12. **Check documents mechanically, not by rereading them.** A small script run before committing these notes — every relative link resolves, every anchor exists, every cited commit hash is real, no NUL bytes or replacement characters — found three links in `BACKLOG-channels.md` that had been broken since the design drafts were committed and had survived many readings, plus the NUL above. It is not in CI; it would be a cheap addition.
+13. **Verify an upgrade path by building the old state; a cold boot cannot reach it.** A backfill has nothing to do on an empty database. C-11 and C-33 were checked by making the demo database look as `main` left it and booting three images in turn: `500` with 0 of 4 orders attributed, then `201` with 0 of 4, then `201` with 4 of 4.
+14. **A spec on a shared database must not commit what other suites can see.** C-11's backfill acts on every channel-less tenant, so its spec rolls back. C-33's touches only rows no other suite creates, so it may commit — and has to, to see a setting outlive its transaction.
