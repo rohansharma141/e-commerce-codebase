@@ -21,36 +21,41 @@ House rules applied: one item, one commit, one stated verification. Anything nee
 
 Plus [ADR-0015](adr/0015-operator-authentication-at-the-api-edge.md) (operator auth, designed not built). Test counts, measured 2026-09-19. Unit, at `05ff688`: channels 144 plus 24 database-gated, cart 15, pricing 59. Live, re-run against an api image built at `37d1a00` — which differs from `05ff688` only in four comment lines: 45 admin-conventions, 6 admin-concurrency, 19 scoped-graphql, 38 storefront conformance. Checkout integration 11, run at `37d1a00`. The order recipe in the RUNBOOK was run verbatim, extracted from the file, as part of the same check.
 
+### Decided 2026-09-22
+
+**Gate G-4 is closed: option A now, option B later as its own phase.** Seen live on 2026-09-19: an order in `t-fashion`'s EUR channel `de` was charged **GBP**, because nothing on the money path consults the channel.
+
+| Option | What `de` does | Outcome |
+|---|---|---|
+| **A. Refuse** | refuses to price: a named error instead of GBP numbers | **chosen, now** — C-32 |
+| **B. Per-channel price lists** | charges EUR from real EUR prices | **chosen, later** — its own ADR and phase ([Phase H](#phase-h--per-channel-price-lists-g-4-option-b)) |
+| **C. Relabel** | same integer under a € symbol | rejected — ADR-0014 §9 names this as the money bug |
+
+**A is wider than first written.** The first sizing (C-32 ≈ 2–3 h) counted carts and checkout only. Refusing has to cover **price reads in the channel** too: otherwise C-18 makes `de` report EUR while search still returns GBP integers, and C-19 renders € around them — the money bug at display level. C-32 is re-sized when it is next up.
+
 ### Waiting on the user
 
-1. **Gate G-4 — what does a channel charge when its currency differs from the price list's?** Blocks C-32, and through it C-18, C-19, C-30, C-31. Seen live: an order in `t-fashion`'s EUR channel `de` is charged **GBP**, because nothing on the money path consults the channel.
+1. **Confirm two status rules that were derived in code, not designed** (C-8a): nothing returns to `draft` (otherwise `key` immutability is circumventable by archive → redraft → rename), and `archived → active` is allowed (a market can reopen; safe because the key is already frozen).
+2. **Confirm `x-channel-id` carries the channel *key*, not its UUID** (C-12). The header name is the ADR's; the value follows `x-tenant-id`'s precedent of a human identifier. Cheap to change now, expensive once the back office assumes it.
+3. **Go-ahead for Block 2** — the auth slice (ADR-0015) and the back office (C-20..C-24). Not started.
+4. **CI on this branch** — a PR into `main`, or widening the workflow trigger. Declined for now.
 
-   | Option | What `de` does | Cost |
-   |---|---|---|
-   | **A. Refuse** | browsable; cart and checkout return a named error until prices exist in its currency | small (C-32 ≈ 2–3 h) |
-   | **B. Per-channel price lists** | charges EUR from real EUR prices | its own ADR and phase; changes the denormalised price in the search index |
-   | **C. Relabel** | same integer under a € symbol | **rejected** — ADR-0014 §9 names this as the money bug |
-
-   **Recommendation: A now, then B as its own phase.** A stops the demo tenant silently charging the wrong currency today; B makes the currency control real, which is the standing direction ("when a control needs engine work, scope the engine work").
-2. **Confirm two status rules that were derived in code, not designed** (C-8a): nothing returns to `draft` (otherwise `key` immutability is circumventable by archive → redraft → rename), and `archived → active` is allowed (a market can reopen; safe because the key is already frozen).
-3. **Confirm `x-channel-id` carries the channel *key*, not its UUID** (C-12). The header name is the ADR's; the value follows `x-tenant-id`'s precedent of a human identifier. Cheap to change now, expensive once the back office assumes it.
-4. **Go-ahead for Block 2** — the auth slice (ADR-0015) and the back office (C-20..C-24). Not started.
-5. **CI on this branch** — a PR into `main`, or widening the workflow trigger. Declined for now.
-
-### What can be built next without a decision
+### What can be built next
 
 | Row | Est. | Note |
 |---|---|---|
-| C-11 — safety backfill | 1–1.5 h | needs `down -v` to verify cold — ask before wiping the stack |
+| C-11 — safety backfill | 1.5–2 h | in progress, with C-33 |
+| C-33 — orders' channel backfill that actually runs | 1–1.5 h | in progress, with C-11 |
+| C-32 — refuse to price a channel the price list cannot serve | re-size | unblocked by G-4 (A); must land before C-18 |
 | C-28 — shared idempotency | 1.5–2.5 h | touches `checkout.service.ts`; checkout must stay byte-identical |
 | C-25 — observability points | 1–1.5 h | counters only; the reconciler and C-17 consumer already return outcomes to count |
 | C-27 — docs reconciled | 1.5–2.5 h | last; runs the README cold |
 
-Blocked on G-4: C-32 (then C-18 ≈ 1.5–2.5 h, C-19 ≈ 2–3 h, C-30 ≈ 1–1.5 h, C-31 ≈ 1–1.5 h). C-19 also inherits C-9's GraphQL half, C-10's GraphQL half and C-4's client guard. Block 2 ≈ 15–20 h. All estimates are working hours at this build's observed pace, including red-first verification — not a human engineer's figure, which is [CHANNEL-MODEL §12](design/CHANNEL-MODEL.md#12-effort).
+After C-32: C-18 ≈ 1.5–2.5 h, C-19 ≈ 2–3 h, C-30 ≈ 1–1.5 h, C-31 ≈ 1–1.5 h. C-19 also inherits C-9's GraphQL half, C-10's GraphQL half and C-4's client guard. Block 2 ≈ 15–20 h. All estimates are working hours at this build's observed pace, including red-first verification — not a human engineer's figure, which is [CHANNEL-MODEL §12](design/CHANNEL-MODEL.md#12-effort).
 
 ### Resuming safely
 
-1. **Ask before starting Docker.** Then `docker compose up -d` — never `down -v` on the user's stack without asking.
+1. **Docker as needed (user direction, 2026-09-22).** Start this project's services only when a step needs them — Postgres alone for database specs, the full stack for live checks — and stop them when done. Quit Docker Desktop only if no other project's containers are running. `down -v` is allowed when a step needs a cold database; destructive specs go to a throwaway `platform_test` database, never the demo one.
 2. `curl -s -H 'x-tenant-id: t-fashion' 'http://localhost:3000/admin/channels?limit=10'` should list `de` and `uk`. If the stack is empty, `pnpm seed`, then place two orders through real checkout (the recipe is in [RUNBOOK — Running the live suites](RUNBOOK.md#running-the-live-suites)).
 3. After any api change, rebuild with `docker compose build api && docker compose up -d api`, and check a behavioural marker before trusting it — a failed build leaves the old container answering `/ready`.
 4. Live suites need `--skipNxCache` and about a minute between them (the api throttles at 200 requests per minute per tenant).
@@ -72,18 +77,18 @@ Sizing: BACKLOG.md's rule applies — XS/S/M only, anything larger is split **be
 
 ---
 
-## Decision gates — G-1..G-3 closed 2026-08-28; **G-4 OPEN** since 2026-09-19
+## Decision gates — G-1..G-3 closed 2026-08-28; G-4 closed 2026-09-22
 
 | Gate | Question | Blocks |
 |---|---|---|
 | ~~**G-1**~~ | ~~Authentication: prerequisite slice, or gate with a written expiry?~~ **Closed 2026-08-28: prerequisite slice, minimum scope** — the four gateway behaviours ADR-0007 specifies, one operator role, IdP left as configuration. **[ADR-0015](adr/0015-operator-authentication-at-the-api-edge.md) written 2026-08-28** — designed, not built. | ~~C-20~~ |
 | ~~**G-2**~~ | ~~URL scoping shape?~~ **Closed 2026-08-28:** `/api/{tenant}/{channelKey}/graphql`, segment omitted for the tenant default, `/api` reserved because tenant ids may be `admin`. Reads only — admin and system stay header-only. | ~~C-2~~ |
 | ~~**G-3**~~ | ~~Country/timezone for existing tenants?~~ **Closed 2026-08-28: neither.** The tenants are fixtures we generate, so the seed writes real values and the migration keeps only a trivial safety backfill. No derivation, no review flag. | ~~C-11~~ |
-| **G-4** | **What does a channel charge when its currency differs from the price list's?** `pricing.prices` holds one currency-less integer per product. A channel can declare EUR while the tenant's prices are GBP — and today checkout charges the *tenant's* currency regardless (seen live: `channel = de \| currency = GBP`). ADR-0014 §9 says a missing price in a channel's currency must **fail** ("falling back to another currency's number is a money bug") while §12 defers per-channel prices — so the spec'd behaviours are *refuse* or *build price lists*, and the unspecified third (relabel the same integer) is the money bug itself. Found 2026-09-19 by C-17's live check; **no row owned it**, and four code comments had wrongly called it "C-18's job". | **C-32**, and through it C-18, C-19, C-30, C-31 |
+| ~~**G-4**~~ | **Closed 2026-09-22: refuse now (A, C-32), per-channel price lists later (B, Phase H).** The question, as opened: **what does a channel charge when its currency differs from the price list's?** `pricing.prices` holds one currency-less integer per product. A channel can declare EUR while the tenant's prices are GBP — and today checkout charges the *tenant's* currency regardless (seen live: `channel = de \| currency = GBP`). ADR-0014 §9 says a missing price in a channel's currency must **fail** ("falling back to another currency's number is a money bug") while §12 defers per-channel prices — so the spec'd behaviours are *refuse* or *build price lists*, and the unspecified third (relabel the same integer) is the money bug itself. Found 2026-09-19 by C-17's live check; **no row owned it**, and four code comments had wrongly called it "C-18's job". | **C-32**, and through it C-18, C-19, C-30, C-31 |
 
 G-1 was the only one that could change the slice's size, and it did: an auth slice (~1–1.5 weeks) now precedes Phase E. G-2 settled a grammar. G-3 dissolved on inspection — it was careful data-preservation machinery for rows we generate ourselves.
 
-G-1..G-3 unblocked Phase A. **G-4** is open — see *Status* at the top of this file.
+G-1..G-3 unblocked Phase A. G-4's decision is recorded under *Status* at the top of this file.
 
 ---
 
@@ -218,6 +223,13 @@ The two-channel tenant is the point: ADR-0014's negative control is *"two channe
 For any tenant in `pricing.tenant_config` without a channel: `tenant_defaults` from its stored currency, locale and tax rate, plus one inheriting default channel. Stated defaults for the fields with no source (`tax_display = 'net'`, `supported_locales = [locale]`, `country = 'US'`, `timezone = 'UTC'`), commented as defaulted rather than copied. This exists so a database that skipped a re-seed still boots — it preserves nothing of value.
 *Verification:* run on a **cold** database as the **non-superuser** with rows visible. Assert a **non-zero** tenant count and exactly one default each. A previous backfill in this project reported `0 = 0` as success because RLS hid the source rows — assert non-zero explicitly, not equality.
 
+*Found while planning it, 2026-09-22:* `ChannelsRepository.findDefault`'s error message already said "the backfill (C-11) guarantees at least one" default channel — a claim about a row that did not exist. Even once built, the backfill covers tenants that exist when it runs: a tenant created later through `PUT /admin/tenant-config` has no channel, and every cart request for it fails. C-11 corrects the message and records the gap in CAVEATS.
+
+**C-33 — Orders' channel backfill that actually runs** *(S; fixes C-16a — placed beside C-11 because both are the pre-channels upgrade path)*
+Orders' `0003_channel_snapshot.sql` backfills `channel_id` on existing orders from the tenant's default channel. Its comment says the migration "runs as the table owner, so it is not subject to the FORCE RLS policy". FORCE means the opposite — it applies policies to the owner — and `platform` is NOSUPERUSER NOBYPASSRLS, and nothing binds a tenant or `app.system_worker`. So the `UPDATE` sees no rows on either table and matches nothing, without an error. Branding's `0001` handles the same trap correctly with `NO FORCE`. Nothing ever checked it against existing orders: C-16a was verified on a cold database, and `checkout.integration` drops `orders` before migrating. Found by reading, 2026-09-22.
+The false comment cannot be corrected in place — the runner checksums applied files and refuses to boot on a change — so the fix is a new migration, `0004`.
+*Verification:* orders existing before the migration, a default channel for their tenant. "THE BUG": `0003` alone leaves them null — kept green on purpose, because `0003` is immutable and the test says why `0004` exists. "THE FIX": after `0004` they carry the default's id. If `0004` did nothing, the fix test prints `null`.
+
 
 
 ---
@@ -344,8 +356,8 @@ A forged event — tenant `t2` naming one of `t1`'s channels — marks nothing: 
 Stays in the composition root (ADR §7): it also reports `apiVersion` and the deployment feature map, which no domain module should own. What changes is its source — it composes from the `channels` contract instead of reading pricing config directly. Channel-scoped fields added; tenant-level fields kept as `@deprecated` aliases resolving the default channel.
 *Verification:* deprecated and new fields agree for the default channel, and **t-fashion's two channels** (GBP and EUR, via C-11a) make a constant-wired alias diverge — a single-channel tenant passes even if the alias ignores the channel entirely. Codegen drift check fails if the committed client copy is stale.
 
-**C-32 — Totals and checkout resolve money from the channel** *(blocked on G-4; not sized until it closes)*
-The missing half of the switch C-18 makes for capabilities. `TotalsService.compute` reads currency and tax rate from `pricing.tenant_config`; nothing consults the channel, so a cart or order in `de` is priced and charged as the tenant default. What it should do instead is exactly what G-4 decides — refuse a channel whose currency has no prices, or price from a per-channel list.
+**C-32 — Totals and checkout resolve money from the channel** *(G-4 closed 2026-09-22 with option A; re-sized when next up)*
+The missing half of the switch C-18 makes for capabilities. `TotalsService.compute` reads currency and tax rate from `pricing.tenant_config`; nothing consults the channel, so a cart or order in `de` is priced and charged as the tenant default. G-4 decided: **refuse** a channel whose currency the price list cannot serve, with a named error — on carts, on checkout, **and on price reads in that channel**, or C-18 would advertise EUR over GBP integers. Per-channel price lists follow as Phase H.
 *Verification (either outcome):* `t-fashion`'s two channels, identical cart contents. Today both orders read `currency: GBP`. After: `uk` charges GBP and `de` either charges EUR **from EUR prices** or is refused with a named error — and in neither case does `de` silently charge GBP-denominated integers. One channel per tenant cannot fail this, which is again why the two-channel fixture exists.
 *Must land before C-19.* A storefront that sends channel scope on every read would otherwise render `de` with € formatting around GBP integers — the money bug, at display level.
 
@@ -426,6 +438,12 @@ Strictly C-29 → C-30 → C-31: the control becomes editable only after the eng
 
 ---
 
+## Phase H — per-channel price lists (G-4 option B)
+
+Decided 2026-09-22 to follow option A (C-32) as its own phase. Not sized and not split: it needs its own ADR first. What that ADR has to settle, at least: price rows per channel or per currency; what a product with no price in a channel does (C-32's refusal becomes the per-product answer); the denormalised price in the search index, which is one number per product today; and whether promotions are per channel. [CHANNEL-MODEL §7a](design/CHANNEL-MODEL.md) has the starting sketch.
+
+---
+
 ## Sequencing notes
 
 Phase A before B: URL scoping is cheaper before channels multiply the URLs, and the admin conventions shape every endpoint in Phase B.
@@ -436,6 +454,6 @@ Phase E is preceded by the auth slice, which is its own ADR (0015) and its own s
 
 Phase G touches pricing, not channels plumbing, so it can run any time after Phase B — except C-30, which needs C-10 (channel `PATCH` exists) **and C-32**, because a per-channel `tax_display` is read on the same money path C-32 makes channel-aware.
 
-**G-4 → C-32 → C-18 → C-19.** Nothing that makes a channel's currency *visible* may land before something makes it *charged*: capabilities advertising EUR for `de` while checkout charges GBP would be a control wired to nothing, and a storefront rendering € around GBP integers is the money bug at display level. C-11, C-25, C-28 do not depend on G-4.
+**C-32 → C-18 → C-19** (G-4 closed with option A). Nothing that makes a channel's currency *visible* may land before something makes it *charged or refused*: capabilities advertising EUR for `de` while checkout charges GBP would be a control wired to nothing, and a storefront rendering € around GBP integers is the money bug at display level. C-11, C-25, C-28 and C-33 do not depend on it. Phase H (per-channel price lists) follows C-32 and replaces its refusal with real prices.
 
 **Total ≈ 9–11.5 weeks excluding authentication.**

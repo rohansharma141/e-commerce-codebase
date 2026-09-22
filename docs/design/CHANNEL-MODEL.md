@@ -208,7 +208,7 @@ One indexed price cannot represent per-channel prices:
 
 Deferred to its own slice and ADR. Sharp edge when built: the exponent now varies per channel, so the major/minor conversion stops being a constant — exactly the shape of bug that multiplies displayed prices by one hundred.
 
-**Update, 2026-09-19 — deferring this left a gap nobody owned.** With one currency-less price per product and no per-channel prices, nothing charges a channel's `currency_code`: totals and checkout read the tenant's currency, so an order in `t-fashion`'s EUR channel is charged GBP. Building per-channel price lists is now **option B of gate G-4** in [BACKLOG-channels](../BACKLOG-channels.md); option A refuses to transact in a channel the price list cannot serve. Whichever is chosen, C-32 is the row that makes the money path channel-aware.
+**Update, 2026-09-19 — deferring this left a gap nobody owned.** With one currency-less price per product and no per-channel prices, nothing charges a channel's `currency_code`: totals and checkout read the tenant's currency, so an order in `t-fashion`'s EUR channel is charged GBP. Building per-channel price lists is now **option B of gate G-4** in [BACKLOG-channels](../BACKLOG-channels.md); option A refuses to transact in a channel the price list cannot serve. Whichever is chosen, C-32 is the row that makes the money path channel-aware. **Decided 2026-09-22: A now (C-32), then B** as Phase H, starting with its own ADR; this section is that ADR's starting sketch.
 
 ### 7b. Search index scope
 
@@ -325,7 +325,7 @@ One experienced engineer, solo. Ranges, not commitments. **Excludes authenticati
 | Tax-inclusive (gross) computation in the pricing engine; `tax_display` editable; storefront renders per capabilities | 1.5 – 2 |
 | **Total** | **≈ 9 – 11.5** |
 
-Authentication, if taken as the prerequisite it should be, is a separate slice on top. **So is G-4's outcome:** option A (refuse; C-32 alone) is a few days at most, while option B (per-channel price lists, §7a) is its own ADR and phase and is not in this total.
+Authentication, if taken as the prerequisite it should be, is a separate slice on top. **So is G-4's outcome** (decided 2026-09-22: A now, B later): option A (refuse; C-32 alone) is a few days at most, while option B (per-channel price lists, §7a) is its own ADR and phase and is not in this total.
 
 ---
 

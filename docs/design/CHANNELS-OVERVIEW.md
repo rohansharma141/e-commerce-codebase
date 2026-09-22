@@ -4,7 +4,7 @@ Read this first. [ADR-0014](../adr/0014-channel-as-sales-channel.md) is for inte
 
 **The one-sentence version:** a tenant stops being a single market and becomes a business selling into several, with an admin console to configure them and an API that reports what each one is.
 
-Branch: `channels`. Status: Phases A–C built and verified; **gate G-4 open** (see §3); Phases D–G pending.
+Branch: `channels`. Status: Phases A–C built and verified; gate G-4 closed 2026-09-22 (see §3); Phases D–H pending.
 
 ---
 
@@ -144,14 +144,14 @@ Made in code between 2026-08-28 and 2026-09-19, each recorded in its backlog row
 
 ---
 
-## 3. Gates — three closed 2026-08-28, one open
+## 3. Gates — three closed 2026-08-28, the fourth 2026-09-22
 
 | Gate | Question | Decision |
 |---|---|---|
 | **G-1** | Auth: prerequisite, or gate with expiry? | **Prerequisite, minimum scope.** Four gateway behaviours, one operator role, IdP left as configuration. Needs ADR-0015 before C-20 |
 | **G-2** | URL scoping shape? | **`/api/{tenant}/{channelKey}/graphql`**, segment omitted for the default, reads only |
 | **G-3** | Country/timezone for existing tenants? | **Neither option.** The seed writes real values; the migration keeps a trivial safety backfill |
-| **G-4** | What does a channel charge when its currency differs from the price list's? | **OPEN since 2026-09-19.** Prices are one currency-less integer per product and checkout charges the tenant's currency regardless of channel. ADR §9 says *fail*; §12 defers per-channel prices. Blocks C-32 and, through it, C-18/19/30/31 |
+| **G-4** | What does a channel charge when its currency differs from the price list's? | **Refuse now, price lists later** (2026-09-22). Opened 2026-09-19: prices are one currency-less integer per product and checkout charges the tenant's currency regardless of channel. ADR §9 says *fail*; §12 defers per-channel prices. C-32 refuses to price a channel the price list cannot serve — carts, checkout and price reads; per-channel price lists become Phase H with their own ADR |
 
 G-1 was the only gate that could change the slice's size, and it did — an auth slice now precedes Phase E. G-3 went the other way: it removed machinery *and* improved the verification.
 
@@ -180,7 +180,7 @@ And one thing the reconciliation itself missed, found only while building (2026-
 Stated here so the back office does not ship a control implying a capability that does not exist.
 
 - **One currency per channel.** Not multi-currency.
-- **A channel's currency is declared, not yet charged.** Checkout charges the tenant's price-list currency regardless of channel, until gate G-4 closes and C-32 lands. For the two single-channel demo tenants the two agree; for `t-fashion`'s `de` they do not.
+- **A channel's currency is declared, not yet charged.** Checkout charges the tenant's price-list currency regardless of channel, until C-32 lands (gate G-4 chose to refuse such a channel; per-channel price lists come later). For the two single-channel demo tenants the two agree; for `t-fashion`'s `de` they do not.
 - **Formatting, not translation.** A `de-DE` channel renders German number formats around English product copy.
 - **One tax rate per channel.** No tax classes, no destination-based US tax, no EU OSS, no B2B reverse charge.
 - **Cache entries multiply by channels per tenant.** Fine at single digits, worth watching if channels proliferate.
