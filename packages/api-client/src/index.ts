@@ -54,5 +54,8 @@ export type OrderAppliedPromotion = Schema['OrderAppliedPromotion'];
 export type OrderListResponse = Schema['OrderListResponse'];
 export type CheckoutDto = Schema['CheckoutDto'];
 
+/** `GET /system/capabilities` — the unscoped read that names the default channel's key. */
+export type Capabilities = Schema['CapabilitiesType'];
+
 /** The raw generated document, for anything the aliases above don't cover. */
 export type { components, operations, paths } from './generated/rest-api';

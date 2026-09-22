@@ -1,22 +1,13 @@
 import 'server-only';
-import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { TenantCapabilitiesDocument } from '@platform/api-client';
 import { GraphqlError, graphqlQuery } from './api-graphql';
 import { capabilitiesTag } from './cache-tags';
-import { CHANNEL_KEY_HEADER, withChannelPrefix } from './channel-path';
+import { getChannelKey } from './channel-key';
+import { withChannelPrefix } from './channel-path';
 import { getTenantId } from './tenant';
 
-/**
- * The channel this request was made in, server side (C-19a).
- *
- * The middleware reads it from the path and passes it on as an internal
- * header; see `@/lib/channel-path` for the grammar. Null means the path named
- * none, so the tenant's default channel serves the request.
- */
-export function getChannelKey(): string | null {
-  return headers().get(CHANNEL_KEY_HEADER) || null;
-}
+export { getChannelKey } from './channel-key';
 
 /** A storefront path under the current request's channel prefix. */
 export function channelHref(path: string): string {
@@ -50,16 +41,19 @@ export type ChannelLookup = { found: true; channel: StorefrontChannel | null } |
  */
 export async function lookupChannel(): Promise<ChannelLookup> {
   const tenantId = getTenantId();
-  const channelKey = getChannelKey();
   try {
-    const data = await graphqlQuery(
-      TenantCapabilitiesDocument,
-      {},
-      { tags: [capabilitiesTag(tenantId)], channelKey },
-    );
+    // The same document and tag as `getMoneyFormat`, and both read in the
+    // request's channel, so the two are one memoised fetch.
+    const data = await graphqlQuery(TenantCapabilitiesDocument, {}, {
+      tags: [capabilitiesTag(tenantId)],
+    });
     return { found: true, channel: data.capabilities.channel ?? null };
   } catch (err) {
-    if (channelKey && err instanceof GraphqlError && err.status === 404) return { found: false };
+    // Only a key the *path* named can be unknown. The default's key came from
+    // the api a moment ago; a 404 for it is a fault, not a missing page.
+    if (getChannelKey() && err instanceof GraphqlError && err.status === 404) {
+      return { found: false };
+    }
     throw err;
   }
 }

@@ -7,6 +7,9 @@ query TenantCapabilities {
       key
       name
       isDefault
+      currency
+      currencyMinorUnits
+      defaultLocale
     }
   }
 }

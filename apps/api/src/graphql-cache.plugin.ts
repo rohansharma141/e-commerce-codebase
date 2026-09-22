@@ -27,7 +27,7 @@ import type { ApolloServerPlugin } from '@apollo/server';
  *
  * The channel header is listed even though C-2b put the channel *key* in the
  * URL for scoped reads. The header-only `/graphql` path still exists, still
- * honours `x-channel-id`, and is what the shipped storefront uses until C-19;
+ * honours `x-channel-id`, and was what the storefront used until C-19b;
  * on that path the header is the only thing that distinguishes two channels of
  * one tenant, so `Vary` is what keeps them apart in any cache that respects it.
  * This is defence in depth for the path where the URL cannot help — ADR-0014

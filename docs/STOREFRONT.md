@@ -101,7 +101,11 @@ A channel is named by the path's first segment, and the tenant's default channel
 | `/xx/c/dresses`, or an archived channel's key | `404` — never the default |
 | `/c/…`, `/p/…`, `/cart`, `/orders/…`, `/api/…` | the storefront's own routes, never read as a channel |
 
-Whether a key names a channel is the api's answer: `(shop)/layout.tsx` asks for the channel's capabilities under the scoped URL and turns the api's `404` into the storefront's. That layout rather than the root one, because a `notFound()` thrown by the root layout falls outside the root's own not-found boundary and renders an empty page — the status is still `404`, which is why only rendering it showed the difference. Reads other than this one stay unscoped until C-19b. The cost of spending the first segment on the channel is in [CAVEATS](CAVEATS.md#the-storefronts-channel-prefix-has-two-costs).
+Whether a key names a channel is the api's answer: `(shop)/layout.tsx` asks for the channel's capabilities under the scoped URL and turns the api's `404` into the storefront's. That layout rather than the root one, because a `notFound()` thrown by the root layout falls outside the root's own not-found boundary and renders an empty page — the status is still `404`, which is why only rendering it showed the difference.
+
+Every read then names that channel, in the URL and the header (C-19b). `graphqlQuery` reads it per call, as it reads the tenant, so no caller can forget it. An unprefixed page names the default **by its key**, learned from `GET /system/capabilities` — the one read the api answers without a channel — and cached under the capabilities tag, so a new default reaches those pages as soon as `channels.default-changed` arrives. That is what lets the api stop treating an absent channel as the default (C-42, ADR-0014 §8) without breaking this storefront. Carts and checkout follow in C-19e.
+
+The cost of spending the first segment on the channel is in [CAVEATS](CAVEATS.md#the-storefronts-channel-prefix-has-two-costs).
 
 ## The two data paths
 
@@ -155,7 +159,7 @@ The foreground field is not decoration. A theme that sets a dark `pageBgHsl` aga
 
 That is why `Card`, `Input`, the sort control and the suggestions dropdown all carry an explicit `text-slate-800`, while empty states use `opacity-80` rather than a fixed slate.
 
-**Money** (`Query.capabilities`, tag `capabilities:<tenant>`) supplies currency, the currency's minor-unit exponent and the locale. `lib/money.ts` formats from that descriptor and nothing else.
+**Money** (`Query.capabilities`, tag `capabilities:<tenant>`) supplies currency, the currency's minor-unit exponent and the locale — since C-19b from `capabilities.channel`, the request's channel, rather than the deprecated tenant-level fields that answer for the default channel whatever was asked. `lib/money.ts` formats from that descriptor and nothing else.
 
 The exponent is the part that matters. Every money value in the api is an integer in minor units, and how many a currency has is a property of the currency — 2 for USD, 0 for JPY. The storefront used to divide by 100 unconditionally, which renders ¥1,000 as ¥10: silent, plausible, and only ever visible to a tenant nobody tested with. Verified by switching a tenant to JPY and to de-DE and watching prices re-render as `¥1,000` and `1.000,00 €` with no storefront change at all.
 
@@ -169,10 +173,11 @@ That last part is the point of the arrangement. Because the storefront asks rath
 
 ## Tests
 
-`pnpm nx test storefront` runs seven suites, among them:
+`pnpm nx test storefront` runs nine suites, among them:
 
 - `src/middleware.spec.ts` and `src/lib/channel-path.spec.ts` — channel resolution (C-19a): which paths name a channel, that a client-sent `x-channel-key` never survives the middleware, and that every top-level route is reserved so none is mistaken for a channel key.
-- `src/lib/api-graphql.spec.ts` — the read path is a GET carrying the tenant, and a channel-scoped read names the channel in both URL and header.
+- `src/lib/api-graphql.spec.ts` — the read path is a GET carrying the tenant, and every read names the request's channel in both URL and header, per call.
+- `src/lib/channel-key.spec.ts` and `src/lib/capabilities.spec.ts` — an unprefixed page names the default by the key `/system/capabilities` reports, and money is formatted in the request's channel rather than from the default's aliases.
 - `src/lib/search-params.spec.ts` — the URL contract. Browse pages are a pure function of the URL, and those URLs get shared and bookmarked, so the page/cursor, facet, price-range, sort and view parsing are pinned. Runs anywhere, no infrastructure.
 - `src/contract.integration.spec.ts` — storefront↔API conformance. Every operation the storefront issues in production is issued against a live api and checked against the shape the storefront relies on, including exact key sets for the hand-mirrored REST types so a drifted mirror fails loudly. Skipped unless `TEST_API_URL` is set:
 

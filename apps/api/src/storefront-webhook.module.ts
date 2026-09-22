@@ -139,7 +139,7 @@ export class StorefrontWebhookDispatcher implements OnModuleInit {
     // A write that changed nothing is not forwarded: a no-op PATCH must not
     // drop every cached page for the tenant. Any channel's edit is forwarded,
     // not only the default's — over-invalidating is the safe direction, and
-    // once the storefront reads per channel (C-19) every channel's matters.
+    // since the storefront reads per channel (C-19b) every channel's matters.
     this.bus.subscribe<DomainEvent<string, ChannelUpdatedPayload>>(
       CHANNELS_EVENTS.Updated,
       (e) =>

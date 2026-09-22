@@ -13,12 +13,12 @@ import { getTenantId } from './tenant';
  * for any missing field, so the storefront layout can use the return value
  * without itself fallback logic.
  */
-export async function getTenantTheme() {
+export async function getTenantTheme(options: { inDefaultChannel?: boolean } = {}) {
   const tenantId = getTenantId();
   const data = await graphqlQuery(
     TenantThemeDocument,
     {},
-    { tags: [`theme:${tenantId}`] },
+    { tags: [`theme:${tenantId}`], inDefaultChannel: options.inDefaultChannel },
   );
   return data.theme;
 }

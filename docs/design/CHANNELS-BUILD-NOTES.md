@@ -4,7 +4,7 @@ The companion to [CHANNELS-OVERVIEW](CHANNELS-OVERVIEW.md) (what the slice deliv
 
 It exists because these facts otherwise live in commit messages and one session's context, and both are easy to lose. Where an entry names a commit, the commit message has the full account.
 
-Written 2026-09-19; updated 2026-09-22 for C-11, C-33, C-32a, C-32b, C-18a, C-18b and C-19a.
+Written 2026-09-19; updated 2026-09-22 for C-11, C-33, C-32a, C-32b, C-18a, C-18b, C-19a and C-19b.
 
 ---
 
@@ -76,7 +76,7 @@ Every entry below produced a symptom whose cause was elsewhere. Most share one s
 
 **Git Bash on this machine breaks heredocs with heavy quoting,** and the Bash tool rejects commands containing control characters. Write multi-line content with the Write tool and commit with `git commit -F <file>`.
 
-**Backslash escapes in a tool call can arrive as the real control character.** The layer between an agent and the shell or file decodes one level of backslash escaping. So a doubled backslash meant to survive into a Python string reaches Python single, and Python turns it into a real byte. This produced a NUL byte three times: once in source, and twice in this file while documenting the first. A fourth time, while reviewing these notes, a backslash-n inside a regular expression arrived as a real line break and broke the checking script mid-string. Git then treats the file as binary and `grep` stops matching it, so the damage is quiet. Construct control bytes in code, with `bytes([0])` or `chr(92)`, rather than typing escapes, and before committing a new or heavily edited file check it: `python -c "import sys; print(open(sys.argv[1],'rb').read().count(bytes([0])))" <file>` must print `0`.
+**Backslash escapes in a tool call can arrive as the real control character.** The layer between an agent and the shell or file decodes one level of backslash escaping. So a doubled backslash meant to survive into a Python string reaches Python single, and Python turns it into a real byte. This produced a NUL byte three times: once in source, and twice in this file while documenting the first. A fourth time, while reviewing these notes, a backslash-n inside a regular expression arrived as a real line break and broke the checking script mid-string. Git then treats the file as binary and `grep` stops matching it, so the damage is quiet. It recurs for quotes too: in C-19b an escaped apostrophe inside a Python string meant for a TypeScript test name arrived as a bare `'` and would have ended the string early — caught reading the diff, and fixed by switching to the other quote character rather than escaping again. Construct control bytes in code, with `bytes([0])` or `chr(92)`, rather than typing escapes, and before committing a new or heavily edited file check it: `python -c "import sys; print(open(sys.argv[1],'rb').read().count(bytes([0])))" <file>` must print `0`.
 
 ---
 
@@ -113,6 +113,7 @@ Recorded because the project's standing rule is to say plainly what failed, incl
 | 25 | **The currency freeze I designed in C-8a checks only a channel's own `currency_code`.** An inherited currency can change after transacting, through the tenant defaults. | Wondering, during C-32b's live check, why editing the defaults' currency had been allowed; then demonstrating it with an order in `uk`. | C-37. CAVEATS corrected meanwhile. |
 | 26 | **I told the user C-32a was committed as a hash I had not seen** — 3c7d4fb, which is no commit at all; it was `48d784c`. The command's output had been cut before the hash. | The next `git log`, a minute later. | Corrected to the user at once. A hash is quoted from output, never recalled. |
 | 27 | **C-19a's first build resolved the channel in the root layout**, and an unknown prefix answered `404` — the check I had written asserted only the status, and passed. The page was empty. | Comparing the unknown channel's RSC payload with the product page's `404`, which carries the layout and message; then headless Edge. | The check moved to a route-group layout, and the verification now asserts what the `404` renders, not only its status. |
+| 28 | **C-19b's first build turned an unknown channel's `404` into a `500`.** Scoping every read also scoped the root layout's theme read, which the api answers `404` for an unknown key; the frame crashed before the `404` could draw. Every unit test passed. | Re-running C-19a's live probe against the new image, rather than only the new check. | The frame reads its theme in the default channel. Re-run the previous row's probe after any change to the read path. |
 
 ### Earlier in the same session, on `main`
 

@@ -68,10 +68,11 @@ export class CheckoutService {
    * The channel this checkout is happening in.
    *
    * Explicit scope when the request carried one; otherwise the tenant default,
-   * which is what keeps the shipped storefront working until C-19 sends scope
-   * on every call. That fallback is the one ADR-0014 section 8 dates: it applies
-   * to an *absent* channel, never to an unknown one — the middleware has
-   * already answered 404 for those, and falling back here would undo it.
+   * which is what keeps the storefront's carts working until C-19e sends scope
+   * on every cart call, and C-42 then removes the fallback. That fallback is
+   * the one ADR-0014 section 8 dates: it applies to an *absent* channel, never
+   * to an unknown one — the middleware has already answered 404 for those, and
+   * falling back here would undo it.
    *
    * A bound channel that no longer resolves is an error rather than a fallback.
    * It means the channel was archived between the request being scoped and the

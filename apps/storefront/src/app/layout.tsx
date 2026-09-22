@@ -39,7 +39,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const tenantId = getTenantId();
   const lookup = await lookupChannel();
   const channel = lookup.found ? lookup.channel : null;
-  const theme = await getTenantTheme();
+  // For an unknown channel the theme is read in the default one: every read in
+  // a channel that does not exist is a `404`, and this frame has to render.
+  const theme = await getTenantTheme({ inDefaultChannel: !lookup.found });
   const linkChannel = lookup.found ? getChannelKey() : null;
   const home = withChannelPrefix(linkChannel, '/');
 

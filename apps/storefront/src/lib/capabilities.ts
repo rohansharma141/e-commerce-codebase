@@ -6,7 +6,7 @@ import { getTenantId } from './tenant';
 import type { MoneyFormat } from './money';
 
 /**
- * What the api says it supports for this tenant.
+ * What the api says it supports for this request's channel.
  *
  * Tagged `capabilities:<tenantId>` so the webhook drops it on anything that
  * can change it — `pricing.tenant-config.updated`, and since C-18a the channel
@@ -26,10 +26,16 @@ export async function getMoneyFormat(): Promise<MoneyFormat> {
     {},
     { tags: [capabilitiesTag(tenantId)] },
   );
+  // The channel's own answer (C-19b). The tenant-level fields are deprecated
+  // aliases that answer for the default channel whatever the request named
+  // (ADR-0014 §7), so on `/trade` they would format with `uk`'s locale. They
+  // are read only for a tenant with no channel at all, which the api describes
+  // from its price list; C-19c removes them.
   const caps = data.capabilities;
+  const source = caps.channel ?? caps;
   return {
-    currency: caps.currency,
-    minorUnits: caps.currencyMinorUnits,
-    locale: caps.defaultLocale,
+    currency: source.currency,
+    minorUnits: source.currencyMinorUnits,
+    locale: source.defaultLocale,
   };
 }

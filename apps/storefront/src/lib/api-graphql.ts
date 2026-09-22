@@ -1,6 +1,7 @@
 import 'server-only';
 import { print } from 'graphql';
 import type { TypedDocumentNode } from '@graphql-typed-document-node/core';
+import { defaultChannelKey, requestChannelKey } from './channel-key';
 import { getTenantId } from './tenant';
 
 /**
@@ -29,7 +30,7 @@ import { getTenantId } from './tenant';
  *
  * GET needs no api change: the schema already serves queries over GET. Apollo
  * blocks them unless the request proves it is not a simple cross-origin form
- * post, hence `apollo-require-preflight`. The tenant stays in a header, which
+ * post, hence `apollo-require-preflight`. The tenant travels in a header, which
  * Next includes in the cache key — the isolation test in
  * `api-graphql.spec.ts` is what holds that claim down, because a tenant
  * leaking out of a shared cache entry would be the worst bug this codebase
@@ -72,23 +73,36 @@ interface QueryOptions {
    */
   revalidate?: number | false;
   /**
-   * Scope the read to this channel: `/api/{tenant}/{channelKey}/graphql` with
-   * `x-channel-id`, the api's own grammar (C-2b). The header is what the api
-   * trusts and the URL is what caches key on; the api refuses the request if
-   * they disagree, so both are always sent together.
-   *
-   * Omitted, the read is unscoped and the api answers for the tenant default.
-   * Only channel resolution passes it until C-19b scopes every read.
+   * Read in the tenant's default channel, whatever the path named. Only for the
+   * root layout's frame around an unknown channel's `404`: the frame must
+   * render, and nothing can be asked in a channel that does not exist — the
+   * api answers every such read `404`, the theme included. The frame's links
+   * already go to the default, so its theme comes from there too.
    */
-  channelKey?: string | null;
+  inDefaultChannel?: boolean;
 }
 
+/**
+ * Every read names the request's channel (C-19b): `/api/{tenant}/{channelKey}/graphql`
+ * with `x-channel-id`, the api's own grammar (C-2b). The header is what the
+ * api trusts and the URL is what caches key on; the api refuses the request if
+ * they disagree, so both are always sent together.
+ *
+ * The channel is read here, per call, as the tenant is — not passed by each
+ * caller, where one forgotten argument would read the default channel's
+ * catalogue and prices on another channel's page. An unprefixed page names
+ * the default by its key (`requestChannelKey`), so no read depends on the
+ * api's missing-channel fallback, which C-42 removes.
+ */
 export async function graphqlQuery<TData, TVars>(
   document: TypedDocumentNode<TData, TVars>,
   variables: TVars,
   options: QueryOptions = {},
 ): Promise<TData> {
   const tenantId = getTenantId();
+  const channelKey = options.inDefaultChannel
+    ? await defaultChannelKey()
+    : await requestChannelKey();
   const params = new URLSearchParams({ query: print(document) });
   if (variables && Object.keys(variables as object).length > 0) {
     params.set('variables', JSON.stringify(variables));
@@ -107,9 +121,9 @@ export async function graphqlQuery<TData, TVars>(
   // and not the other would turn an unknown channel's `404` into a mismatch
   // `400`.
   let path = '/graphql';
-  if (options.channelKey) {
-    path = `/api/${tenantId}/${options.channelKey}/graphql`;
-    headers['x-channel-id'] = options.channelKey;
+  if (channelKey) {
+    path = `/api/${tenantId}/${channelKey}/graphql`;
+    headers['x-channel-id'] = channelKey;
   }
 
   const res = await fetch(`${API_ORIGIN}${path}?${params.toString()}`, {

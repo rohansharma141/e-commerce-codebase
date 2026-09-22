@@ -47,7 +47,7 @@ import { defaultChannelOrNull, requestChannel } from './request-channel';
  * deprecated aliases, and answer for the tenant DEFAULT channel even when the
  * request names another: that is what they always meant, and a consumer
  * reading them must not have their meaning change underneath it. The
- * storefront moves to `channel` in C-19b; the aliases go in a later commit.
+ * storefront moved to `channel` in C-19b; the aliases go in C-19c.
  *
  * `taxRateBps` and `taxDisplay` are deliberately NOT under `channel` yet.
  * They describe the money path, and the money path still charges the price
