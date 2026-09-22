@@ -8,14 +8,14 @@ House rules applied: one item, one commit, one stated verification. Anything nee
 
 **Read this section first when resuming.** Then [CHANNELS-BUILD-NOTES](design/CHANNELS-BUILD-NOTES.md) for the traps and mistakes that cost time, and the rows below for each item's verification record.
 
-`main` = `433f5b6` (61 commits, CI green, `v0.1.0`). `channels` branched from it; **the code is as of `05ff688`** and every later commit is documentation only (check with `git diff --stat 05ff688 HEAD -- apps packages`, which should print nothing). **CI has never run on this branch** — it triggers only on `main` and on PRs into it, so every "verified" below is local.
+`main` = `433f5b6` (61 commits, CI green, `v0.1.0`). `channels` branched from it. Code changed last in C-11 (2026-09-22); `git log -1 --format='%h %s' -- apps packages` names the latest commit to touch code, so a docs-only commit cannot make this line stale. **CI has never run on this branch** — it triggers only on `main` and on PRs into it, so every "verified" below is local.
 
-### Done — 22 rows, all verified
+### Done — 23 rows, all verified
 
 | Phase | Rows |
 |---|---|
 | A — conventions and scope | C-1, C-2, C-3, C-2b, C-4 *(api half)*, C-9 *(REST half)* |
-| B — the channels module | C-5, C-6, C-7, C-8a, C-8b, C-10, C-11a |
+| B — the channels module | C-5, C-6, C-7, C-8a, C-8b, C-10, C-11a, C-11 |
 | C — resolution and propagation | C-12, C-13, C-14, C-15, C-16a, C-16b, C-17 |
 | F / G | C-26, C-29 |
 
@@ -44,7 +44,6 @@ Plus [ADR-0015](adr/0015-operator-authentication-at-the-api-edge.md) (operator a
 
 | Row | Est. | Note |
 |---|---|---|
-| C-11 — safety backfill | 1.5–2 h | in progress, with C-33 |
 | C-33 — orders' channel backfill that actually runs | 1–1.5 h | in progress, with C-11 |
 | C-32 — refuse to price a channel the price list cannot serve | re-size | unblocked by G-4 (A); must land before C-18 |
 | C-28 — shared idempotency | 1.5–2.5 h | touches `checkout.service.ts`; checkout must stay byte-identical |
@@ -219,11 +218,23 @@ The two-channel tenant is the point: ADR-0014's negative control is *"two channe
 
 `taxDisplay` is seeded `net` for every tenant on purpose: C-29 taught the engine `gross`, but until C-30 removes the `EXCLUSIVE` hardcode from capabilities, a `gross` fixture would advertise a presentation the API does not report. A fixture that lies is worse than a fixture that is dull.
 
-**C-11 — Safety backfill** *(S)*
+**C-11 — Safety backfill** ✅ *(S)*
 For any tenant in `pricing.tenant_config` without a channel: `tenant_defaults` from its stored currency, locale and tax rate, plus one inheriting default channel. Stated defaults for the fields with no source (`tax_display = 'net'`, `supported_locales = [locale]`, `country = 'US'`, `timezone = 'UTC'`), commented as defaulted rather than copied. This exists so a database that skipped a re-seed still boots — it preserves nothing of value.
 *Verification:* run on a **cold** database as the **non-superuser** with rows visible. Assert a **non-zero** tenant count and exactly one default each. A previous backfill in this project reported `0 = 0` as success because RLS hid the source rows — assert non-zero explicitly, not equality.
 
 *Found while planning it, 2026-09-22:* `ChannelsRepository.findDefault`'s error message already said "the backfill (C-11) guarantees at least one" default channel — a claim about a row that did not exist. Even once built, the backfill covers tenants that exist when it runs: a tenant created later through `PUT /admin/tenant-config` has no channel, and every cart request for it fails. C-11 corrects the message and records the gap in CAVEATS.
+
+*Shipped 2026-09-22* as `channels/0003_safety_backfill.sql`: one channel keyed `web` ("Web Store"), active, default, inheriting every field, for each tenant in `pricing.tenant_config` with no channel at all; currency, locale and tax rate copied, the rest defaulted and commented as such. RLS is lifted with `NO FORCE` on the three tables it touches and restored before the block ends — a migration runs as the owner, and FORCE applies policies to the owner, which is the trap C-33 fell into. Guarded on the three source columns existing, which also covers the table not existing.
+
+*Verified three ways:*
+
+- **The spec** (`apps/api/src/channels-backfill.integration.spec.ts`, 7 tests) runs the file the way the runner does — as `platform`, in a transaction, no tenant bound — against a pre-channels state it builds, then rolls back. It never commits, because the backfill acts on every channel-less tenant and would hand defaults to whatever another suite had half set up. Asserts exactly two tenants backfilled (not `>= 0`), the copied values, a tenant that already had a channel untouched, a second run changing nothing, FORCE back on all three tables *and* an unbound connection seeing nothing, and both skip paths. Each run was on a freshly created database.
+- **Seven mutations, each made to fail it, none by failing to run:** the migration doing nothing → `received []`; dropping `NO FORCE` on pricing → `received []`, the silent `0 = 0` shape; dropping it on channels → *"new row violates row-level security policy"*; dropping the FORCE restore → `force: false`; dropping `NOT EXISTS` → *"duplicate key … channels_one_default_per_tenant"* (the boot failure it prevents); no guard → both skip tests; a table-only guard → *"column tc.locale does not exist"*, branding's failure.
+- **The real image, on the upgrade path.** The demo database was made to look as `main` left it — `channels` dropped, orders' channel columns and their ledger rows removed, pricing and four orders intact. On the previous image, `POST /storefront/carts` returned **500** for all three tenants (*"tenant t-fashion has no default channel"*). On the C-11 image, same state: **201** for all three, and all five tenants in `pricing.tenant_config` got a `web` default. The same boot showed **0 of 4 orders attributed** to a channel although the defaults now existed and orders migrated after channels — C-33, reproduced on the real image.
+
+*What the boot log also settled:* modules migrate audit → catalog → **channels → pricing** → branding → **orders**. So on a genuinely cold database this backfill takes its skip path, pricing not existing yet; the case it exists for is the upgrade path above.
+
+*Found while running it:* the pricing seed never writes `locale`, so `t-fashion`'s `pricing.tenant_config.locale` is the column default `en-US` while its channel fixtures say `en-GB`, and `capabilities.defaultLocale` reads the pricing copy. The backfill copies what pricing holds, so a backfilled `t-fashion` says `en-US` too. Another drifted copy of one fact; C-18 removes it by composing capabilities from channels, and until then it is recorded here rather than patched in the seed.
 
 **C-33 — Orders' channel backfill that actually runs** *(S; fixes C-16a — placed beside C-11 because both are the pre-channels upgrade path)*
 Orders' `0003_channel_snapshot.sql` backfills `channel_id` on existing orders from the tenant's default channel. Its comment says the migration "runs as the table owner, so it is not subject to the FORCE RLS policy". FORCE means the opposite — it applies policies to the owner — and `platform` is NOSUPERUSER NOBYPASSRLS, and nothing binds a tenant or `app.system_worker`. So the `UPDATE` sees no rows on either table and matches nothing, without an error. Branding's `0001` handles the same trap correctly with `NO FORCE`. Nothing ever checked it against existing orders: C-16a was verified on a cold database, and `checkout.integration` drops `orders` before migrating. Found by reading, 2026-09-22.

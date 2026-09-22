@@ -67,7 +67,7 @@ Learned by being bitten. Each of these produced a confusing symptom whose cause 
 
 ## Running the live suites
 
-Five suites exercise a running, seeded stack rather than code in isolation. They are gated on environment variables and **skip** without them — which is correct, and also the trap below.
+These suites exercise real services — a running, seeded stack, or a real Postgres — rather than code in isolation. They are gated on environment variables and **skip** without them — which is correct, and also the trap below.
 
 | Suite | Command | Needs | Destroys |
 |---|---|---|---|
@@ -77,6 +77,16 @@ Five suites exercise a running, seeded stack rather than code in isolation. They
 | Storefront conformance | `TEST_API_URL=http://localhost:3000 pnpm nx test storefront --skipNxCache` | seeded stack | nothing |
 | Checkout integration | `TEST_DATABASE_URL=postgres://platform:platform@localhost:5432/platform TEST_REDIS_URL=redis://localhost:6379 pnpm nx test api --skipNxCache -- --testPathPattern=checkout.integration` | Postgres + Redis | **drops `orders`, `pricing`, `channels`** |
 | Channels module | `TEST_DATABASE_URL=postgres://platform:platform@localhost:5432/platform pnpm nx test channels-src --skipNxCache` | Postgres | **drops `channels`** |
+| Channels backfill (C-11) | `TEST_DATABASE_URL=postgres://platform:platform@localhost:5432/platform_test pnpm nx test api --skipNxCache -- --testPathPattern=channels-backfill` | Postgres | nothing — every test rolls back |
+
+**Destructive suites belong on a throwaway database.** CLAUDE.md forbids running them against the database you demo from, and they work unchanged against another one: the migrations create their own schemas and `pgcrypto` as `platform`. Create it once — it survives restarts, and a `down -v` removes it with everything else:
+
+```bash
+docker compose up -d --wait postgres
+docker compose exec -T postgres psql -U postgres -c "CREATE DATABASE platform_test OWNER platform"
+```
+
+Then use `postgres://platform:platform@localhost:5432/platform_test` in place of `.../platform` in the commands above. Only Postgres is needed for the database suites, which spares the memory OpenSearch takes.
 
 **`--skipNxCache` is not optional.** Nx caches `test` on file inputs only; environment variables are not part of the key. Running a suite once without the variable caches a *skipped* run, and running it again *with* the variable replays that as a pass. The suite never executes and nothing says so.
 

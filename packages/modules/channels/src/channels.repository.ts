@@ -245,10 +245,14 @@ export class ChannelsRepository {
       .where(and(eq(channels.tenantId, tenantId), eq(channels.isDefault, true)))
       .limit(1);
     if (!row) {
+      // "At least one" has two sources and one gap. The seed writes a default
+      // for every fixture tenant, and the C-11 backfill gives one to every
+      // tenant that existed when it ran. A tenant created afterwards through
+      // PUT /admin/tenant-config gets neither, and lands here (CAVEATS).
       throw new Error(
-        `tenant ${tenantId} has no default channel. Every tenant must have exactly ` +
-          `one; the partial unique index guarantees at most one, and the backfill ` +
-          `(C-11) guarantees at least one.`,
+        `tenant ${tenantId} has no default channel. The partial unique index allows ` +
+          `at most one; nothing yet creates one for a tenant added after the C-11 ` +
+          `backfill ran, so create its first channel through POST /admin/channels.`,
       );
     }
     return (await this.resolve(row)).config;

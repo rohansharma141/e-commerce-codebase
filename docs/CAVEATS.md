@@ -132,6 +132,13 @@ Added by the channels slice (ADR-0014). Every one of these is a *stated* simplif
 - **Held down by:** `checkout.integration.spec.ts` — unwiring the consumer fails the freeze test, and removing the conditional fails the redelivery test (which asserts `updated_at` does not move on a second delivery).
 - **Fix if it ever matters:** a real broker with at-least-once delivery closes window 2 outright, and is the same change CAVEATS already lists under *In-process event bus, not a real broker*. Window 1 closes only with a synchronous cross-module write, which is the wrong trade.
 
+### A tenant created after the C-11 backfill has no channel
+- **Status:** open; small, and stated so the backfill is not read as a guarantee.
+- **What:** every tenant needs a default channel — cart creation and checkout resolve it, and a tenant without one gets a `500` on every basket. The seed writes one for each fixture tenant, and the C-11 migration gives one to every tenant in `pricing.tenant_config` at the moment it runs. Nothing creates one for a tenant added later through `PUT /admin/tenant-config`.
+- **Workaround:** create its first channel with `POST /admin/channels`, then `POST /admin/channels/:id/promote-default`.
+- **Also:** a backfilled channel is not marked `has_transacted`, even where the tenant already had orders — those predate the channel, and the backfill does not read orders. Its currency is editable until the next order marks it through C-17's consumer. The orders themselves carry their own `currency` and render as charged.
+- **Fix:** tenant onboarding creates the tenant defaults and a default channel in one step. Not yet a row.
+
 ### Authentication is a prerequisite that has not been built
 - **Status:** open, and the only item here that blocks a phase.
 - **What:** gate G-1 decided the back office may not ship without a login. [ADR-0015](adr/0015-operator-authentication-at-the-api-edge.md) designs it — the four gateway behaviours ADR-0007 has specified since May, one operator role, IdP left as configuration — and none of it is built.
@@ -187,7 +194,8 @@ Added by the channels slice (ADR-0014). Every one of these is a *stated* simplif
 - **Status:** by design, but sharp-edged.
 - **What:** the module integration suites `DROP SCHEMA ... CASCADE` for `catalog`, `pricing` and `orders` to get a clean slate.
 - **Impact:** running the full test suite against the same database you demo from silently empties it. The storefront then renders products with no prices, and checkout fails.
-- **Mitigation today:** documented in the README's command block, and the storefront conformance suite fails fast with an explicit "run `pnpm seed`" message rather than a confusing assertion. A dedicated test database would remove the foot-gun entirely.
+- **Mitigation today:** documented in the README's command block, and the storefront conformance suite fails fast with an explicit "run `pnpm seed`" message rather than a confusing assertion. A dedicated test database removes the foot-gun: the [RUNBOOK](RUNBOOK.md#running-the-live-suites) now creates `platform_test` for exactly this. The channels slice's migration specs (C-11, C-33) are written not to drop anything, so they are safe against any database.
+- **Not yet addressed:** nothing serialises the schema-dropping suites against *each other*. CI runs every project's tests at once (`nx run-many`, and jest's parallel workers within a project) against one database, so two suites dropping the same schema can overlap. It has not visibly bitten `main`; CI has never run on the `channels` branch, which adds two more such suites. A shared advisory lock taken in each destructive suite's `beforeAll` would close it.
 
 ### Cross-module test wiring lives in the composition root
 - **Status:** by design, worth knowing where to put things.
