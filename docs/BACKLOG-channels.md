@@ -8,16 +8,16 @@ House rules applied: one item, one commit, one stated verification. Anything nee
 
 **Read this section first when resuming.** Then [CHANNELS-BUILD-NOTES](design/CHANNELS-BUILD-NOTES.md) for the traps and mistakes that cost time, and the rows below for each item's verification record.
 
-`main` = `433f5b6` (61 commits, CI green, `v0.1.0`). `channels` branched from it. Code changed last in C-32b (2026-09-22); `git log -1 --format='%h %s' -- apps packages` names the latest commit to touch code, so a docs-only commit cannot make this line stale. **CI has never run on this branch** — it triggers only on `main` and on PRs into it, so every "verified" below is local.
+`main` = `433f5b6` (61 commits, CI green, `v0.1.0`). `channels` branched from it. Code changed last in C-18a (2026-09-22); `git log -1 --format='%h %s' -- apps packages` names the latest commit to touch code, so a docs-only commit cannot make this line stale. **CI has never run on this branch** — it triggers only on `main` and on PRs into it, so every "verified" below is local.
 
-### Done — 26 rows, all verified
+### Done — 27 rows, all verified
 
 | Phase | Rows |
 |---|---|
 | A — conventions and scope | C-1, C-2, C-3, C-2b, C-4 *(api half)*, C-9 *(REST half)* |
 | B — the channels module | C-5, C-6, C-7, C-8a, C-8b, C-10, C-11a, C-11 |
 | C — resolution and propagation | C-12, C-13, C-14, C-15, C-16a, C-16b, C-17, C-33 |
-| D — API surface | C-32a, C-32b |
+| D — API surface | C-32a, C-32b, C-18a |
 | F / G | C-26, C-29 |
 
 Plus [ADR-0015](adr/0015-operator-authentication-at-the-api-edge.md) (operator auth, designed not built). Test counts, measured 2026-09-22 with C-32b in the api image. Unit: channels 144 plus 24 database-gated, pricing 69, cart 21, api 13. Database, on a throwaway `platform_test`: channels 168, and checkout integration 13, C-11 backfill 7, C-33 backfill 6 and the C-32b middleware 7, run together. Live: 45 admin-conventions, 6 admin-concurrency, 19 scoped-graphql, 38 storefront conformance, and C-32b's live script, 28 expectations, 0 failures. scoped-graphql's one unexplained 30 s timeout, in the first run after C-33, has not recurred in three runs since; it stays recorded as unexplained. The RUNBOOK's order recipe and upgrade-path block were run verbatim, extracted from the file.
@@ -58,7 +58,8 @@ Re-sequenced 2026-09-22, after C-11 and C-33. Working hours at this build's obse
 | **Ordered chain** | | | | |
 | 1 | C-32a ✅ | Carts and checkout refuse a channel whose currency the price list cannot serve | done | — |
 | 2 | C-32b ✅ | Every storefront request scoped to such a channel is refused with a named error; admin unaffected; a second, servable `t-fashion` fixture channel | done | — |
-| 3 | C-18 | Capabilities per channel; tenant-level fields kept as deprecated aliases; the pricing locale copy stops mattering | 1.5–2.5 h | C-32b |
+| 3 | C-18a ✅ | Capabilities per channel; tenant-level fields kept as deprecated aliases; the pricing locale copy stops mattering | done | — |
+| 3a | C-18b | The storefront's cached capabilities invalidated by channel events, not only pricing ones | 1–1.5 h | C-18a |
 | 4 | C-19a | The storefront picks a channel | 2–3 h | C-18; decision 5 |
 | 5 | C-19b | The storefront sends channel scope on every read and uses the channel's capabilities; C-4's client guard; the cross-channel cache test | 1.5–2 h | C-19a |
 | 6 | C-30 | `tax_display` editable per channel, honoured by carts and checkout, recorded on orders | 1.5–2 h | C-32a |
@@ -70,9 +71,12 @@ Re-sequenced 2026-09-22, after C-11 and C-33. Working hours at this build's obse
 | 11 | C-35 | Creating a tenant creates its default channel | 1–1.5 h | — |
 | 12 | C-36 | The search indexer's price scaling for currencies without two decimals — verify, then fix | 0.5–1.5 h | — |
 | 12a | C-37 | The currency freeze covers an inherited currency: tenant-default currency edits refused while an inheriting channel has transacted | 1–1.5 h | — |
+| 12b | C-38 | Totals and checkout charge the channel's tax rate, and capabilities report it per channel | 1.5–2 h | — |
+| 12c | C-39 | CI fails when the committed GraphQL schema or client drifts from the api | 0.5–1 h | — |
+| 12d | C-19c | Remove the deprecated tenant-level capability fields (ADR-0014 §7, step 3) | 0.5 h | C-19b |
 | **Last** | | | | |
 | 13 | C-27 | Docs reconciled; the README run cold | 1.5–2.5 h | all above |
-| | | **Remaining, excluding the gated items below** | **≈ 14–22 h** | |
+| | | **Remaining, excluding the gated items below** | **≈ 15–23.5 h** | |
 
 Gated on the user: **Block 2** — the auth slice (ADR-0015) and the back office (C-20..C-24), ≈ 15–20 h. **Phase H** — per-channel price lists, an ADR first (≈ 2–3 h), the build not sized. **CI on this branch** — ≈ 15 minutes plus whatever it finds.
 
@@ -397,9 +401,31 @@ A forged event — tenant `t2` naming one of `t1`'s channels — marks nothing: 
 
 ## Phase D — API surface
 
-**C-18 — Capabilities becomes channel-aware**
+**C-18 — Split 2026-09-22 into C-18a and C-18b.** Changing where capabilities come from also changes what must invalidate the storefront's cached copy of them, and that is a second deliverable with its own check.
+
+**C-18a — Capabilities describe the request's channel** ✅ *(M)*
 Stays in the composition root (ADR §7): it also reports `apiVersion` and the deployment feature map, which no domain module should own. What changes is its source — it composes from the `channels` contract instead of reading pricing config directly. Channel-scoped fields added; tenant-level fields kept as `@deprecated` aliases resolving the default channel.
-*Verification:* deprecated and new fields agree for the default channel, and **t-fashion's two channels** (GBP and EUR, via C-11a) make a constant-wired alias diverge — a single-channel tenant passes even if the alias ignores the channel entirely. Codegen drift check fails if the committed client copy is stale.
+*Verification, as first written:* deprecated and new fields agree for the default channel, and **t-fashion's two channels** (GBP and EUR, via C-11a) make a constant-wired alias diverge — a single-channel tenant passes even if the alias ignores the channel entirely. Codegen drift check fails if the committed client copy is stale.
+
+*Shipped 2026-09-22.* `Query.capabilities` (and its REST twin, one class) gains `channel` — key, name, isDefault, currency, minor units, locale and locales, country, timezone — for the channel the request is in: the one it named, else the default; `null` only for a tenant with no channel. `currency`, `currencyMinorUnits`, `defaultLocale` and `locales` are `@deprecated` and answer for the **tenant default** even when the request names another, which is what they always meant. The hand-kept minor-units table is gone; `minorUnitsFor` derives them from the currency (KWD is 3, where the table said 2). "Which channel is this request in" moved into one helper, `apps/api/src/request-channel.ts`, now shared with C-32b's middleware.
+
+*Deliberately not moved:* `taxRateBps` and `taxDisplay`. They describe the money path, and the money path still charges the price list's rate and adds tax on top whatever a channel is configured with. Advertising a channel's own rate would describe a tax nobody charges — G-4 again, for tax. They move when **C-38** (rate) and **C-30** (display) make them charged per channel. `currency` has no such problem: since C-32 an unservable channel is refused before capabilities answer.
+
+*Verified:*
+
+- **Unit, 9**, with a second channel (`jp`) differing from the default in every field, so each alias fails by name if it follows the wrong channel. **Six mutations** each failing named tests: aliases following the request; `channel` describing the default; tax from the channel; the minor-units table's fallback; locale from the pricing copy; the shared helper swallowing every failure (caught through both its users).
+- **Live, 24 expectations, 0 failures:** unscoped `t-fashion` → `uk`, GBP, **`en-GB`** — the pricing copy said `en-US`, the drift C-11 recorded, now gone from capabilities; aliases equal the channel; REST equals GraphQL. Scoped to `trade` by header and by URL, `channel` is `trade` while the aliases stay `uk`'s. `t-books` → `us`; a tenant with no channel → `channel: null`, described from its price list. Made live: `trade` given `en-IE` shows it in `channel` while the alias stays `en-GB`. `de` still `422`.
+- **Contract:** schema, GraphQL client and REST client regenerated from the running api; storefront build and lint clean, conformance 38/38 — it still reads the deprecated fields and migrates in C-19b. scoped-graphql 19/19.
+
+*The row's first check, rewritten:* the two channels could not be `uk` and `de` — `de` is refused since C-32b — and `uk` and `trade` agree in every aliased field. The divergence is therefore made in the unit tests with a channel differing in every field, and live by giving `trade` its own locale for the duration of the check. And **no GraphQL codegen drift check exists** — CI checks only the REST half (R-4) — so that part of the row could not run as written: **C-39**.
+
+*Found by it:*
+- **A channel's tax rate is configuration nothing charges.** With `trade` set to `taxRateBps: 0` through admin, a cart in `trade` was taxed at 875 bps. Opened as **C-38**, in CAVEATS.
+- **The `fetch-schema` target corrupted every non-ASCII character.** It piped `docker compose exec … cat` through Windows PowerShell 5.1, which decoded UTF-8 by the console codepage and wrote `’` as `ΓÇÖ` — and added a BOM and CRLF. The schema had held no non-ASCII until these descriptions. It is now `docker compose cp`, byte for byte, so the committed schema also loses its BOM. `pnpm codegen` failed once during this, and passed on two re-runs; the cause was not found.
+
+**C-18b — The storefront's cached capabilities follow the new source** *(S)*
+Before C-18a the storefront's `capabilities:<tenant>` cache tag was invalidated by `pricing.tenant-config.updated`, because pricing was the source. It is now the channels module, so a channel or tenant-defaults edit must invalidate it too, or the storefront keeps a stale locale for up to an hour. The api forwards `channels.updated`, `channels.default-changed` and `channels.tenant-defaults.updated` to the storefront webhook; the storefront's revalidate route refreshes the capabilities and browse tags on them.
+*Verification:* a unit test of the route's event-to-tag mapping; and live, edit the default channel's locale and watch a product page re-render in the new format within seconds. On the C-18a image alone it stays in the old format.
 
 **C-32 — Split 2026-09-22 into C-32a and C-32b.** G-4 closed with option A: refuse a channel whose currency the price list cannot serve. `pricing.prices` holds one currency-less integer per product, in the currency of `pricing.tenant_config`; a channel is **servable** when its resolved currency equals that. Per-channel price lists, which would make every channel servable, are Phase H.
 
@@ -502,6 +528,18 @@ C-11 gave a default channel to every tenant that existed when it ran. A tenant c
 C-8a's `currency.frozen` checks only a channel's own `currency_code`. A channel that inherits its currency from the tenant defaults can have it changed after transacting, by editing the defaults — demonstrated on 2026-09-22: an order in `uk`, `has_transacted` true, then `PATCH /admin/tenant-defaults {currencyCode: EUR}` accepted and `uk` resolving to EUR. Since C-32 the channel is then refused rather than mis-charged, but the rule claims to protect every transacted channel's currency and does not. `updateTenantDefaults` refuses a currency change while any channel inheriting it has transacted, with the same `currency.frozen` violation naming those channels.
 *Verification:* the demonstration above, reversed — the same `PATCH` answers `400` naming `uk`; with no transacted inheriting channel it still succeeds, so the rule is not refusing every defaults edit.
 
+**C-38 — Totals and checkout charge the channel's tax rate** *(M, 1.5–2 h; added 2026-09-22)*
+A channel's `taxRateBps` — its own, or inherited from the tenant defaults — is validated, stored and shown by admin, and nothing charges it: `TotalsService` and checkout read `pricing.tenant_config.tax_rate_bps`. Demonstrated on 2026-09-22: `trade` set to 0, a cart in `trade` taxed at 875 bps. G-4's shape again, for tax, and no row owned it. The money path takes the rate from the pricing scope, as C-32a did for currency; capabilities then report it under `channel`. Needs a decision recorded in the row when it is built: what a resolved `null` rate — the seam kept for a tax provider — charges.
+*Verification:* `trade` at 0 and `uk` at 875, identical carts: taxed differently, and each order's snapshot says so. Today both are taxed at 875.
+
+**C-39 — CI fails when the GraphQL schema or client drifts** *(S, 0.5–1 h; added 2026-09-22)*
+R-4 fails CI when the REST client drifts from the api's OpenAPI document. Nothing does the same for the GraphQL half: `schema.graphql` and `generated/graphql.ts` are regenerated by hand (`fetch-schema`, `codegen`) and a stale copy passes. C-18's row assumed this check existed. Add it beside R-4's step, in the job that already runs the api.
+*Verification:* a hand-edit to the committed schema fails the step — proved on a real runner, since R-4's local proof once passed a hand-edit that regeneration had silently overwritten.
+
+**C-19c — Remove the deprecated capability fields** *(XS, 0.5 h; added 2026-09-22)*
+ADR-0014 §7's third step: once the storefront reads `capabilities.channel` (C-19b), drop the tenant-level `currency`, `currencyMinorUnits`, `defaultLocale` and `locales`, in a commit of its own.
+*Verification:* the storefront builds and its conformance suite passes with the fields gone; a consumer still selecting one gets a schema error, not a silent default.
+
 **C-27 — Docs reconciled**
 ARCHITECTURE, RUNBOOK, README updated. Every documented command executed, not re-read.
 *Verification:* run the README flow cold. Two commands in this project's own instruction file had previously never worked at all.
@@ -554,6 +592,6 @@ Phase E is preceded by the auth slice, which is its own ADR (0015) and its own s
 
 Phase G touches pricing, not channels plumbing, so it can run any time after Phase B — except C-30, which needs C-10 (channel `PATCH` exists) **and C-32a**, because a per-channel `tax_display` is read on the same money path C-32a makes channel-aware.
 
-**C-32a → C-32b → C-18 → C-19a → C-19b** (G-4 closed with option A; C-32 and C-19 split 2026-09-22). C-31 needs C-19b and C-30. Nothing that makes a channel's currency *visible* may land before something makes it *charged or refused*: capabilities advertising EUR for `de` while checkout charges GBP would be a control wired to nothing, and a storefront rendering € around GBP integers is the money bug at display level. C-11, C-25, C-28 and C-33 do not depend on it. Phase H (per-channel price lists) follows C-32 and replaces its refusal with real prices.
+**C-32a → C-32b → C-18a → C-18b → C-19a → C-19b → C-19c** (G-4 closed with option A; C-32, C-18 and C-19 split 2026-09-22). C-31 needs C-19b and C-30. C-38 makes a channel's tax rate charged; until it lands, capabilities keep reporting the tenant-level rate that is. Nothing that makes a channel's currency *visible* may land before something makes it *charged or refused*: capabilities advertising EUR for `de` while checkout charges GBP would be a control wired to nothing, and a storefront rendering € around GBP integers is the money bug at display level. C-11, C-25, C-28 and C-33 do not depend on it. Phase H (per-channel price lists) follows C-32 and replaces its refusal with real prices.
 
 **Total ≈ 9–11.5 weeks excluding authentication.**

@@ -2,10 +2,18 @@ import { Field, Int, ObjectType, Query, Resolver, registerEnumType } from '@nest
 import { Controller, Get, Inject, Injectable, Module } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiProperty, ApiTags } from '@nestjs/swagger';
 import {
+  CHANNEL_QUERY,
+  minorUnitsFor,
+  type ChannelConfig,
+  type IChannelsQuery,
+} from '@platform/modules/channels/contracts';
+import {
   TENANT_CONFIG_QUERY,
   type ITenantConfigQuery,
+  type TenantConfig,
 } from '@platform/modules/pricing/contracts';
 import { currentTenantOrThrow } from '@platform/shared/tenant-context';
+import { defaultChannelOrNull, requestChannel } from './request-channel';
 
 /**
  * `Query.capabilities` — the API describing itself.
@@ -30,6 +38,25 @@ import { currentTenantOrThrow } from '@platform/shared/tenant-context';
  * wired in, what this build supports — and no single domain module knows that.
  * Putting it in `pricing` because that happens to be where currency is stored
  * would repeat the mistake documented for branding in CAVEATS.md.
+ *
+ * ── Channel-aware since C-18 (ADR-0014 section 7) ─────────────────────────
+ *
+ * `channel` describes the channel the request is in — the one it named, or
+ * the tenant default — composed from the channels contract. The tenant-level
+ * `currency`, `currencyMinorUnits`, `defaultLocale` and `locales` are kept as
+ * deprecated aliases, and answer for the tenant DEFAULT channel even when the
+ * request names another: that is what they always meant, and a consumer
+ * reading them must not have their meaning change underneath it. The
+ * storefront moves to `channel` in C-19b; the aliases go in a later commit.
+ *
+ * `taxRateBps` and `taxDisplay` are deliberately NOT under `channel` yet.
+ * They describe the money path, and the money path still charges the price
+ * list's rate and adds tax on top, whatever a channel is configured with.
+ * Advertising a channel's own rate here would describe a tax nobody charges —
+ * gate G-4's shape again. They move when C-38 (rate) and C-30 (display) make
+ * them charged per channel. `currency` has no such problem: since C-32 a
+ * channel whose currency the price list cannot serve is refused before this
+ * runs, so for any channel answered here, the currency is the charged one.
  *
  * On exposing currency and taxRateBps here: BrandingResolver deliberately
  * keeps them out of `Query.theme`, and that stays true — a theme query has no
@@ -68,6 +95,59 @@ export class CapabilityFeature {
   enabled!: boolean;
 }
 
+/** Reason text shared by every deprecated tenant-level field. */
+const DEPRECATED_FOR_CHANNEL = (field: string): string =>
+  `Use channel.${field}. This answers for the tenant's default channel even when the ` +
+  `request names another (ADR-0014 section 7).`;
+
+@ObjectType({
+  description:
+    'The channel a request is served in: the one it named, or the tenant default. Everything here is resolved — inherited values are filled in.',
+})
+export class ChannelCapabilities {
+  @Field(() => String, { description: 'Stable, URL-safe identifier, e.g. uk.' })
+  @ApiProperty({ example: 'uk' })
+  key!: string;
+
+  @Field(() => String)
+  @ApiProperty({ example: 'United Kingdom' })
+  name!: string;
+
+  @Field(() => Boolean, { description: 'Whether requests that name no channel are served in this one.' })
+  @ApiProperty()
+  isDefault!: boolean;
+
+  @Field(() => String, {
+    description:
+      'ISO 4217. For any channel this answers for, also the currency its prices are charged in: a channel the price list cannot serve is refused instead.',
+  })
+  @ApiProperty({ example: 'GBP' })
+  currency!: string;
+
+  @Field(() => Int, {
+    description:
+      'Decimal places in the currency. Every money value in this API is an integer in minor units: 19999 with minorUnits 2 is 199.99.',
+  })
+  @ApiProperty({ example: 2 })
+  currencyMinorUnits!: number;
+
+  @Field(() => String, { description: 'BCP-47 tag money and dates are formatted in.' })
+  @ApiProperty({ example: 'en-GB' })
+  defaultLocale!: string;
+
+  @Field(() => [String], { description: 'BCP-47 tags this channel serves. Formatting, not translation.' })
+  @ApiProperty({ type: [String], example: ['en-GB'] })
+  locales!: string[];
+
+  @Field(() => String, { description: 'ISO 3166-1 alpha-2.' })
+  @ApiProperty({ example: 'GB' })
+  country!: string;
+
+  @Field(() => String, { description: 'IANA time zone.' })
+  @ApiProperty({ example: 'Europe/London' })
+  timezone!: string;
+}
+
 @ObjectType({ description: 'What this API supports, for the calling tenant.' })
 export class CapabilitiesType {
   @Field(() => String)
@@ -78,27 +158,50 @@ export class CapabilitiesType {
   @ApiProperty({ example: '0.1.0' })
   apiVersion!: string;
 
-  @Field(() => String, { description: 'ISO 4217 code this tenant trades in.' })
-  @ApiProperty({ example: 'USD', description: 'ISO 4217 code this tenant trades in.' })
+  @Field(() => ChannelCapabilities, {
+    nullable: true,
+    description:
+      'The channel this request is served in: the one it named, or the tenant default. Null only for a tenant with no channel at all.',
+  })
+  @ApiProperty({ type: ChannelCapabilities, nullable: true })
+  channel!: ChannelCapabilities | null;
+
+  @Field(() => String, {
+    description: 'ISO 4217 code of the tenant default channel.',
+    deprecationReason: DEPRECATED_FOR_CHANNEL('currency'),
+  })
+  @ApiProperty({
+    example: 'USD',
+    description: 'ISO 4217 code of the tenant default channel.',
+    deprecated: true,
+  })
   currency!: string;
 
   @Field(() => Int, {
     description:
       'Decimal places in the currency. Every money value in this API is an integer in minor units: 19999 with minorUnits 2 is 199.99. A consumer that assumes 2 will be wrong for JPY.',
+    deprecationReason: DEPRECATED_FOR_CHANNEL('currencyMinorUnits'),
   })
   @ApiProperty({
     example: 2,
     description:
       'Decimal places in the currency. Every money value in this API is an integer in minor units: 19999 with minorUnits 2 is 199.99. A consumer that assumes 2 will be wrong for JPY.',
+    deprecated: true,
   })
   currencyMinorUnits!: number;
 
-  @Field(() => TaxDisplay)
+  @Field(() => TaxDisplay, {
+    description:
+      'How the engine applies tax for this tenant. Tenant-level until C-30 makes it charged per channel.',
+  })
   @ApiProperty({ enum: TaxDisplay, example: TaxDisplay.EXCLUSIVE })
   taxDisplay!: TaxDisplay;
 
-  @Field(() => Int, { description: 'Tax rate in basis points. 875 is 8.75%.' })
-  @ApiProperty({ example: 875, description: 'Tax rate in basis points. 875 is 8.75%.' })
+  @Field(() => Int, {
+    description:
+      'The tax rate checkout charges, in basis points: 875 is 8.75%. Tenant-level until C-38 makes a channel’s own rate the one charged.',
+  })
+  @ApiProperty({ example: 875, description: 'The tax rate checkout charges, in basis points.' })
   taxRateBps!: number;
 
   @Field(() => Boolean, {
@@ -111,12 +214,18 @@ export class CapabilitiesType {
   })
   configured!: boolean;
 
-  @Field(() => String)
-  @ApiProperty({ example: 'en-US' })
+  @Field(() => String, {
+    description: 'BCP-47 tag of the tenant default channel.',
+    deprecationReason: DEPRECATED_FOR_CHANNEL('defaultLocale'),
+  })
+  @ApiProperty({ example: 'en-US', deprecated: true })
   defaultLocale!: string;
 
-  @Field(() => [String], { description: 'BCP-47 tags this deployment can serve.' })
-  @ApiProperty({ type: [String], example: ['en-US'] })
+  @Field(() => [String], {
+    description: 'BCP-47 tags the tenant default channel serves.',
+    deprecationReason: DEPRECATED_FOR_CHANNEL('locales'),
+  })
+  @ApiProperty({ type: [String], example: ['en-US'], deprecated: true })
   locales!: string[];
 
   @Field(() => [CapabilityFeature])
@@ -131,20 +240,6 @@ export class CapabilitiesType {
  */
 const DEFAULT_CURRENCY = 'USD';
 const DEFAULT_TAX_RATE_BPS = 0;
-
-/**
- * Minor units per ISO 4217. Only currencies this deployment has actually been
- * exercised with are listed; anything else falls back to 2, which is right for
- * the large majority and wrong in a way the consumer can detect, because the
- * currency code sits right next to it.
- */
-const MINOR_UNITS: Record<string, number> = {
-  USD: 2,
-  EUR: 2,
-  GBP: 2,
-  INR: 2,
-  JPY: 0,
-};
 
 /**
  * What this build implements. Honestly negative where the platform does not do
@@ -196,35 +291,80 @@ const FALLBACK_LOCALE = 'en-US';
 export class CapabilitiesService {
   constructor(
     @Inject(TENANT_CONFIG_QUERY) private readonly tenantConfig: ITenantConfigQuery,
+    // The event-fed read-model: a warm channel is a map lookup, not a query.
+    @Inject(CHANNEL_QUERY) private readonly channels: IChannelsQuery,
   ) {}
 
   async describe(): Promise<CapabilitiesType> {
-    const tenant = currentTenantOrThrow();
-    const config = await this.tenantConfig.findOptional(tenant.tenantId);
-    const currency = config?.currency ?? DEFAULT_CURRENCY;
-    const locale = config?.locale ?? FALLBACK_LOCALE;
+    const { tenantId, channelId } = currentTenantOrThrow();
+    const config = await this.tenantConfig.findOptional(tenantId);
+    const channel = await requestChannel(this.channels, tenantId, channelId);
+    // Asked separately only when the request named a channel; otherwise the
+    // request's channel IS the default, and asking twice would be two reads.
+    const tenantDefault = channelId
+      ? await defaultChannelOrNull(this.channels, tenantId)
+      : channel;
+    const legacy = tenantDefault ? fromChannel(tenantDefault) : fromPricing(config);
 
     return {
-      tenantId: tenant.tenantId,
+      tenantId,
       apiVersion: API_VERSION,
-      currency,
-      currencyMinorUnits: MINOR_UNITS[currency] ?? 2,
-      // Totals add tax on top of the discounted subtotal rather than deriving
-      // it out of a tax-inclusive price, so this states how the pricing engine
-      // works — it is not a per-tenant setting.
+      channel: channel ? fromChannel(channel) : null,
+      currency: legacy.currency,
+      currencyMinorUnits: legacy.currencyMinorUnits,
+      // The engine adds tax on top of the discounted subtotal; C-29 taught it
+      // gross, but nothing passes a mode to it until C-30. So this states how
+      // money is computed today — it is not a per-tenant or per-channel setting.
       taxDisplay: TaxDisplay.EXCLUSIVE,
+      // The price list's rate, because that is the one checkout charges. A
+      // channel's own `taxRateBps` is configuration nothing charges yet (C-38).
       taxRateBps: config?.taxRateBps ?? DEFAULT_TAX_RATE_BPS,
       configured: config !== null,
-      defaultLocale: locale,
-      // One entry, and it is the tenant's own. `locales` stays a list because
-      // the field describes what a consumer may ask for, and a deployment that
-      // later serves several would grow this array without changing the
-      // response shape. Advertising tags this platform cannot actually format
-      // would be inventing a capability, so it lists exactly one.
-      locales: [locale],
+      defaultLocale: legacy.defaultLocale,
+      locales: legacy.locales,
       features: FEATURES.map((f) => ({ ...f })),
     };
   }
+}
+
+/** A resolved channel, as capabilities describe it. */
+function fromChannel(channel: ChannelConfig): ChannelCapabilities {
+  return {
+    key: channel.key,
+    name: channel.name,
+    isDefault: channel.isDefault,
+    currency: channel.currencyCode,
+    currencyMinorUnits: channel.currencyMinorUnits,
+    defaultLocale: channel.defaultLocale,
+    locales: [...channel.supportedLocales],
+    country: channel.country,
+    timezone: channel.timezone,
+  };
+}
+
+/**
+ * The deprecated fields for a tenant with no channel at all — one created
+ * after the C-11 backfill ran (C-35). Such a tenant predates channels in every
+ * sense that matters, so it is described the way it was before them: from its
+ * price list, or platform defaults alongside `configured: false`. Minor units
+ * come from the currency itself, as they do for a channel; the hand-kept
+ * table this replaced defaulted anything unlisted to 2, which is wrong for
+ * JPY's neighbours and every three-decimal currency.
+ */
+function fromPricing(config: TenantConfig | null): {
+  currency: string;
+  currencyMinorUnits: number;
+  defaultLocale: string;
+  locales: string[];
+} {
+  const currency = config?.currency ?? DEFAULT_CURRENCY;
+  const locale = config?.locale ?? FALLBACK_LOCALE;
+  return {
+    currency,
+    currencyMinorUnits: minorUnitsFor(currency),
+    defaultLocale: locale,
+    locales: [locale],
+  };
 }
 
 @Injectable()

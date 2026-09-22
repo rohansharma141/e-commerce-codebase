@@ -122,6 +122,8 @@ The first change here to alter an API surface a shipped storefront reads. Expand
 2. Migrate the storefront.
 3. Remove the deprecated fields in a separate commit.
 
+*Progress, 2026-09-22:* step 1 is C-18a — `capabilities.channel` added, `currency`, `currencyMinorUnits`, `defaultLocale` and `locales` deprecated and answering for the default channel. `taxRateBps` and `taxDisplay` stay tenant-level until the money path charges them per channel (C-38, C-30); advertising a channel's rate before then would describe a tax nobody charges. Step 2 is C-19b, step 3 is C-19c.
+
 Channel semantics live in the `channels` contract: `ChannelService` is the one resolver of "what configuration applies here". The capabilities surface itself stays where it is — the composition root — because it also reports `apiVersion` and the deployment's feature map, which are composition facts no domain module should own. It composes from the channels contract exactly as it consumes pricing's `TENANT_CONFIG_QUERY` today; what disappears is its direct read of pricing config.
 
 ### 8. Every tenant gets a default channel, and the missing-header fallback has an expiry

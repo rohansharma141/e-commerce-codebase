@@ -1,4 +1,4 @@
-﻿# ------------------------------------------------------
+# ------------------------------------------------------
 # THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
 # ------------------------------------------------------
 
@@ -16,25 +16,38 @@ type CapabilitiesType {
   apiVersion: String!
 
   """
+  The channel this request is served in: the one it named, or the tenant default. Null only for a tenant with no channel at all.
+  """
+  channel: ChannelCapabilities
+
+  """
   False when this tenant has no pricing configuration yet, in which case currency and taxRateBps are platform defaults rather than real settings.
   """
   configured: Boolean!
 
-  """ISO 4217 code this tenant trades in."""
-  currency: String!
+  """ISO 4217 code of the tenant default channel."""
+  currency: String! @deprecated(reason: "Use channel.currency. This answers for the tenant's default channel even when the request names another (ADR-0014 section 7).")
 
   """
   Decimal places in the currency. Every money value in this API is an integer in minor units: 19999 with minorUnits 2 is 199.99. A consumer that assumes 2 will be wrong for JPY.
   """
-  currencyMinorUnits: Int!
-  defaultLocale: String!
+  currencyMinorUnits: Int! @deprecated(reason: "Use channel.currencyMinorUnits. This answers for the tenant's default channel even when the request names another (ADR-0014 section 7).")
+
+  """BCP-47 tag of the tenant default channel."""
+  defaultLocale: String! @deprecated(reason: "Use channel.defaultLocale. This answers for the tenant's default channel even when the request names another (ADR-0014 section 7).")
   features: [CapabilityFeature!]!
 
-  """BCP-47 tags this deployment can serve."""
-  locales: [String!]!
+  """BCP-47 tags the tenant default channel serves."""
+  locales: [String!]! @deprecated(reason: "Use channel.locales. This answers for the tenant's default channel even when the request names another (ADR-0014 section 7).")
+
+  """
+  How the engine applies tax for this tenant. Tenant-level until C-30 makes it charged per channel.
+  """
   taxDisplay: TaxDisplay!
 
-  """Tax rate in basis points. 875 is 8.75%."""
+  """
+  The tax rate checkout charges, in basis points: 875 is 8.75%. Tenant-level until C-38 makes a channel’s own rate the one charged.
+  """
   taxRateBps: Int!
   tenantId: String!
 }
@@ -45,6 +58,40 @@ type CapabilityFeature {
 
   """Stable dotted key, e.g. promotions.coupon"""
   key: String!
+}
+
+"""
+The channel a request is served in: the one it named, or the tenant default. Everything here is resolved — inherited values are filled in.
+"""
+type ChannelCapabilities {
+  """ISO 3166-1 alpha-2."""
+  country: String!
+
+  """
+  ISO 4217. For any channel this answers for, also the currency its prices are charged in: a channel the price list cannot serve is refused instead.
+  """
+  currency: String!
+
+  """
+  Decimal places in the currency. Every money value in this API is an integer in minor units: 19999 with minorUnits 2 is 199.99.
+  """
+  currencyMinorUnits: Int!
+
+  """BCP-47 tag money and dates are formatted in."""
+  defaultLocale: String!
+
+  """Whether requests that name no channel are served in this one."""
+  isDefault: Boolean!
+
+  """Stable, URL-safe identifier, e.g. uk."""
+  key: String!
+
+  """BCP-47 tags this channel serves. Formatting, not translation."""
+  locales: [String!]!
+  name: String!
+
+  """IANA time zone."""
+  timezone: String!
 }
 
 type FacetBucketType {

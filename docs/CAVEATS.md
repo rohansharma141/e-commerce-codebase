@@ -111,6 +111,12 @@ Added by the channels slice (ADR-0014). Every one of these is a *stated* simplif
 - **Impact:** correct for a demo and for a single-rate jurisdiction. Not correct for anyone actually filing returns.
 - **The seam:** `tax_rate_bps` is nullable precisely so it can become null when a real tax provider (Avalara, TaxJar, Stripe Tax) is wired in. Rate resolution moves behind a provider interface; nothing else in the model changes.
 
+### A channel's tax rate is configuration nothing charges yet
+- **Status:** open — C-38. Found 2026-09-22 while building C-18a.
+- **What:** a channel's `taxRateBps`, its own or inherited from the tenant defaults, is validated, stored and shown by the admin API. Totals and checkout charge `pricing.tenant_config.tax_rate_bps` instead. Demonstrated: `trade` set to 0 through admin, a cart in `trade` taxed at 875 bps.
+- **Impact:** none for the seeded tenants, whose channel and pricing rates are equal because the seed derives one from the other. An operator who sets a channel's rate sees it accepted and not applied — the same shape as gate G-4 for currency.
+- **Held honest meanwhile:** `capabilities.taxRateBps` reports the rate checkout charges, not a channel's configured one, and stays tenant-level until C-38 makes the channel's rate the charged one.
+
 ### Cache entries multiply by channels per tenant
 - **Status:** open; fine now, worth watching.
 - **What:** URL scoping puts the channel key in the path, so each channel gets its own cache entry for the same page. A tenant with four channels has four times the entries it had.

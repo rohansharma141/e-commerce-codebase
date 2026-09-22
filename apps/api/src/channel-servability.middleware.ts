@@ -1,13 +1,9 @@
 import { Inject, Injectable, type NestMiddleware } from '@nestjs/common';
 import type { NextFunction, Request, Response } from 'express';
 import { currentTenantOrThrow } from '@platform/shared/tenant-context';
-import {
-  CHANNEL_QUERY,
-  NoDefaultChannelError,
-  type ChannelConfig,
-  type IChannelsQuery,
-} from '@platform/modules/channels/contracts';
+import { CHANNEL_QUERY, type IChannelsQuery } from '@platform/modules/channels/contracts';
 import { TOTALS_SERVICE, type ITotalsService } from '@platform/modules/pricing/contracts';
+import { requestChannel } from './request-channel';
 
 /**
  * Refuses every storefront request made in a channel the tenant's price list
@@ -59,22 +55,8 @@ export class ChannelServabilityMiddleware implements NestMiddleware {
 
   async use(_req: Request, _res: Response, next: NextFunction): Promise<void> {
     const { tenantId, channelId } = currentTenantOrThrow();
-    const channel = await this.requestChannel(tenantId, channelId);
+    const channel = await requestChannel(this.channels, tenantId, channelId);
     if (channel) await this.totals.assertServable(tenantId, channel);
     next();
-  }
-
-  /** The channel this request is in: the one it named, else the tenant default. */
-  private async requestChannel(
-    tenantId: string,
-    channelId: string | undefined,
-  ): Promise<ChannelConfig | null> {
-    if (channelId) return this.channels.findById(tenantId, channelId);
-    try {
-      return await this.channels.findDefault(tenantId);
-    } catch (err) {
-      if (err instanceof NoDefaultChannelError) return null;
-      throw err;
-    }
   }
 }

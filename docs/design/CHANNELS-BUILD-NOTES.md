@@ -4,7 +4,7 @@ The companion to [CHANNELS-OVERVIEW](CHANNELS-OVERVIEW.md) (what the slice deliv
 
 It exists because these facts otherwise live in commit messages and one session's context, and both are easy to lose. Where an entry names a commit, the commit message has the full account.
 
-Written 2026-09-19; updated 2026-09-22 for C-11, C-33, C-32a and C-32b.
+Written 2026-09-19; updated 2026-09-22 for C-11, C-33, C-32a, C-32b and C-18a.
 
 ---
 
@@ -57,6 +57,8 @@ Every entry below produced a symptom whose cause was elsewhere. Most share one s
 **A failed `docker compose build` leaves the old container serving,** and `/ready` still answers 200. Check a behavioural marker that only the new code produces before trusting a rebuild.
 
 **The destructive suites drop more than they used to.** `channels.integration.spec.ts` drops the `channels` schema; `checkout.integration.spec.ts` now drops `orders`, `pricing` **and** `channels`. After either, re-run `pnpm seed` and recreate at least two orders through real checkout — `admin-conventions` pages through `/admin/orders` and its `beforeAll` refuses to run on fewer than two.
+
+**Anything piped through Windows PowerShell 5.1 is re-encoded.** It decodes a native command's UTF-8 output by the console codepage and writes it back out as whatever `Set-Content` chooses, BOM included. The `fetch-schema` target corrupted every non-ASCII character in the GraphQL schema this way, silently, because until C-18a there were none. Copy files out of containers with `docker compose cp`. *(C-18a)*
 
 **Mutating an applied migration trips the checksum guard before the mutation is tested.** The runner refuses a changed file, so a mutation run against a database that already applied the original fails in `beforeAll` — "suite failed to run", which proves nothing. Rebuild the throwaway database before each mutation run, as C-11's and C-33's were.
 

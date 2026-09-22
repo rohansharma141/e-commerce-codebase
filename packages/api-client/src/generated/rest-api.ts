@@ -1038,6 +1038,29 @@ export interface components {
             /** @description Opaque token for the next page, or null on the last page. Pass it back as ?cursor=. Do not parse it — it encodes the sort key, which here is the (createdAt, id) pair. */
             nextCursor: string | null;
         };
+        ChannelCapabilities: {
+            /** @example uk */
+            key: string;
+            /** @example United Kingdom */
+            name: string;
+            isDefault: boolean;
+            /** @example GBP */
+            currency: string;
+            /** @example 2 */
+            currencyMinorUnits: number;
+            /** @example en-GB */
+            defaultLocale: string;
+            /**
+             * @example [
+             *       "en-GB"
+             *     ]
+             */
+            locales: string[];
+            /** @example GB */
+            country: string;
+            /** @example Europe/London */
+            timezone: string;
+        };
         CapabilityFeature: {
             /** @example promotions.coupon */
             key: string;
@@ -1048,12 +1071,15 @@ export interface components {
             tenantId: string;
             /** @example 0.1.0 */
             apiVersion: string;
+            channel: components["schemas"]["ChannelCapabilities"] | null;
             /**
-             * @description ISO 4217 code this tenant trades in.
+             * @deprecated
+             * @description ISO 4217 code of the tenant default channel.
              * @example USD
              */
             currency: string;
             /**
+             * @deprecated
              * @description Decimal places in the currency. Every money value in this API is an integer in minor units: 19999 with minorUnits 2 is 199.99. A consumer that assumes 2 will be wrong for JPY.
              * @example 2
              */
@@ -1064,15 +1090,19 @@ export interface components {
              */
             taxDisplay: "EXCLUSIVE" | "INCLUSIVE";
             /**
-             * @description Tax rate in basis points. 875 is 8.75%.
+             * @description The tax rate checkout charges, in basis points.
              * @example 875
              */
             taxRateBps: number;
             /** @description False when this tenant has no pricing configuration yet, in which case currency, locale and taxRateBps are platform defaults rather than real settings. */
             configured: boolean;
-            /** @example en-US */
+            /**
+             * @deprecated
+             * @example en-US
+             */
             defaultLocale: string;
             /**
+             * @deprecated
              * @example [
              *       "en-US"
              *     ]

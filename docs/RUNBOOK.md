@@ -65,6 +65,8 @@ Learned by being bitten. Each of these produced a confusing symptom whose cause 
 
 **A middleware route pattern that registers is not one that matches.** `forRoutes()` paths go to Express's path-to-regexp (0.1.13 here), which compiles `x/(.*)` as `x/(?:\.(.*))` — a literal dot — so the pattern is accepted and guards nothing. Use `x/*`. `.exclude()` is matched by Nest's own path-to-regexp 3.x, where `(.*)` works; the two look alike and are not. Prove a guard with a route only the guard can refuse (C-32b).
 
+**Regenerate the GraphQL client with `fetch-schema`, then `pnpm codegen`.** `fetch-schema` copies `/app/schema.gql` out of the running api container with `docker compose cp`, byte for byte. It used to pipe `docker compose exec … cat` through Windows PowerShell 5.1, which decoded UTF-8 by the console codepage — `’` arrived as `ΓÇÖ` — and added a BOM. Nothing in CI checks this half for drift yet (C-39), so read the diff.
+
 **A GraphQL `GET` without a preflight header is a `400`.** Apollo's CSRF protection refuses a `GET` carrying no non-simple header. The storefront sends `apollo-require-preflight`; a `curl` probe must too, or it measures rejections — which is how a latency comparison once timed two builds' `400`s and found them equal.
 
 **The event bus is asynchronous.** `publish()` returns before any handler runs. A handler's effect is not visible when the publishing call resolves, and a handler must bind its tenant from the event rather than borrowing the request's connection, which may already be released.

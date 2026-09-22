@@ -23,7 +23,7 @@
     "fetch-schema": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "powershell -NoProfile -Command \"docker compose exec api cat //app/schema.gql | Set-Content -Encoding utf8 packages/api-client/schema.graphql\"",
+        "command": "docker compose cp api:/app/schema.gql packages/api-client/schema.graphql",
         "cwd": "{workspaceRoot}"
       }
     },

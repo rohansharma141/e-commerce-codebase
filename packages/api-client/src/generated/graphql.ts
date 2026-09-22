@@ -31,18 +31,34 @@ export type CapabilitiesType = {
   __typename?: 'CapabilitiesType';
   /** Version of the platform serving this request. */
   apiVersion: Scalars['String']['output'];
+  /** The channel this request is served in: the one it named, or the tenant default. Null only for a tenant with no channel at all. */
+  channel?: Maybe<ChannelCapabilities>;
   /** False when this tenant has no pricing configuration yet, in which case currency and taxRateBps are platform defaults rather than real settings. */
   configured: Scalars['Boolean']['output'];
-  /** ISO 4217 code this tenant trades in. */
+  /**
+   * ISO 4217 code of the tenant default channel.
+   * @deprecated Use channel.currency. This answers for the tenant's default channel even when the request names another (ADR-0014 section 7).
+   */
   currency: Scalars['String']['output'];
-  /** Decimal places in the currency. Every money value in this API is an integer in minor units: 19999 with minorUnits 2 is 199.99. A consumer that assumes 2 will be wrong for JPY. */
+  /**
+   * Decimal places in the currency. Every money value in this API is an integer in minor units: 19999 with minorUnits 2 is 199.99. A consumer that assumes 2 will be wrong for JPY.
+   * @deprecated Use channel.currencyMinorUnits. This answers for the tenant's default channel even when the request names another (ADR-0014 section 7).
+   */
   currencyMinorUnits: Scalars['Int']['output'];
+  /**
+   * BCP-47 tag of the tenant default channel.
+   * @deprecated Use channel.defaultLocale. This answers for the tenant's default channel even when the request names another (ADR-0014 section 7).
+   */
   defaultLocale: Scalars['String']['output'];
   features: Array<CapabilityFeature>;
-  /** BCP-47 tags this deployment can serve. */
+  /**
+   * BCP-47 tags the tenant default channel serves.
+   * @deprecated Use channel.locales. This answers for the tenant's default channel even when the request names another (ADR-0014 section 7).
+   */
   locales: Array<Scalars['String']['output']>;
+  /** How the engine applies tax for this tenant. Tenant-level until C-30 makes it charged per channel. */
   taxDisplay: TaxDisplay;
-  /** Tax rate in basis points. 875 is 8.75%. */
+  /** The tax rate checkout charges, in basis points: 875 is 8.75%. Tenant-level until C-38 makes a channel’s own rate the one charged. */
   taxRateBps: Scalars['Int']['output'];
   tenantId: Scalars['String']['output'];
 };
@@ -53,6 +69,28 @@ export type CapabilityFeature = {
   enabled: Scalars['Boolean']['output'];
   /** Stable dotted key, e.g. promotions.coupon */
   key: Scalars['String']['output'];
+};
+
+/** The channel a request is served in: the one it named, or the tenant default. Everything here is resolved — inherited values are filled in. */
+export type ChannelCapabilities = {
+  __typename?: 'ChannelCapabilities';
+  /** ISO 3166-1 alpha-2. */
+  country: Scalars['String']['output'];
+  /** ISO 4217. For any channel this answers for, also the currency its prices are charged in: a channel the price list cannot serve is refused instead. */
+  currency: Scalars['String']['output'];
+  /** Decimal places in the currency. Every money value in this API is an integer in minor units: 19999 with minorUnits 2 is 199.99. */
+  currencyMinorUnits: Scalars['Int']['output'];
+  /** BCP-47 tag money and dates are formatted in. */
+  defaultLocale: Scalars['String']['output'];
+  /** Whether requests that name no channel are served in this one. */
+  isDefault: Scalars['Boolean']['output'];
+  /** Stable, URL-safe identifier, e.g. uk. */
+  key: Scalars['String']['output'];
+  /** BCP-47 tags this channel serves. Formatting, not translation. */
+  locales: Array<Scalars['String']['output']>;
+  name: Scalars['String']['output'];
+  /** IANA time zone. */
+  timezone: Scalars['String']['output'];
 };
 
 export type FacetBucketType = {
