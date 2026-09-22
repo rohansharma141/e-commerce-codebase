@@ -9,6 +9,7 @@ import {
   type TenantDrizzleAccessor,
 } from '@platform/shared/database';
 import {
+  NoDefaultChannelError,
   resolveChannelConfig,
   type Channel,
   type ChannelConfig,
@@ -237,24 +238,21 @@ export class ChannelsRepository {
     return (await this.resolve(row)).config;
   }
 
-  /** The tenant's default channel. Throws if none — a tenant without one resolves nothing. */
+  /**
+   * The tenant's default channel, or `NoDefaultChannelError`.
+   *
+   * "At least one" has two sources and one gap. The seed writes a default for
+   * every fixture tenant, and the C-11 backfill gives one to every tenant that
+   * existed when it ran. A tenant created afterwards through
+   * `PUT /admin/tenant-config` gets neither and lands here (CAVEATS, C-35).
+   */
   async findDefault(tenantId: string): Promise<ChannelConfig> {
     const [row] = await this.db
       .select()
       .from(channels)
       .where(and(eq(channels.tenantId, tenantId), eq(channels.isDefault, true)))
       .limit(1);
-    if (!row) {
-      // "At least one" has two sources and one gap. The seed writes a default
-      // for every fixture tenant, and the C-11 backfill gives one to every
-      // tenant that existed when it ran. A tenant created afterwards through
-      // PUT /admin/tenant-config gets neither, and lands here (CAVEATS).
-      throw new Error(
-        `tenant ${tenantId} has no default channel. The partial unique index allows ` +
-          `at most one; nothing yet creates one for a tenant added after the C-11 ` +
-          `backfill ran, so create its first channel through POST /admin/channels.`,
-      );
-    }
+    if (!row) throw new NoDefaultChannelError(tenantId);
     return (await this.resolve(row)).config;
   }
 

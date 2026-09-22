@@ -5,3 +5,4 @@ export * from './events';
 export * from './services';
 export * from './invariants';
 export * from './read-model';
+export * from './errors';

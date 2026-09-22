@@ -4,7 +4,7 @@ The companion to [CHANNELS-OVERVIEW](CHANNELS-OVERVIEW.md) (what the slice deliv
 
 It exists because these facts otherwise live in commit messages and one session's context, and both are easy to lose. Where an entry names a commit, the commit message has the full account.
 
-Written 2026-09-19; updated 2026-09-22 for C-11, C-33 and C-32a.
+Written 2026-09-19; updated 2026-09-22 for C-11, C-33, C-32a and C-32b.
 
 ---
 
@@ -94,6 +94,10 @@ Recorded because the project's standing rule is to say plainly what failed, incl
 | 20 | **`findDefault`'s error message claimed C-11's guarantee before C-11 existed** — the same shape as #13. | Planning C-11. | The message says what is true; the tenant-onboarding gap is in CAVEATS. |
 | 21 | **I proposed the C-11 plan with a "leak" mutation its design could not observe.** A rolled-back transaction reverts a session-level setting too. | Designing the spec. | C-11 lifts RLS with `NO FORCE` only, so it has no setting to leak; the leak test moved to C-33, whose spec commits. |
 | 22 | **The C-17 freeze test I wrote placed an order in a EUR channel against a USD price list** — G-4's bug, running inside a test, unnoticed because the test asserted the freeze and not the charge. | C-32a made it fail. | It now edits the currency away and back before ordering, which proves the same thing without selling in a mismatched currency. |
+| 23 | **C-32b's first build mounted the guard on `storefront/(.*)`, which matches nothing** under Express's path-to-regexp 0.1.13. The unit tests could not see it — they call the middleware directly — and `POST /storefront/carts` still refused `de`, because C-32a's cart check returns the same body. | The live check's add-item and coupon probes, which only the middleware can refuse, answered `404`. | `storefront/*`, a comment on why, and a RUNBOOK trap. |
+| 24 | **My first server-side latency comparison timed Apollo's CSRF `400`s**, not reads: the probe sent no preflight header, and both builds "measured" 1.0 ms. A comparison that could not have differed. | The build-identity marker returned `400` where `200` was expected. | The probe now refuses to time anything but `200`s; the real figures are 4.5 ms against 4.0 ms. |
+| 25 | **The currency freeze I designed in C-8a checks only a channel's own `currency_code`.** An inherited currency can change after transacting, through the tenant defaults. | Wondering, during C-32b's live check, why editing the defaults' currency had been allowed; then demonstrating it with an order in `uk`. | C-37. CAVEATS corrected meanwhile. |
+| 26 | **I told the user C-32a was committed as a hash I had not seen** — 3c7d4fb, which is no commit at all; it was `48d784c`. The command's output had been cut before the hash. | The next `git log`, a minute later. | Corrected to the user at once. A hash is quoted from output, never recalled. |
 
 ### Earlier in the same session, on `main`
 
@@ -140,3 +144,5 @@ Each is general, and each was paid for above.
 12. **Check documents mechanically, not by rereading them.** A small script run before committing these notes — every relative link resolves, every anchor exists, every cited commit hash is real, no NUL bytes or replacement characters — found three links in `BACKLOG-channels.md` that had been broken since the design drafts were committed and had survived many readings, plus the NUL above. It is not in CI; it would be a cheap addition.
 13. **Verify an upgrade path by building the old state; a cold boot cannot reach it.** A backfill has nothing to do on an empty database. C-11 and C-33 were checked by making the demo database look as `main` left it and booting three images in turn: `500` with 0 of 4 orders attributed, then `201` with 0 of 4, then `201` with 4 of 4.
 14. **A spec on a shared database must not commit what other suites can see.** C-11's backfill acts on every channel-less tenant, so its spec rolls back. C-33's touches only rows no other suite creates, so it may commit — and has to, to see a setting outlive its transaction.
+15. **A registered route is not a guarded route.** Prove a guard on each surface it claims, with a request only the guard can refuse — a route another layer also refuses will pass for the wrong reason.
+16. **Check what a measurement measured.** Confirm the status of the requests being timed before comparing their timings, and compare server-side figures, not a client behind a port proxy.

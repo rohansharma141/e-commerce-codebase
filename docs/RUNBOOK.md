@@ -63,6 +63,10 @@ Learned by being bitten. Each of these produced a confusing symptom whose cause 
 
 **A migration cannot see tenant rows unless it lifts RLS.** It runs as `platform`, the owner, and FORCE ROW LEVEL SECURITY is what makes policies apply to the owner. A backfill with no tenant bound matches nothing and reports nothing: orders' `0003` did exactly that, and its comment says otherwise. Lift it inside the migration's transaction, as channels' `0003` and orders' `0004` do, and check the backfill against rows that exist before it runs.
 
+**A middleware route pattern that registers is not one that matches.** `forRoutes()` paths go to Express's path-to-regexp (0.1.13 here), which compiles `x/(.*)` as `x/(?:\.(.*))` — a literal dot — so the pattern is accepted and guards nothing. Use `x/*`. `.exclude()` is matched by Nest's own path-to-regexp 3.x, where `(.*)` works; the two look alike and are not. Prove a guard with a route only the guard can refuse (C-32b).
+
+**A GraphQL `GET` without a preflight header is a `400`.** Apollo's CSRF protection refuses a `GET` carrying no non-simple header. The storefront sends `apollo-require-preflight`; a `curl` probe must too, or it measures rejections — which is how a latency comparison once timed two builds' `400`s and found them equal.
+
 **The event bus is asynchronous.** `publish()` returns before any handler runs. A handler's effect is not visible when the publishing call resolves, and a handler must bind its tenant from the event rather than borrowing the request's connection, which may already be released.
 
 **Webhook timings in compose are demo settings.** `STOREFRONT_WEBHOOK_MAX_ATTEMPTS=2` and `STOREFRONT_OUTBOX_SWEEP_MS=15000` make the give-up and dead-letter sweep observable within a minute. Production defaults are 6 attempts and a 60s sweep.
@@ -75,7 +79,7 @@ These suites exercise real services — a running, seeded stack, or a real Postg
 |---|---|---|---|
 | Admin conventions | `TEST_API_URL=http://localhost:3000 pnpm nx test api --skipNxCache -- --testPathPattern=admin-conventions` | seeded stack, **≥ 2 orders** for `t-fashion` | nothing |
 | Admin concurrency | `TEST_API_URL=http://localhost:3000 pnpm nx test api --skipNxCache -- --testPathPattern=admin-concurrency` | seeded stack | nothing (archives its own probe channels) |
-| Scoped GraphQL | `TEST_API_URL=http://localhost:3000 pnpm nx test api --skipNxCache -- --testPathPattern=scoped-graphql` | seeded stack with `t-fashion`'s `uk` and `de` | nothing |
+| Scoped GraphQL | `TEST_API_URL=http://localhost:3000 pnpm nx test api --skipNxCache -- --testPathPattern=scoped-graphql` | seeded stack with `t-fashion`'s `uk`, `de` and `trade` | nothing |
 | Storefront conformance | `TEST_API_URL=http://localhost:3000 pnpm nx test storefront --skipNxCache` | seeded stack | nothing |
 | Checkout integration | `TEST_DATABASE_URL=postgres://platform:platform@localhost:5432/platform TEST_REDIS_URL=redis://localhost:6379 pnpm nx test api --skipNxCache -- --testPathPattern=checkout.integration` | Postgres + Redis | **drops `orders`, `pricing`, `channels`** |
 | Channels module | `TEST_DATABASE_URL=postgres://platform:platform@localhost:5432/platform pnpm nx test channels-src --skipNxCache` | Postgres | **drops `channels`** |

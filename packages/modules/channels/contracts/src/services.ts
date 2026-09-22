@@ -55,8 +55,12 @@ export interface IChannelsQuery {
   /**
    * The tenant's default channel, used when a request carries no channel scope.
    *
-   * Every tenant has exactly one, guaranteed by a partial unique index plus the
-   * repository invariant that it must be active and cannot be archived.
+   * At most one, guaranteed by a partial unique index, and it must be active
+   * and cannot be archived. At least one is NOT guaranteed: the seed and the
+   * C-11 backfill give every tenant existing at the time a default, but a
+   * tenant created later has none until C-35. That case throws
+   * `NoDefaultChannelError`, never a bare `Error`, so callers can tell it
+   * from a failure.
    */
   findDefault(tenantId: string): Promise<ChannelConfig>;
 

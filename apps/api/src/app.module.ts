@@ -21,6 +21,7 @@ import { OrdersModule } from '@platform/modules/orders/src';
 import { PricingModule } from '@platform/modules/pricing/src';
 import { SearchModule } from '@platform/modules/search/src';
 import { CapabilitiesModule } from './capabilities.module';
+import { ChannelServabilityMiddleware } from './channel-servability.middleware';
 import { graphqlCachePlugin } from './graphql-cache.plugin';
 import { DemoHooksModule } from './demo-hooks.module';
 import { HealthController } from './health.controller';
@@ -90,5 +91,21 @@ export class AppModule implements NestModule {
       .apply(TenantMiddleware, TenantBindingMiddleware, ChannelScopeMiddleware)
       .exclude('health', 'ready', 'docs', 'docs/(.*)', 'docs-json', 'docs-yaml')
       .forRoutes('*');
+
+    // Fourth, and on the storefront surfaces only (C-32b): a request in a
+    // channel the price list cannot serve is refused. After channel scope,
+    // because it needs the channel that middleware binds. Not on /admin, so
+    // an operator can still see an unservable channel and fix it. Scoped
+    // GraphQL URLs are already rewritten onto /graphql by the time Nest routes.
+    //
+    // `storefront/*`, NOT `storefront/(.*)`. forRoutes paths are matched by
+    // Express's path-to-regexp (0.1.13 here), which compiles `(.*)` after a
+    // slash as `(?:\.(.*))` — a literal dot — so that pattern registers
+    // cleanly and matches nothing. It shipped that way in the first build of
+    // this row and only the live check caught it. `.exclude()` above is
+    // matched by Nest's own path-to-regexp 3.x, where `(.*)` does work.
+    consumer
+      .apply(ChannelServabilityMiddleware)
+      .forRoutes('graphql', 'storefront/*', 'system/capabilities');
   }
 }

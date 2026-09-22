@@ -92,7 +92,7 @@ Nothing returns `409` yet — versioned resources arrive with channels in C-9. T
 
 ### The 422 body
 
-A channel whose currency differs from the tenant's price list is **unservable**: nothing is priced or sold in it until prices exist in its currency (C-32; per-channel price lists are Phase H). The refusal extends the envelope with a stable `code` and the facts a client needs to act without parsing the message:
+A channel whose currency differs from the tenant's price list is **unservable**: nothing is priced or sold in it until prices exist in its currency (per-channel price lists are Phase H). Carts and checkout return this since C-32a, and every storefront request in the channel — GraphQL, `/storefront/*`, `/system/capabilities` — since C-32b. Admin endpoints never do: an operator must be able to see and fix the channel. The refusal extends the envelope with a stable `code` and the facts a client needs to act without parsing the message:
 
 ```json
 { "message": "…", "error": "Unprocessable Entity", "statusCode": 422,

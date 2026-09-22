@@ -8,19 +8,19 @@ House rules applied: one item, one commit, one stated verification. Anything nee
 
 **Read this section first when resuming.** Then [CHANNELS-BUILD-NOTES](design/CHANNELS-BUILD-NOTES.md) for the traps and mistakes that cost time, and the rows below for each item's verification record.
 
-`main` = `433f5b6` (61 commits, CI green, `v0.1.0`). `channels` branched from it. Code changed last in C-32a (2026-09-22); `git log -1 --format='%h %s' -- apps packages` names the latest commit to touch code, so a docs-only commit cannot make this line stale. **CI has never run on this branch** — it triggers only on `main` and on PRs into it, so every "verified" below is local.
+`main` = `433f5b6` (61 commits, CI green, `v0.1.0`). `channels` branched from it. Code changed last in C-32b (2026-09-22); `git log -1 --format='%h %s' -- apps packages` names the latest commit to touch code, so a docs-only commit cannot make this line stale. **CI has never run on this branch** — it triggers only on `main` and on PRs into it, so every "verified" below is local.
 
-### Done — 25 rows, all verified
+### Done — 26 rows, all verified
 
 | Phase | Rows |
 |---|---|
 | A — conventions and scope | C-1, C-2, C-3, C-2b, C-4 *(api half)*, C-9 *(REST half)* |
 | B — the channels module | C-5, C-6, C-7, C-8a, C-8b, C-10, C-11a, C-11 |
 | C — resolution and propagation | C-12, C-13, C-14, C-15, C-16a, C-16b, C-17, C-33 |
-| D — API surface | C-32a |
+| D — API surface | C-32a, C-32b |
 | F / G | C-26, C-29 |
 
-Plus [ADR-0015](adr/0015-operator-authentication-at-the-api-edge.md) (operator auth, designed not built). Test counts, measured 2026-09-22 with C-11 and C-33 in the api image, after a cold `down -v` boot and a fresh seed. Unit: channels 144 plus 24 database-gated, cart 15, pricing 59. Database, on a throwaway `platform_test`: checkout integration 11, C-11 backfill 7, C-33 backfill 6, run together. Live: 45 admin-conventions, 6 admin-concurrency, 38 storefront conformance, and scoped-graphql 19 on re-run. **scoped-graphql's first run had one failure:** `answers identically to the unscoped path` timed out at 30 s. It passed on two re-runs (14 ms, then 18 ms under the same CPU load as the first run), and the api logged no request slower than 73 ms and no error. The cause is not established; it is recorded as an unexplained timeout, not dismissed. The RUNBOOK's order recipe and its upgrade-path block were both run verbatim, extracted from the file.
+Plus [ADR-0015](adr/0015-operator-authentication-at-the-api-edge.md) (operator auth, designed not built). Test counts, measured 2026-09-22 with C-32b in the api image. Unit: channels 144 plus 24 database-gated, pricing 69, cart 21, api 13. Database, on a throwaway `platform_test`: channels 168, and checkout integration 13, C-11 backfill 7, C-33 backfill 6 and the C-32b middleware 7, run together. Live: 45 admin-conventions, 6 admin-concurrency, 19 scoped-graphql, 38 storefront conformance, and C-32b's live script, 28 expectations, 0 failures. scoped-graphql's one unexplained 30 s timeout, in the first run after C-33, has not recurred in three runs since; it stays recorded as unexplained. The RUNBOOK's order recipe and upgrade-path block were run verbatim, extracted from the file.
 
 ### Decided 2026-09-22
 
@@ -34,7 +34,7 @@ Plus [ADR-0015](adr/0015-operator-authentication-at-the-api-edge.md) (operator a
 
 **A is wider than first written.** The first sizing (C-32 ≈ 2–3 h) counted carts and checkout only. Refusing has to cover reads in the channel too: otherwise C-18 makes `de` report EUR while search still returns GBP integers, and C-19 renders € around them — the money bug at display level. C-32 is therefore split into C-32a (the money path) and C-32b (reads).
 
-**C-32b's shape, decided 2026-09-22: refuse the channel outright.** The alternative offered — keep `de` browsable, omit the price and say why — was declined. The user's words: *"Refuse de, API should honor correct incoming request."* Recorded reading, ⚑ to confirm before C-32b is built:
+**C-32b's shape, decided 2026-09-22: refuse the channel outright.** The alternative offered — keep `de` browsable, omit the price and say why — was declined. The user's words: *"Refuse de, API should honor correct incoming request."* The reading below was confirmed by the user the same day, and is what C-32b built:
 
 - every **storefront-facing** request — GraphQL and `/storefront/*` — scoped to a channel whose currency the price list cannot serve gets a named error, including reads that carry no price;
 - the **admin** surface keeps managing that channel (`GET`/`PATCH /admin/channels/:id` and the rest), so an operator can see and fix it;
@@ -47,8 +47,7 @@ Plus [ADR-0015](adr/0015-operator-authentication-at-the-api-edge.md) (operator a
 2. **Confirm `x-channel-id` carries the channel *key*, not its UUID** (C-12). The header name is the ADR's; the value follows `x-tenant-id`'s precedent of a human identifier. Cheap to change now, expensive once the back office assumes it.
 3. **Go-ahead for Block 2** — the auth slice (ADR-0015) and the back office (C-20..C-24). Not started.
 4. **CI on this branch** — a PR into `main`, or widening the workflow trigger. Declined for now.
-5. **⚑ Confirm the reading of "refuse `de`"** recorded above, before C-32b.
-6. **How the storefront picks a channel** (C-19a). Storefront domain binding was left out of the design (CHANNEL-MODEL §13). Recommendation: a path prefix (`/de/…`), the default channel unprefixed, mirroring the api's grammar. The user deferred this until C-19a is next.
+5. **How the storefront picks a channel** (C-19a). Storefront domain binding was left out of the design (CHANNEL-MODEL §13). Recommendation: a path prefix (`/de/…`), the default channel unprefixed, mirroring the api's grammar. The user deferred this until C-19a is next.
 
 ### What can be built next
 
@@ -58,9 +57,9 @@ Re-sequenced 2026-09-22, after C-11 and C-33. Working hours at this build's obse
 |---|---|---|---|---|
 | **Ordered chain** | | | | |
 | 1 | C-32a ✅ | Carts and checkout refuse a channel whose currency the price list cannot serve | done | — |
-| 2 | C-32b | Every storefront request scoped to such a channel is refused with a named error; admin unaffected; a second, servable `t-fashion` fixture channel | 2–3 h | C-32a; ⚑ the reading above |
+| 2 | C-32b ✅ | Every storefront request scoped to such a channel is refused with a named error; admin unaffected; a second, servable `t-fashion` fixture channel | done | — |
 | 3 | C-18 | Capabilities per channel; tenant-level fields kept as deprecated aliases; the pricing locale copy stops mattering | 1.5–2.5 h | C-32b |
-| 4 | C-19a | The storefront picks a channel | 2–3 h | C-18; decision 6 |
+| 4 | C-19a | The storefront picks a channel | 2–3 h | C-18; decision 5 |
 | 5 | C-19b | The storefront sends channel scope on every read and uses the channel's capabilities; C-4's client guard; the cross-channel cache test | 1.5–2 h | C-19a |
 | 6 | C-30 | `tax_display` editable per channel, honoured by carts and checkout, recorded on orders | 1.5–2 h | C-32a |
 | 7 | C-31 | The storefront renders gross or net per channel | 1–1.5 h | C-19b, C-30 |
@@ -70,9 +69,10 @@ Re-sequenced 2026-09-22, after C-11 and C-33. Working hours at this build's obse
 | 10 | C-25 | Observability counters | 1–1.5 h | — |
 | 11 | C-35 | Creating a tenant creates its default channel | 1–1.5 h | — |
 | 12 | C-36 | The search indexer's price scaling for currencies without two decimals — verify, then fix | 0.5–1.5 h | — |
+| 12a | C-37 | The currency freeze covers an inherited currency: tenant-default currency edits refused while an inheriting channel has transacted | 1–1.5 h | — |
 | **Last** | | | | |
 | 13 | C-27 | Docs reconciled; the README run cold | 1.5–2.5 h | all above |
-| | | **Total, excluding the gated items below** | **≈ 17.5–27 h** | |
+| | | **Remaining, excluding the gated items below** | **≈ 14–22 h** | |
 
 Gated on the user: **Block 2** — the auth slice (ADR-0015) and the back office (C-20..C-24), ≈ 15–20 h. **Phase H** — per-channel price lists, an ADR first (≈ 2–3 h), the build not sized. **CI on this branch** — ≈ 15 minutes plus whatever it finds.
 
@@ -420,10 +420,23 @@ Stays in the composition root (ADR §7): it also reports `apiVersion` and the de
 
 *Not refused here, on purpose:* adding or requantifying lines in a cart whose channel became unservable after creation. Nothing is priced by those, and reading or checking out the cart is refused. C-32b refuses the request itself.
 
-**C-32b — Every storefront request in an unservable channel is refused** *(M, 2–3 h; ⚑ the reading of the decision is recorded under Status)*
+**C-32b — Every storefront request in an unservable channel is refused** ✅ *(M, 2–3 h; the reading of the decision, confirmed by the user, is under Status)*
 A request edge check, after channel resolution, on the storefront surfaces only — GraphQL and `/storefront/*` — returning a named error that says why. Admin is untouched, so the channel can be fixed. Status code chosen at build, and not `409`, which means a version conflict here.
 *Verification:* for `de`: search, product detail, capabilities and `POST /storefront/carts` each return the named error; for `uk` and unscoped requests, the storefront conformance suite and scoped-graphql still pass unchanged — the correct request honoured; `GET /admin/channels/:id` for `de` still `200`. Then make `de` servable (its currency set to GBP, possible because nothing can have transacted in it) and the same reads succeed — proving the refusal follows the currencies, not the key. Removing the check lets a `de` search return GBP figures, the precondition for € around GBP.
 *Consequence for later rows:* `de` stops being usable as the second channel in positive tests. C-18's alias check and C-30/C-31's gross-versus-net control need two channels that are both servable and differ in configuration. C-32b adds one — proposed: a GBP `trade` channel for `t-fashion`, which is also the natural net-priced counterpart to a gross `uk` in C-30.
+
+*Shipped 2026-09-22.* `ChannelServabilityMiddleware`, in the composition root, runs after channel scope and asks pricing's `assertServable` about the request's channel — the one it named, or the tenant default — so the edge and the money path share one rule, one exception and one body. Mounted on `graphql`, `storefront/*` and `system/capabilities` (the REST twin of the GraphQL query, which must not answer differently); not on admin. It refuses only a *known* mismatch: a tenant with no price list, or with no default channel at all, passes as before. The latter is a new typed `NoDefaultChannelError` in the channels contracts, so a database failure while finding the default still surfaces instead of being waved through. The `findDefault` contract no longer claims every tenant has a default. Seed: `t-fashion` gains `trade`, GBP, not the default.
+
+*Verified:*
+
+- **Unit, 7 tests** — scoped and unscoped, servable and not, the no-default pass-through, and an unrelated failure not swallowed. Refusals assert `next()` was **not** called. **Four mutations**, each failing named tests: never checking the default; swallowing every failure; never asking; and serving before checking.
+- **Live, a script of 28 expectations, 0 failures.** Every surface refuses `de` with `422 channel.unservable`: GraphQL search by header, by scoped URL and over POST, product, capabilities, `/system/capabilities`, cart create, read, add-item, coupon removal and checkout — the last three on routes nothing but this middleware can refuse, which otherwise answer `404` for a cart that does not exist. `trade` (servable, not the default), `uk`, unscoped `t-fashion` and another tenant are all served. Admin still reads `de` even when sent `x-channel-id: de`. Setting `de` to GBP serves it; back to EUR refuses it. Setting the tenant default to EUR refuses unscoped requests; back to GBP serves them. A tenant with no channels (`t-onboard`, created through `PUT /admin/tenant-config`) is still served.
+- **Existing suites:** checkout 13, the two backfill specs, channels 168 (with the database), storefront conformance, admin-conventions, admin-concurrency and scoped-graphql — counts in the status section.
+- **Cost, server-side:** median 4.0 ms, p90 5–6 ms for an unscoped read, against 4.5 / 6.0 ms on the C-32a image — within noise at the log's 1 ms resolution. Client-side timings on Docker Desktop for Windows swing by 2x between container restarts and cannot compare builds.
+
+*What the live check caught, and the unit tests could not:* the first build mounted the middleware on `storefront/(.*)`. Express's path-to-regexp (0.1.13) compiles `(.*)` after a slash as `(?:\.(.*))` — a literal dot — so the route registered cleanly and guarded nothing. `POST /storefront/carts` still answered `422`, but from C-32a's cart check, which hid it; the add-item and coupon probes, which only the middleware can refuse, exposed it. Now `storefront/*`, with a comment on why.
+
+*Also found:* C-17's currency freeze does not cover an **inherited** currency. `uk` inherits GBP; after an order in `uk` marked it transacted, `PATCH /admin/tenant-defaults {currencyCode: EUR}` was accepted and `uk` resolved to EUR. The freeze checks only a channel's own `currency_code`. C-32 now turns the consequence into a refusal rather than a wrong charge, but the rule claims more than it enforces — C-37.
 *Both must land before C-18.* A storefront that sends channel scope on every read would otherwise render `de` with € formatting around GBP integers — the money bug, at display level.
 
 **C-19 — Split 2026-09-22 into C-19a and C-19b.** Too large for one row once its inherited pieces are counted, and part of it is undesigned.
@@ -484,6 +497,10 @@ C-11 gave a default channel to every tenant that existed when it ran. A tenant c
 **C-36 — Index prices scaled by the currency's minor units** *(S, 0.5–1.5 h; added 2026-09-22; predates this slice)*
 `product-indexer.service.ts` writes the denormalised `price` attribute as `unitPriceCents / 100` — two decimals whatever the currency. For JPY (zero decimals) or KWD (three) that reads as wrong by a factor of 100 or 10 after an admin price change. Not yet reproduced: verify first, then scale with `minorUnitsFor`. The seed's own price path needs the same check.
 *Verification:* a JPY tenant, a price set through `POST /admin/prices`, and the index holding the same number of yen. Today it would hold a hundredth of it, if the reading is right.
+
+**C-37 — The currency freeze covers an inherited currency** *(S, 1–1.5 h; added 2026-09-22)*
+C-8a's `currency.frozen` checks only a channel's own `currency_code`. A channel that inherits its currency from the tenant defaults can have it changed after transacting, by editing the defaults — demonstrated on 2026-09-22: an order in `uk`, `has_transacted` true, then `PATCH /admin/tenant-defaults {currencyCode: EUR}` accepted and `uk` resolving to EUR. Since C-32 the channel is then refused rather than mis-charged, but the rule claims to protect every transacted channel's currency and does not. `updateTenantDefaults` refuses a currency change while any channel inheriting it has transacted, with the same `currency.frozen` violation naming those channels.
+*Verification:* the demonstration above, reversed — the same `PATCH` answers `400` naming `uk`; with no transacted inheriting channel it still succeeds, so the rule is not refusing every defaults edit.
 
 **C-27 — Docs reconciled**
 ARCHITECTURE, RUNBOOK, README updated. Every documented command executed, not re-read.

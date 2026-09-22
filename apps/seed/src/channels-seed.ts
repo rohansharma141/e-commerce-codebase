@@ -8,13 +8,20 @@ import type { Sql } from 'postgres';
  * data-preservation machinery for rows we can regenerate at will was the wrong
  * instinct, and it was in an earlier draft of the design.
  *
- * **`t-fashion` gets TWO channels, and that is not decoration.** ADR-0014's
+ * **`t-fashion` gets THREE channels, and none of them is decoration.** ADR-0014's
  * negative control for channel resolution is *"two channels with different
  * currencies; assert responses differ"* — because one channel per tenant passes
  * even if resolution is hardcoded to the default. Three identical `USD`/`en-US`
  * tenants cannot fail that check. `t-fashion` is what makes C-12, C-18 and
  * C-19 falsifiable, and it exercises a different currency, locale, country and
  * timezone in a single fixture.
+ *
+ * Since C-32b, `de` is **refused** — EUR against a GBP price list — so it can
+ * no longer be the second channel in a check that expects success. `trade` is:
+ * servable, and not the default. That makes it the control telling "refuse
+ * whatever is not the default" apart from "refuse what cannot be priced", and
+ * the second servable channel C-18's alias check and C-30/C-31's gross versus
+ * net comparison need.
  *
  * The default channel is the one an unscoped request resolves to, so each
  * tenant gets exactly one and it is `active`.
@@ -103,6 +110,19 @@ export const CHANNELS_BY_TENANT: Record<string, readonly ChannelFixture[]> = {
       supportedLocales: ['de-DE'],
       country: 'DE',
       timezone: 'Europe/Berlin',
+    },
+    // Inherits everything, like `uk`, so it prices in GBP and is servable. It
+    // differs from `uk` only in being a second channel; C-30 is where it gets
+    // a configuration of its own (net, against a gross `uk`).
+    {
+      key: 'trade',
+      name: 'Trade',
+      isDefault: false,
+      currencyCode: null,
+      defaultLocale: null,
+      supportedLocales: null,
+      country: null,
+      timezone: null,
     },
   ],
   't-electronics': [

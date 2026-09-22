@@ -142,6 +142,7 @@ Made in code between 2026-08-28 and 2026-09-22, each recorded in its backlog row
 | The transacted mark binds its tenant **from the event** and does **not** bump `version` | The bus is asynchronous; a bump would `409` an operator's unrelated edit | C-17 |
 | `taxMode` is an engine **input**, not a response field | `capabilities.taxDisplay` already says how to read prices | C-29 |
 | A tenant with no channel gets one default keyed `web`, inheriting everything | It exists only so a database that skipped a re-seed still works; the seed replaces it | C-11 |
+| An unservable channel is refused on **every storefront surface**, not only when money moves; admin still manages it; a tenant with no default channel passes | The user's decision — refuse `de` outright rather than serve it without prices; honouring every correct request | C-32b |
 | An unservable channel is refused with **`422`**, code `channel.unservable`, naming the channel and both currencies | The request is well formed and the channel real, so not `400` or `404`; `409` means a version conflict here, and a client retrying it would loop | C-32a |
 | Migrations lift RLS with `NO FORCE` on their own tables, and through `app.system_worker` on another module's | A migration runs as the owner and FORCE applies to the owner; where another module's policy already admits a system reader, its RLS is not altered from outside | C-11, C-33 |
 
@@ -183,7 +184,7 @@ And one thing the reconciliation itself missed, found only while building (2026-
 Stated here so the back office does not ship a control implying a capability that does not exist.
 
 - **One currency per channel.** Not multi-currency.
-- **A channel's currency is declared, not yet charged.** Checkout charges the tenant's price-list currency regardless of channel, until C-32 lands (gate G-4 chose to refuse such a channel; per-channel price lists come later). For the two single-channel demo tenants the two agree; for `t-fashion`'s `de` they do not.
+- **A channel's currency is declared, not yet charged.** Since C-32a and C-32b a channel whose currency differs from the price list's is refused — on carts, checkout and every storefront read — rather than charged in the wrong currency. It sells only once per-channel price lists exist (Phase H). For the two single-channel demo tenants the two agree; for `t-fashion`'s `de` they do not.
 - **Formatting, not translation.** A `de-DE` channel renders German number formats around English product copy.
 - **One tax rate per channel.** No tax classes, no destination-based US tax, no EU OSS, no B2B reverse charge.
 - **Cache entries multiply by channels per tenant.** Fine at single digits, worth watching if channels proliferate.
