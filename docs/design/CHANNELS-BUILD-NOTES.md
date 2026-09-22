@@ -4,7 +4,7 @@ The companion to [CHANNELS-OVERVIEW](CHANNELS-OVERVIEW.md) (what the slice deliv
 
 It exists because these facts otherwise live in commit messages and one session's context, and both are easy to lose. Where an entry names a commit, the commit message has the full account.
 
-Written 2026-09-19; updated 2026-09-22 for C-11, C-33, C-32a, C-32b and C-18a.
+Written 2026-09-19; updated 2026-09-22 for C-11, C-33, C-32a, C-32b, C-18a and C-18b.
 
 ---
 
@@ -148,3 +148,4 @@ Each is general, and each was paid for above.
 14. **A spec on a shared database must not commit what other suites can see.** C-11's backfill acts on every channel-less tenant, so its spec rolls back. C-33's touches only rows no other suite creates, so it may commit — and has to, to see a setting outlive its transaction.
 15. **A registered route is not a guarded route.** Prove a guard on each surface it claims, with a request only the guard can refuse — a route another layer also refuses will pass for the wrong reason.
 16. **Check what a measurement measured.** Confirm the status of the requests being timed before comparing their timings, and compare server-side figures, not a client behind a port proxy.
+17. **When a value changes source, its invalidation must move with it.** C-18a moved capabilities from pricing to channels; the storefront's cache was still dropped only by pricing's event, so a locale edit reached the api at once and the page an hour later. Nothing errored. Recording the stale "before" first is what showed it.

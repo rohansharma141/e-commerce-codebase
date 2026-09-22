@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { revalidatePath, revalidateTag } from 'next/cache';
-import { browseAllTag, browseTag, categoryTag } from '@/lib/cache-tags';
+import { browseAllTag, browseTag, capabilitiesTag, categoryTag } from '@/lib/cache-tags';
 
 /**
  * Cache revalidation webhook.
@@ -21,6 +21,8 @@ import { browseAllTag, browseTag, categoryTag } from '@/lib/cache-tags';
  *     "event": "search.product.indexed" | "search.product.removed"
  *            | "pricing.promotion.created" | "pricing.promotion.updated"
  *            | "pricing.tenant-config.updated"
+ *            | "channels.updated" | "channels.default-changed"
+ *            | "channels.tenant-defaults.updated"
  *            | <legacy catalog.product.* / pricing.price.upserted>,
  *     "tenantId": "t-fashion",
  *     "productId": "abc-...-123"        // product-scoped events only
@@ -232,12 +234,29 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       // every rendered price depends on. A tenant switching currency without
       // this would leave the whole catalogue formatted in the old one until
       // the hourly fallback expired.
-      const cTag = `capabilities:${body.tenantId}`;
+      const cTag = capabilitiesTag(body.tenantId);
       revalidateTag(bTag);
       revalidateTag(aTag);
       revalidateTag(tTag);
       revalidateTag(cTag);
       invalidated.push(bTag, aTag, tTag, cTag);
+      break;
+    }
+    case 'channels.updated':
+    case 'channels.default-changed':
+    case 'channels.tenant-defaults.updated': {
+      // Since C-18a capabilities are composed from channels, so a channel
+      // edit is what changes the currency, minor units and locale every
+      // price is formatted with (C-18b). Capabilities, and the browse set,
+      // whose server-rendered prices were formatted with the old values.
+      // Not the theme: branding is not a channel property.
+      const bTag = browseTag(body.tenantId);
+      const aTag = browseAllTag(body.tenantId);
+      const cTag = capabilitiesTag(body.tenantId);
+      revalidateTag(bTag);
+      revalidateTag(aTag);
+      revalidateTag(cTag);
+      invalidated.push(bTag, aTag, cTag);
       break;
     }
     default: {

@@ -1,16 +1,18 @@
 import 'server-only';
 import { TenantCapabilitiesDocument } from '@platform/api-client';
 import { graphqlQuery } from './api-graphql';
+import { capabilitiesTag } from './cache-tags';
 import { getTenantId } from './tenant';
 import type { MoneyFormat } from './money';
 
 /**
  * What the api says it supports for this tenant.
  *
- * Tagged `capabilities:<tenantId>` so a `pricing.tenant-config.updated`
- * webhook drops it — a tenant switching currency has to reach rendered pages,
- * not wait out the hour-long fallback, because every price on the site is
- * wrong in the meantime.
+ * Tagged `capabilities:<tenantId>` so the webhook drops it on anything that
+ * can change it — `pricing.tenant-config.updated`, and since C-18a the channel
+ * edits, because capabilities are now composed from channels. A currency or
+ * locale change has to reach rendered pages, not wait out the hour-long
+ * fallback, because every price on the site is wrong in the meantime.
  *
  * Fetched per render rather than read from an env var or a constant on
  * purpose. The whole point of the endpoint is that a consumer discovers this
@@ -22,7 +24,7 @@ export async function getMoneyFormat(): Promise<MoneyFormat> {
   const data = await graphqlQuery(
     TenantCapabilitiesDocument,
     {},
-    { tags: [`capabilities:${tenantId}`] },
+    { tags: [capabilitiesTag(tenantId)] },
   );
   const caps = data.capabilities;
   return {

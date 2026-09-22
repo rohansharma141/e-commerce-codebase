@@ -21,12 +21,18 @@ import {
   type PromotionUpdatedPayload,
   type TenantConfigUpdatedPayload,
 } from '@platform/modules/pricing/contracts';
+import {
+  CHANNELS_EVENTS,
+  type ChannelDefaultChangedPayload,
+  type ChannelUpdatedPayload,
+  type TenantDefaultsUpdatedPayload,
+} from '@platform/modules/channels/contracts';
 
 /**
  * Webhook dispatcher for storefront revalidation.
  *
- * Subscribes to search.product.{indexed,removed} and the tenant-wide pricing
- * events on the in-process bus, and POSTs a small event-shaped payload to the
+ * Subscribes to search.product.{indexed,removed}, the tenant-wide pricing
+ * events and the channel edits that change capabilities, on the in-process bus, and POSTs a small event-shaped payload to the
  * storefront's `/api/revalidate` endpoint. The storefront knows how to map the
  * event type into Next.js cache-tag invalidations — this side stays semantic
  * and never learns the storefront's cache topology.
@@ -52,7 +58,7 @@ import {
  * must not depend on the storefront existing at all.
  */
 @Injectable()
-class StorefrontWebhookDispatcher implements OnModuleInit {
+export class StorefrontWebhookDispatcher implements OnModuleInit {
   private readonly logger = new Logger(StorefrontWebhookDispatcher.name);
   private readonly url = process.env['STOREFRONT_REVALIDATE_URL'];
   private readonly secret = process.env['STOREFRONT_REVALIDATE_SECRET'];
@@ -69,7 +75,7 @@ class StorefrontWebhookDispatcher implements OnModuleInit {
       );
       return;
     }
-    this.logger.log(`subscribing to search.product.*, pricing.* → ${this.url}`);
+    this.logger.log(`subscribing to search.product.*, pricing.*, channels.* → ${this.url}`);
 
     // Product-scoped invalidation keys off the SEARCH events, not the catalog
     // or pricing ones that ultimately caused them.
@@ -121,6 +127,36 @@ class StorefrontWebhookDispatcher implements OnModuleInit {
     this.bus.subscribe<DomainEvent<string, TenantConfigUpdatedPayload>>(
       PRICING_EVENTS.TenantConfigUpdated,
       (e) => this.dispatch({ event: e.name, tenantId: e.tenantId }),
+    );
+
+    // Since C-18a capabilities are composed from the channels module, so the
+    // edits that change them — currency, minor units, locale — are channel
+    // edits. Pricing used to be the source, and tenant-config.updated the only
+    // trigger; without these, a locale change on the default channel reached
+    // rendered prices only when the storefront's hour-long fallback expired
+    // (C-18b). Tenant-wide, like the pricing events.
+    //
+    // A write that changed nothing is not forwarded: a no-op PATCH must not
+    // drop every cached page for the tenant. Any channel's edit is forwarded,
+    // not only the default's — over-invalidating is the safe direction, and
+    // once the storefront reads per channel (C-19) every channel's matters.
+    this.bus.subscribe<DomainEvent<string, ChannelUpdatedPayload>>(
+      CHANNELS_EVENTS.Updated,
+      (e) =>
+        e.payload.changed.length > 0
+          ? this.dispatch({ event: e.name, tenantId: e.tenantId })
+          : undefined,
+    );
+    this.bus.subscribe<DomainEvent<string, ChannelDefaultChangedPayload>>(
+      CHANNELS_EVENTS.DefaultChanged,
+      (e) => this.dispatch({ event: e.name, tenantId: e.payload.tenantId }),
+    );
+    this.bus.subscribe<DomainEvent<string, TenantDefaultsUpdatedPayload>>(
+      CHANNELS_EVENTS.TenantDefaultsUpdated,
+      (e) =>
+        e.payload.changedFields.length > 0
+          ? this.dispatch({ event: e.name, tenantId: e.tenantId })
+          : undefined,
     );
   }
 

@@ -8,19 +8,19 @@ House rules applied: one item, one commit, one stated verification. Anything nee
 
 **Read this section first when resuming.** Then [CHANNELS-BUILD-NOTES](design/CHANNELS-BUILD-NOTES.md) for the traps and mistakes that cost time, and the rows below for each item's verification record.
 
-`main` = `433f5b6` (61 commits, CI green, `v0.1.0`). `channels` branched from it. Code changed last in C-18a (2026-09-22); `git log -1 --format='%h %s' -- apps packages` names the latest commit to touch code, so a docs-only commit cannot make this line stale. **CI has never run on this branch** — it triggers only on `main` and on PRs into it, so every "verified" below is local.
+`main` = `433f5b6` (61 commits, CI green, `v0.1.0`). `channels` branched from it. Code changed last in C-18b (2026-09-22); `git log -1 --format='%h %s' -- apps packages` names the latest commit to touch code, so a docs-only commit cannot make this line stale. **CI has never run on this branch** — it triggers only on `main` and on PRs into it, so every "verified" below is local.
 
-### Done — 27 rows, all verified
+### Done — 28 rows, all verified
 
 | Phase | Rows |
 |---|---|
 | A — conventions and scope | C-1, C-2, C-3, C-2b, C-4 *(api half)*, C-9 *(REST half)* |
 | B — the channels module | C-5, C-6, C-7, C-8a, C-8b, C-10, C-11a, C-11 |
 | C — resolution and propagation | C-12, C-13, C-14, C-15, C-16a, C-16b, C-17, C-33 |
-| D — API surface | C-32a, C-32b, C-18a |
+| D — API surface | C-32a, C-32b, C-18a, C-18b |
 | F / G | C-26, C-29 |
 
-Plus [ADR-0015](adr/0015-operator-authentication-at-the-api-edge.md) (operator auth, designed not built). Test counts, measured 2026-09-22 with C-32b in the api image. Unit: channels 144 plus 24 database-gated, pricing 69, cart 21, api 13. Database, on a throwaway `platform_test`: channels 168, and checkout integration 13, C-11 backfill 7, C-33 backfill 6 and the C-32b middleware 7, run together. Live: 45 admin-conventions, 6 admin-concurrency, 19 scoped-graphql, 38 storefront conformance, and C-32b's live script, 28 expectations, 0 failures. scoped-graphql's one unexplained 30 s timeout, in the first run after C-33, has not recurred in three runs since; it stays recorded as unexplained. The RUNBOOK's order recipe and upgrade-path block were run verbatim, extracted from the file.
+Plus [ADR-0015](adr/0015-operator-authentication-at-the-api-edge.md) (operator auth, designed not built). Test counts, measured 2026-09-22 with C-18b in both images. Unit: channels 144 plus 24 database-gated, pricing 69, cart 21, api 27, storefront 8 beyond conformance. Database, on a throwaway `platform_test`: channels 168, and checkout integration 13, C-11 backfill 7, C-33 backfill 6 and the C-32b middleware 7, run together (at C-32b; unchanged since). Live: 45 admin-conventions, 6 admin-concurrency, 19 scoped-graphql, 46 storefront (38 conformance and 8 route); C-32b's live script 28 expectations and C-18a's 24, 0 failures each; C-18b's freshness check, before and after. scoped-graphql's one unexplained 30 s timeout, in the first run after C-33, has not recurred in four runs since; it stays recorded as unexplained. The RUNBOOK's order recipe and upgrade-path block were run verbatim, extracted from the file.
 
 ### Decided 2026-09-22
 
@@ -59,7 +59,7 @@ Re-sequenced 2026-09-22, after C-11 and C-33. Working hours at this build's obse
 | 1 | C-32a ✅ | Carts and checkout refuse a channel whose currency the price list cannot serve | done | — |
 | 2 | C-32b ✅ | Every storefront request scoped to such a channel is refused with a named error; admin unaffected; a second, servable `t-fashion` fixture channel | done | — |
 | 3 | C-18a ✅ | Capabilities per channel; tenant-level fields kept as deprecated aliases; the pricing locale copy stops mattering | done | — |
-| 3a | C-18b | The storefront's cached capabilities invalidated by channel events, not only pricing ones | 1–1.5 h | C-18a |
+| 3a | C-18b ✅ | The storefront's cached capabilities invalidated by channel events, not only pricing ones | done | — |
 | 4 | C-19a | The storefront picks a channel | 2–3 h | C-18; decision 5 |
 | 5 | C-19b | The storefront sends channel scope on every read and uses the channel's capabilities; C-4's client guard; the cross-channel cache test | 1.5–2 h | C-19a |
 | 6 | C-30 | `tax_display` editable per channel, honoured by carts and checkout, recorded on orders | 1.5–2 h | C-32a |
@@ -76,7 +76,7 @@ Re-sequenced 2026-09-22, after C-11 and C-33. Working hours at this build's obse
 | 12d | C-19c | Remove the deprecated tenant-level capability fields (ADR-0014 §7, step 3) | 0.5 h | C-19b |
 | **Last** | | | | |
 | 13 | C-27 | Docs reconciled; the README run cold | 1.5–2.5 h | all above |
-| | | **Remaining, excluding the gated items below** | **≈ 15–23.5 h** | |
+| | | **Remaining, excluding the gated items below** | **≈ 14–22 h** | |
 
 Gated on the user: **Block 2** — the auth slice (ADR-0015) and the back office (C-20..C-24), ≈ 15–20 h. **Phase H** — per-channel price lists, an ADR first (≈ 2–3 h), the build not sized. **CI on this branch** — ≈ 15 minutes plus whatever it finds.
 
@@ -423,9 +423,18 @@ Stays in the composition root (ADR §7): it also reports `apiVersion` and the de
 - **A channel's tax rate is configuration nothing charges.** With `trade` set to `taxRateBps: 0` through admin, a cart in `trade` was taxed at 875 bps. Opened as **C-38**, in CAVEATS.
 - **The `fetch-schema` target corrupted every non-ASCII character.** It piped `docker compose exec … cat` through Windows PowerShell 5.1, which decoded UTF-8 by the console codepage and wrote `’` as `ΓÇÖ` — and added a BOM and CRLF. The schema had held no non-ASCII until these descriptions. It is now `docker compose cp`, byte for byte, so the committed schema also loses its BOM. `pnpm codegen` failed once during this, and passed on two re-runs; the cause was not found.
 
-**C-18b — The storefront's cached capabilities follow the new source** *(S)*
+**C-18b — The storefront's cached capabilities follow the new source** ✅ *(S)*
 Before C-18a the storefront's `capabilities:<tenant>` cache tag was invalidated by `pricing.tenant-config.updated`, because pricing was the source. It is now the channels module, so a channel or tenant-defaults edit must invalidate it too, or the storefront keeps a stale locale for up to an hour. The api forwards `channels.updated`, `channels.default-changed` and `channels.tenant-defaults.updated` to the storefront webhook; the storefront's revalidate route refreshes the capabilities and browse tags on them.
 *Verification:* a unit test of the route's event-to-tag mapping; and live, edit the default channel's locale and watch a product page re-render in the new format within seconds. On the C-18a image alone it stays in the old format.
+
+*Shipped 2026-09-22.* The api's webhook dispatcher forwards `channels.updated` and `channels.tenant-defaults.updated` when they changed something — a no-op `PATCH` must not drop every cached page for the tenant — and `channels.default-changed` always. Any channel's edit, not only the default's: over-invalidating is the safe direction, and after C-19 every channel's matters. The storefront's revalidate route drops the capabilities tag and the browse tags on them; not the theme, which is not a channel property. The capabilities tag is now built by one `capabilitiesTag()` in `cache-tags.ts` rather than spelled out in three places.
+
+*Verified:*
+
+- **The "before", recorded first, on the C-18a image:** tenant defaults set to `de-DE`; the api reported `de-DE` within a second; a `t-fashion` product page kept rendering **`£143.94`** for all 20 seconds of polling.
+- **After, same script:** the page rendered **`143,94 £`** within about 2 seconds, and returned to `£143.94` after the restore. Both webhooks delivered on their first attempt (`audit.webhook_outbox`).
+- **Unit:** api 5 (which channel events become a webhook owed, a no-op edit does not, pricing unchanged) and storefront 8 (each channel event drops capabilities and browse, not the theme; an unknown event still does nothing — the path channel events used to take). **Three mutations** each failing named tests, across both deployables.
+- **Suites:** api unit 27, storefront 46 including conformance; lint and build clean on both; the four live suites — counts in the status section.
 
 **C-32 — Split 2026-09-22 into C-32a and C-32b.** G-4 closed with option A: refuse a channel whose currency the price list cannot serve. `pricing.prices` holds one currency-less integer per product, in the currency of `pricing.tenant_config`; a channel is **servable** when its resolved currency equals that. Per-channel price lists, which would make every channel servable, are Phase H.
 

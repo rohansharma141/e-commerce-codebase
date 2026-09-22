@@ -30,6 +30,15 @@
  * show.
  */
 
+/**
+ * What the api says it supports for this tenant: currency, minor units,
+ * locale. Every rendered price is formatted with it, so anything that can
+ * change it must drop this tag — since C-18a that includes channel edits.
+ */
+export function capabilitiesTag(tenantId: string): string {
+  return `capabilities:${tenantId}`;
+}
+
 export function browseTag(tenantId: string): string {
   return `browse:${tenantId}`;
 }
