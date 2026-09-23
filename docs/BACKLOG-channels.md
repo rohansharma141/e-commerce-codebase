@@ -4,7 +4,7 @@ Work breakdown for [ADR-0014](adr/0014-channel-as-sales-channel.md) and [CHANNEL
 
 House rules applied: one item, one commit, one stated verification. Anything needing the word "and" between deliverables is two items. Every verification states **what it prints if the change did nothing** — a check that cannot fail is not a check.
 
-## Status as of 2026-09-22
+## Status as of 2026-09-23
 
 **Read this section first when resuming.** Then [CHANNELS-BUILD-NOTES](design/CHANNELS-BUILD-NOTES.md) for the traps and mistakes that cost time, and the rows below for each item's verification record.
 
