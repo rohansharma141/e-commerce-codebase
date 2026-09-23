@@ -4,7 +4,7 @@ The companion to [CHANNELS-OVERVIEW](CHANNELS-OVERVIEW.md) (what the slice deliv
 
 It exists because these facts otherwise live in commit messages and one session's context, and both are easy to lose. Where an entry names a commit, the commit message has the full account.
 
-Written 2026-09-19; updated 2026-09-22 for C-11, C-33, C-32a, C-32b, C-18a, C-18b, C-19a and C-19b.
+Written 2026-09-19; updated 2026-09-22 for C-11, C-33, C-32a, C-32b, C-18a, C-18b, C-19a and C-19b; 2026-09-23 for C-19d.
 
 ---
 
@@ -51,6 +51,8 @@ Every entry below produced a symptom whose cause was elsewhere. Most share one s
 ### The storefront
 
 **`notFound()` in the root layout answers `404` with an empty page.** The root layout is outside its own not-found boundary, so the render fails over to Next's bare error document: correct status, no layout, no message. A status check passes; only rendering shows it. Throw from a nested layout — `(shop)/layout.tsx` — where the root's boundary catches it. Note that every storefront `404` on Next 14.2 arrives as an empty shell and is drawn from the RSC payload in the browser, so compare payloads (or render headlessly), not server HTML. *(C-19a)*
+
+**`generateMetadata` runs even when the layout refuses to render the page, and Next swallows what it throws.** Metadata is resolved separately from rendering, so a layout that returns a message instead of its children does not stop the page's `generateMetadata` from running — and when that threw the api's `422`, the response was still `200` with the message in the body, but with **no `<title>` and no `robots` tag at all**. Nothing errored; the `noindex` the segment had set was silently lost. Any `generateMetadata` that reads must first ask whether this request may read. *(C-19d)*
 
 **Next's data cache stores `200`s only** (`patch-fetch.js`, `res.status === 200`). A `404` from the api is asked again on every request, which is what lets a newly created channel be reachable at once — and why a refusal cannot be "cached away". *(C-19a)*
 
@@ -114,6 +116,7 @@ Recorded because the project's standing rule is to say plainly what failed, incl
 | 26 | **I told the user C-32a was committed as a hash I had not seen** — 3c7d4fb, which is no commit at all; it was `48d784c`. The command's output had been cut before the hash. | The next `git log`, a minute later. | Corrected to the user at once. A hash is quoted from output, never recalled. |
 | 27 | **C-19a's first build resolved the channel in the root layout**, and an unknown prefix answered `404` — the check I had written asserted only the status, and passed. The page was empty. | Comparing the unknown channel's RSC payload with the product page's `404`, which carries the layout and message; then headless Edge. | The check moved to a route-group layout, and the verification now asserts what the `404` renders, not only its status. |
 | 28 | **C-19b's first build turned an unknown channel's `404` into a `500`.** Scoping every read also scoped the root layout's theme read, which the api answers `404` for an unknown key; the frame crashed before the `404` could draw. Every unit test passed. | Re-running C-19a's live probe against the new image, rather than only the new check. | The frame reads its theme in the default channel. Re-run the previous row's probe after any change to the read path. |
+| 29 | **C-19d's first build lost the product page's `<title>` and `robots` tag** in a refused channel, because `generateMetadata` still ran and threw where the page itself no longer rendered. The page looked right. | The live probe, which checks the `noindex` the segment sets — one page lacked it. | The metadata asks `lookupChannel` before reading, with a unit test; the probe keeps checking `noindex` per page rather than per feature. |
 
 ### Earlier in the same session, on `main`
 

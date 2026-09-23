@@ -4,7 +4,7 @@ import { graphqlQuery } from '@/lib/api-graphql';
 import { browseTag } from '@/lib/cache-tags';
 import { getTenantId } from '@/lib/tenant';
 import { getMoneyFormat } from '@/lib/capabilities';
-import { channelHref } from '@/lib/channel';
+import { channelHref, lookupChannel } from '@/lib/channel';
 import { formatMajorUnits } from '@/lib/money';
 import { Breadcrumbs, type Crumb } from '@/components/breadcrumbs';
 import { RelatedProducts } from '@/components/related-products';
@@ -39,6 +39,14 @@ async function fetchProductDetail(tenantId: string, id: string) {
 }
 
 export async function generateMetadata({ params }: PageProps) {
+  // Metadata is resolved separately from rendering, so it runs even when the
+  // layout has already decided this page will not render (C-19d). Reading the
+  // product in a channel the api refuses throws here, and Next swallows a
+  // failed generateMetadata: the document came back with no title and no
+  // robots tag at all. Ask first, read second.
+  const lookup = await lookupChannel();
+  if (lookup.status !== 'ok') return {};
+
   const tenantId = getTenantId();
   const data = await fetchProductDetail(tenantId, params.id);
   const name = data.product?.name;

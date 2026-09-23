@@ -1,7 +1,7 @@
 import 'server-only';
-import { notFound } from 'next/navigation';
 import { TenantCapabilitiesDocument } from '@platform/api-client';
 import { GraphqlError, graphqlQuery } from './api-graphql';
+import { ApiError } from './api-rest';
 import { capabilitiesTag } from './cache-tags';
 import { getChannelKey } from './channel-key';
 import { withChannelPrefix } from './channel-path';
@@ -21,23 +21,33 @@ export interface StorefrontChannel {
 }
 
 /**
- * `found: false` only when the path named a channel the api does not know.
- * `channel` is null for a tenant with no channel at all, which the api reports
- * as `channel: null` rather than an error.
+ * What the api says about the channel this request names.
+ *
+ *   ok          — it serves. `channel` is null only for a tenant with no
+ *                 channel at all, which the api reports as `channel: null`
+ *                 rather than an error.
+ *   unknown     — the path named a key the api does not have: unknown,
+ *                 archived, or another tenant's. Its `404`.
+ *   unservable  — the channel exists but the price list cannot serve its
+ *                 currency, so the api refuses every storefront request in it
+ *                 (C-32b). Its `422`.
  */
-export type ChannelLookup = { found: true; channel: StorefrontChannel | null } | { found: false };
+export type ChannelLookup =
+  | { status: 'ok'; channel: StorefrontChannel | null }
+  | { status: 'unknown' }
+  | { status: 'unservable' };
 
 /**
- * Asks the api which channel serves this request, and whether the one the
- * path named exists at all. An unknown, archived or other-tenant key is a
- * `404` from the api; anything else it refuses is rethrown.
+ * Asks the api which channel serves this request, and how it answers for it.
+ * Anything refused for another reason is rethrown: a fault must not read as a
+ * closed market.
  *
  * Only `200`s enter Next's data cache (`patch-fetch.js` checks the status
- * before storing), so a `404` is asked again on every request and a channel
- * created a moment ago is reachable at once.
+ * before storing), so a refusal is asked again on every request — a channel
+ * created, or made servable, a moment ago is reachable at once.
  *
- * For the root layout, which must render even for an unknown channel: it is
- * the frame the `404` page is drawn in. Pages go through `resolveChannel`.
+ * Both layouts call this: the root one to draw its frame, `(shop)` to decide
+ * whether a page renders at all.
  */
 export async function lookupChannel(): Promise<ChannelLookup> {
   const tenantId = getTenantId();
@@ -47,25 +57,21 @@ export async function lookupChannel(): Promise<ChannelLookup> {
     const data = await graphqlQuery(TenantCapabilitiesDocument, {}, {
       tags: [capabilitiesTag(tenantId)],
     });
-    return { found: true, channel: data.capabilities.channel ?? null };
+    return { status: 'ok', channel: data.capabilities.channel ?? null };
   } catch (err) {
     // Only a key the *path* named can be unknown. The default's key came from
     // the api a moment ago; a 404 for it is a fault, not a missing page.
-    if (getChannelKey() && err instanceof GraphqlError && err.status === 404) {
-      return { found: false };
-    }
+    if (getChannelKey() && statusOf(err) === 404) return { status: 'unknown' };
+    // 422 reaches here two ways: the capabilities read refused in a named
+    // channel, or — on an unprefixed page whose default is unservable — the
+    // discovery call itself, which fails as an ApiError before any query runs.
+    if (statusOf(err) === 422) return { status: 'unservable' };
     throw err;
   }
 }
 
-/**
- * The request's channel, or the storefront's `404` if the path named one the
- * api does not know — never the default channel. Serving the default under a
- * prefix nobody configured would make a typo look like a working market, and
- * give every mistyped link a second copy of the default's pages.
- */
-export async function resolveChannel(): Promise<StorefrontChannel | null> {
-  const lookup = await lookupChannel();
-  if (!lookup.found) notFound();
-  return lookup.channel;
+function statusOf(err: unknown): number | undefined {
+  if (err instanceof GraphqlError) return err.status;
+  if (err instanceof ApiError) return err.status;
+  return undefined;
 }

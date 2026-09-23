@@ -99,9 +99,14 @@ A channel is named by the path's first segment, and the tenant's default channel
 | `/trade/c/dresses` | channel `trade`; every link on the page stays under `/trade` |
 | `/uk/c/dresses` | channel `uk`, named explicitly |
 | `/xx/c/dresses`, or an archived channel's key | `404` — never the default |
+| `/de/c/dresses`, a channel the price list cannot serve | the market's own page, `200` and `noindex` |
 | `/c/…`, `/p/…`, `/cart`, `/orders/…`, `/api/…` | the storefront's own routes, never read as a channel |
 
 Whether a key names a channel is the api's answer: `(shop)/layout.tsx` asks for the channel's capabilities under the scoped URL and turns the api's `404` into the storefront's. That layout rather than the root one, because a `notFound()` thrown by the root layout falls outside the root's own not-found boundary and renders an empty page — the status is still `404`, which is why only rendering it showed the difference.
+
+A channel the api refuses — its currency is one the price list cannot serve, so every storefront request in it is `422 channel.unservable` (C-32b) — gets that same layout's *market's own page* instead of any product page (C-19d): "Not available in this market", inside the tenant's frame, with a link to the default channel. `200` rather than `404`, because the page exists and the link the shopper followed was valid; `noindex` on the segment keeps it out of search results, which is what a `404` would have bought. Next's app router offers a page those two answers and no third, so the api's `422` cannot be passed through. The layout returns the message *instead of* its children, so no page underneath asks the api a question it has already refused — and `generateMetadata`, which resolves separately from rendering, asks the same question first for the same reason.
+
+A tenant whose *default* channel is unservable has nowhere to read anything, the theme included. The frame then renders with a neutral fallback theme and no "main store" link, because there is no other market to offer.
 
 Every read then names that channel, in the URL and the header (C-19b). `graphqlQuery` reads it per call, as it reads the tenant, so no caller can forget it. An unprefixed page names the default **by its key**, learned from `GET /system/capabilities` — the one read the api answers without a channel — and cached under the capabilities tag, so a new default reaches those pages as soon as `channels.default-changed` arrives. That is what lets the api stop treating an absent channel as the default (C-42, ADR-0014 §8) without breaking this storefront. Carts and checkout follow in C-19e.
 
@@ -173,11 +178,12 @@ That last part is the point of the arrangement. Because the storefront asks rath
 
 ## Tests
 
-`pnpm nx test storefront` runs nine suites, among them:
+`pnpm nx test storefront` runs twelve suites, among them:
 
 - `src/middleware.spec.ts` and `src/lib/channel-path.spec.ts` — channel resolution (C-19a): which paths name a channel, that a client-sent `x-channel-key` never survives the middleware, and that every top-level route is reserved so none is mistaken for a channel key.
 - `src/lib/api-graphql.spec.ts` — the read path is a GET carrying the tenant, and every read names the request's channel in both URL and header, per call.
 - `src/lib/channel-key.spec.ts` and `src/lib/capabilities.spec.ts` — an unprefixed page names the default by the key `/system/capabilities` reports, and money is formatted in the request's channel rather than from the default's aliases.
+- `src/lib/channel.spec.ts`, `src/lib/theme.spec.ts` and `src/app/(shop)/p/[id]/page.spec.ts` — the three outcomes an api answer becomes (serves, unknown, unservable), the frame's fallback when nothing can be read, and metadata asking before it reads.
 - `src/lib/search-params.spec.ts` — the URL contract. Browse pages are a pure function of the URL, and those URLs get shared and bookmarked, so the page/cursor, facet, price-range, sort and view parsing are pinned. Runs anywhere, no infrastructure.
 - `src/contract.integration.spec.ts` — storefront↔API conformance. Every operation the storefront issues in production is issued against a live api and checked against the shape the storefront relies on, including exact key sets for the hand-mirrored REST types so a drifted mirror fails loudly. Skipped unless `TEST_API_URL` is set:
 
@@ -221,7 +227,7 @@ pnpm codegen                          # rebuild typed documents
 | Concern | File |
 |---|---|
 | Tenant from Host | [apps/storefront/src/middleware.ts](../apps/storefront/src/middleware.ts) |
-| Channel from path | [lib/channel-path.ts](../apps/storefront/src/lib/channel-path.ts) (grammar), [lib/channel.ts](../apps/storefront/src/lib/channel.ts) (asking the api), [(shop)/layout.tsx](../apps/storefront/src/app/%28shop%29/layout.tsx) (the `404`) |
+| Channel from path | [lib/channel-path.ts](../apps/storefront/src/lib/channel-path.ts) (grammar), [lib/channel-key.ts](../apps/storefront/src/lib/channel-key.ts) (the key every call names), [lib/channel.ts](../apps/storefront/src/lib/channel.ts) (asking the api), [(shop)/layout.tsx](../apps/storefront/src/app/%28shop%29/layout.tsx) (the `404` and the closed market) |
 | urql RSC client | [apps/storefront/src/lib/urql.ts](../apps/storefront/src/lib/urql.ts) |
 | REST fetch wrapper | [apps/storefront/src/lib/api-rest.ts](../apps/storefront/src/lib/api-rest.ts) |
 | Cart cookie helpers | [apps/storefront/src/lib/cart.ts](../apps/storefront/src/lib/cart.ts) |

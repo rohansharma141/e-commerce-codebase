@@ -30,19 +30,25 @@ export const metadata: Metadata = {
  * hydration"); the style nonce slots into the same per-request nonce.
  *
  * The channel is looked up here only to show it and to keep links under its
- * prefix (C-19a). Refusing an unknown one is `(shop)/layout.tsx`'s job: this
- * layout also frames the `404` page, so it must render when the channel is
- * unknown, and then links to the default rather than to the prefix that
- * failed.
+ * prefix (C-19a). Refusing it is `(shop)/layout.tsx`'s job — a `404` for an
+ * unknown key, the market's own page for an unservable one (C-19d). This
+ * layout frames both, so it must render whatever the answer was, and then
+ * links to the default rather than to the prefix that failed.
  */
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const tenantId = getTenantId();
   const lookup = await lookupChannel();
-  const channel = lookup.found ? lookup.channel : null;
-  // For an unknown channel the theme is read in the default one: every read in
-  // a channel that does not exist is a `404`, and this frame has to render.
-  const theme = await getTenantTheme({ inDefaultChannel: !lookup.found });
-  const linkChannel = lookup.found ? getChannelKey() : null;
+  const servable = lookup.status === 'ok';
+  const channel = servable ? lookup.channel : null;
+  // A channel the api will not answer for — unknown, or unservable — cannot
+  // be asked for a theme either, so the frame reads it in the default channel.
+  // When the *default* is the unservable one there is nowhere left to ask, and
+  // the frame falls back to a neutral theme rather than to a server error.
+  const theme = await getTenantTheme({
+    inDefaultChannel: !servable,
+    fallbackOnRefusal: lookup.status === 'unservable',
+  });
+  const linkChannel = servable ? getChannelKey() : null;
   const home = withChannelPrefix(linkChannel, '/');
 
   const themeCss = `:root {

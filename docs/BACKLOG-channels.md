@@ -8,19 +8,19 @@ House rules applied: one item, one commit, one stated verification. Anything nee
 
 **Read this section first when resuming.** Then [CHANNELS-BUILD-NOTES](design/CHANNELS-BUILD-NOTES.md) for the traps and mistakes that cost time, and the rows below for each item's verification record.
 
-`main` = `433f5b6` (61 commits, CI green, `v0.1.0`). `channels` branched from it. Code changed last in C-19b (2026-09-22); `git log -1 --format='%h %s' -- apps packages` names the latest commit to touch code, so a docs-only commit cannot make this line stale. **CI has never run on this branch** — it triggers only on `main` and on PRs into it, so every "verified" below is local.
+`main` = `433f5b6` (61 commits, CI green, `v0.1.0`). `channels` branched from it. Code changed last in C-19d (2026-09-23); `git log -1 --format='%h %s' -- apps packages` names the latest commit to touch code, so a docs-only commit cannot make this line stale. **CI has never run on this branch** — it triggers only on `main` and on PRs into it, so every "verified" below is local.
 
-### Done — 30 rows, all verified
+### Done — 31 rows, all verified
 
 | Phase | Rows |
 |---|---|
 | A — conventions and scope | C-1, C-2, C-3, C-2b, C-4 *(api half)*, C-9 *(REST half)* |
 | B — the channels module | C-5, C-6, C-7, C-8a, C-8b, C-10, C-11a, C-11 |
 | C — resolution and propagation | C-12, C-13, C-14, C-15, C-16a, C-16b, C-17, C-33 |
-| D — API surface | C-32a, C-32b, C-18a, C-18b, C-19a, C-19b |
+| D — API surface | C-32a, C-32b, C-18a, C-18b, C-19a, C-19b, C-19d |
 | F / G | C-26, C-29 |
 
-Plus [ADR-0015](adr/0015-operator-authentication-at-the-api-edge.md) (operator auth, designed not built). Test counts, measured 2026-09-22 with C-18b in both images. Unit: channels 144 plus 24 database-gated, pricing 69, cart 21, api 27; storefront 85 at C-19b. Database, on a throwaway `platform_test`: channels 168, and checkout integration 13, C-11 backfill 7, C-33 backfill 6 and the C-32b middleware 7, run together (at C-32b; unchanged since). Live: 45 admin-conventions, 6 admin-concurrency, 19 scoped-graphql, storefront 92 at C-19b — its 85 unit tests and the 7-test conformance suite. (Recorded until C-19a as "46 storefront (38 conformance and 8 route)", a mislabel found by counting per suite: 46 was the whole suite, and 7 of it conformance.) C-32b's live script 28 expectations and C-18a's 24, 0 failures each; C-18b's freshness check, before and after. scoped-graphql's one unexplained 30 s timeout, in the first run after C-33, has not recurred in four runs since; it stays recorded as unexplained. The RUNBOOK's order recipe and upgrade-path block were run verbatim, extracted from the file.
+Plus [ADR-0015](adr/0015-operator-authentication-at-the-api-edge.md) (operator auth, designed not built). Test counts, measured 2026-09-22 with C-18b in both images. Unit: channels 144 plus 24 database-gated, pricing 69, cart 21, api 27; storefront 99 at C-19d. Database, on a throwaway `platform_test`: channels 168, and checkout integration 13, C-11 backfill 7, C-33 backfill 6 and the C-32b middleware 7, run together (at C-32b; unchanged since). Live: 45 admin-conventions, 6 admin-concurrency, 19 scoped-graphql, storefront 106 at C-19d — its 99 unit tests and the 7-test conformance suite. (Recorded until C-19a as "46 storefront (38 conformance and 8 route)", a mislabel found by counting per suite: 46 was the whole suite, and 7 of it conformance.) C-32b's live script 28 expectations and C-18a's 24, 0 failures each; C-18b's freshness check, before and after. scoped-graphql's one unexplained 30 s timeout, in the first run after C-33, has not recurred in four runs since; it stays recorded as unexplained. The RUNBOOK's order recipe and upgrade-path block were run verbatim, extracted from the file.
 
 ### Decided 2026-09-22
 
@@ -70,7 +70,7 @@ Re-sequenced 2026-09-22, after C-11 and C-33. Working hours at this build's obse
 | 3a | C-18b ✅ | The storefront's cached capabilities invalidated by channel events, not only pricing ones | done | — |
 | 4 | C-19a ✅ | The storefront picks a channel from a path prefix; an unknown prefix is a `404` | done | — |
 | 5 | C-19b ✅ | Every read in the channel — the default's key discovered from `/system/capabilities` for unprefixed pages; money from the channel's capabilities; C-4's client guard; the cross-channel cache test | done | — |
-| 5a | C-19d | An unservable channel renders "not available in this market", not a `500` | 0.5–1 h | C-19b |
+| 5a | C-19d ✅ | An unservable channel renders "not available in this market", not a `500` | done | — |
 | 5b | C-19e | Carts and checkout in the channel, the default's key included, with a cart cookie per channel | 1–1.5 h | C-19b |
 | 5c | C-41 | Every documented command and spec names its channel on the storefront surfaces | 1–1.5 h | — |
 | 5d | C-42 | The api answers `400` to a storefront-surface request that names no channel | 1–1.5 h | C-19b, C-19e, C-41 |
@@ -89,7 +89,7 @@ Re-sequenced 2026-09-22, after C-11 and C-33. Working hours at this build's obse
 | 12e | C-40 | The price filter shows the currency's symbol instead of a hardcoded `$` | 0.5–1 h | — |
 | **Last** | | | | |
 | 13 | C-27 | Docs reconciled; the README run cold | 1.5–2.5 h | all above |
-| | | **Remaining, excluding the gated items below** | **≈ 16–25.5 h** | |
+| | | **Remaining, excluding the gated items below** | **≈ 15.5–24.5 h** | |
 
 Gated on the user: **Block 2** — the auth slice (ADR-0015) and the back office (C-20..C-24), ≈ 15–20 h. **Phase H** — per-channel price lists, an ADR first (≈ 2–3 h), the build not sized. **CI on this branch** — ≈ 15 minutes plus whatever it finds.
 
@@ -520,9 +520,20 @@ Every GraphQL read goes to the scoped URL with both headers, for the request's c
 
 *Found building it:* **the first build turned an unknown channel's `404` into a `500`.** The root layout also reads the theme, and scoped to an unknown key the api answers that read `404` too, so the frame crashed before the `404` page could draw. No unit test covered the layout; re-running C-19a's live probe caught it. The frame now reads its theme in the default channel (`inDefaultChannel`), where its links already go.
 
-**C-19d — An unservable channel says so** *(S, 0.5–1 h)*
+**C-19d — An unservable channel says so** ✅ *(S, 0.5–1 h)*
 C-32b's `422 channel.unservable` rendered as an honest "not available in this market" inside the layout, instead of a server error. It hooks into `lookupChannel`, which rethrows the `422` today. Decide when building: a page in Next's app router can answer `404` or `200`, not `422`.
 *Verification:* `/de/c/dresses` renders the message; today it is a `500`. `/trade` is untouched, so the message is not shown to every channel.
+
+*Shipped 2026-09-23.* `lookupChannel` answers with one of three states — serves, unknown, unservable — instead of throwing the api's `422`, and `(shop)/layout.tsx` turns the third into the market's own page, returned *instead of* its children so nothing underneath asks a question the api has already refused. The page carries the tenant's frame, names the channel, and links to the default channel.
+
+**Decided while building: `200` with `noindex`, not `404`.** Next's app router gives a page those two answers and no third, so the api's `422` cannot be passed through. `404` would tell a shopper with a valid link that the page does not exist; `200` tells them the market is not open, and the segment's `noindex` keeps it out of search results, which is what the `404` would have bought.
+
+- **Live:** `/de`, `/de/c/dresses`, `/de/p/<id>` and `/de/cart` all answer `200` with the message, `noindex`, the tenant's brand and the main-store link; `/`, `/trade` and `/uk/…` are unchanged; `/xx/…` is still `404`. Before this row every `/de` path was a `500`.
+- **The unservable *default*, the harder half:** `t-books` defaults switched to EUR against a USD price list, so every read including discovery is refused. `/` renders the message with the neutral fallback theme and *no* main-store link — there is no other market to offer — rather than a `500`. Restored to USD afterwards, and `t-books` renders its own brand again.
+- **Unit, 99** (13 new): the three outcomes, including a refusal that arrives from discovery as an `ApiError` rather than from a query, and that anything else still throws; the frame's fallback theme, pinned because C-37 will remove the live reproduction; the product page's metadata. Five mutations, each failing its tests: `422` unrecognised (2 failures), the discovery refusal missed (1), every error read as a closed market (2), no fallback theme (1), the metadata read unguarded (2).
+- Conformance 7/7 (106 storefront tests over 12 suites); build and lint clean.
+
+*Found building it:* **the product page lost its `<title>` and `robots` tag in a refused channel.** `generateMetadata` resolves separately from rendering, so it still ran where the page no longer did, threw the `422`, and Next swallowed it: `200`, the right body, and no metadata at all — the segment's `noindex` silently gone. Caught because the probe checks `noindex` on every page rather than once per feature. Metadata now asks `lookupChannel` before it reads.
 
 **C-19e — Carts and checkout in the channel** *(S, 1–1.5 h)*
 The REST calls — cart create, add, coupon, checkout — carry `x-channel-id`, the default's key included (C-19b's discovery), and the `cart_id` cookie gains the channel in its name. Carts are bound to the channel they were created in (C-16b); a per-tenant cookie carries a cart started under `/trade` into `/`.
